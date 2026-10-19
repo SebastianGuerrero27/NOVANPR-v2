@@ -227,3 +227,20 @@ ONNX es compatible con el adaptador del motor y su arquitectura se registra en
 metadatos; esto no modifica el resultado de precisión ni justifica activarlo.
 
 [Informe y curvas](../../../docs/resultados/entrenamiento_ecuatorianas_2026-10-18.md).
+
+## Afinamiento con escenas compuestas ecuatorianas del 19-10-2026: no promover
+
+Desde producción, 10 épocas en Docker con 8 080 imágenes: escenas de Open Images V7 train cuyas
+placas se reemplazaron por los recortes ecuatorianos (`scripts/componer_placas_ecuatorianas.py`)
+y escenas originales de repaso. Candidato
+`yolo26n_ecuador_mixto_s0_20261019_152110_candidato.pt` (SHA-256 `9d690f2e…a0c2`).
+
+| Prueba (@0,22, IoU ≥ 0,5) | Producción | Candidato | McNemar |
+|---|---:|---:|---|
+| Open Images test real (2 816 placas) | 83,8 % (FP 338) | 81,7 % (FP 264) | peor, p = 8 × 10⁻⁸ |
+| Compuesta ecuatoriana (2 801 placas) | 80,1 % (FP 369) | 84,5 % (FP 232) | mejor, p = 4 × 10⁻²⁵ |
+| Fotos reales del piloto (101 placas) | 86 (FP 9) | 81 (FP 11) | peor, p = 0,13 |
+
+Mejora solo donde la prueba se parece al entrenamiento sintético: no se activa. Informe en
+`docs/resultados/afinamiento_ecuador_mixto_2026-10-19.md`; matriz en
+`docs/resultados/matriz_confusion_yolo26n_ecuador_afinado.svg`.
