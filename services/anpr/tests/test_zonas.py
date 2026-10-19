@@ -7,7 +7,12 @@ Escena sintética de 640×480 con fondo uniforme; los detectores de prueba devue
 """
 import numpy as np
 
-from app.aplicacion.detector import MAX_EXCLUSIONES, DetectionPipeline, ventana_inferencia
+from app.aplicacion.detector import (
+    MAX_EXCLUSIONES,
+    DetectionPipeline,
+    ventana_inferencia,
+    ventana_movimiento,
+)
 from app.aplicacion.movimiento import CompuertaInferencia, DetectorMovimiento
 from app.aplicacion.verificacion_placa import punto_permitido
 from app.dominio.models import Detection
@@ -147,6 +152,17 @@ def test_ventana_de_inferencia():
     assert ventana_inferencia([[0.5, 0.5], [0.501, 0.5], [0.501, 0.501]], 100, 100) is None
 
 
+def test_ventana_de_movimiento_amplia_el_area_y_conserva_el_objeto():
+    ventana = ventana_movimiento(CAJA, 640, 480)
+    assert ventana is not None
+    x1, y1, x2, y2 = ventana
+    assert x1 <= CAJA[0] and y1 <= CAJA[1] and x2 >= CAJA[2] and y2 >= CAJA[3]
+    assert x2 - x1 >= 128 and y2 - y1 >= 96
+    assert (x2 - x1) * (y2 - y1) < 0.8 * 640 * 480
+    assert ventana_movimiento(None, 640, 480) is None
+    assert ventana_movimiento([0, 0, 640, 480], 640, 480) is None
+
+
 def test_con_recorte_el_detector_recibe_solo_la_region_y_las_cajas_vuelven_al_cuadro():
     cuadrante = [[0.5, 0.5], [1.0, 0.5], [1.0, 1.0], [0.5, 1.0]]
     # El detector responde en coordenadas del recorte (268, 211)-(640, 480)
@@ -158,6 +174,29 @@ def test_con_recorte_el_detector_recibe_solo_la_region_y_las_cajas_vuelven_al_cu
     assert len(rois) == 1
     x1, y1, x2, y2 = rois[0].plate_bbox
     assert abs(x1 - 368) <= 2 and abs(y1 - 361) <= 2 and abs(x2 - 488) <= 2 and abs(y2 - 401) <= 2
+
+
+def test_movimiento_usa_recorte_ampliado_y_mapea_cajas_al_cuadro_original():
+    class DetectorRecorte(DetectorContado):
+        def predict(self, frame):
+            self.llamadas += 1
+            self.formas.append(frame.shape[:2])
+            return [] if frame.shape[1] == 640 else placa([20, 20, 140, 60])
+
+    det = DetectorRecorte()
+    p = DetectionPipeline(detector=det, compuerta=CompuertaInferencia(activa=False))
+    for _ in range(4):
+        p.detect_and_track(fondo())
+
+    rois = p.detect_and_track(con_objeto())
+    assert det.formas[-1][1] < 640 and det.formas[-1][0] < 480
+    assert len(rois) == 1
+    x1, y1, x2, y2 = rois[0].plate_bbox
+    assert x1 > 20 and y1 > 20
+    assert x2 <= 640 and y2 <= 480
+
+    p.detect_and_track(con_objeto([108, 150, 228, 190]))
+    assert det.formas[-1] == (480, 640)
 
 
 def test_sin_recorte_o_sin_region_el_detector_ve_el_cuadro_completo():

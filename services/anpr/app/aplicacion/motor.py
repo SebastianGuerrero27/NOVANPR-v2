@@ -111,6 +111,8 @@ class ConfigMotor:
     presupuesto_registro_s: Optional[float] = 1.0
     #: Espera máxima por los atributos del vehículo en la reevaluación
     espera_vehiculo_s: float = 5.0
+    #: Confianza mínima del detector para registrar un paso (PLATE_REGISTRATION_MIN_CONFIDENCE)
+    confianza_minima_registro: float = 0.23
 
 
 @dataclass
@@ -1286,6 +1288,19 @@ class MotorAnpr:
         rápido no se espera al análisis del vehículo: lo pendiente se reevalúa después. True si
         quedó una reevaluación en curso (se queda con el análisis del vehículo).
         """
+        minima = self._config.confianza_minima_registro
+        if candidato.confidence < minima:
+            self._log.info(
+                "[DESCARTE CONFIANZA] Track #%d: detección %.1f%% < %.0f%%; no se registra.",
+                tracking_id,
+                candidato.confidence * 100,
+                minima * 100,
+            )
+            self._descartar(
+                tracking_id, "confianza_deteccion_baja", placa, candidato.confidence, camara
+            )
+            return False
+
         pipeline = self._pipeline
         camara = self.camara_id if camara is None else camara
         limpia = limpia or placa.replace("-", "").strip().upper()
@@ -1372,6 +1387,20 @@ class MotorAnpr:
             return
         datos = res.json()
         ingreso_id = datos.get("ingreso_id")
+        if datos.get("descartado"):
+            for nombre in {foto, foto_placa}:
+                try:
+                    os.remove(os.path.join(self._dir_media, nombre))
+                except OSError:
+                    pass
+            self._resolver_pista(tracking_id, limpia)
+            self._m.record_detection("descartada", str(camara))
+            self._log.info(
+                "[DESCARTE BACKEND] Track #%d rechazado antes de crear un registro: %s",
+                tracking_id,
+                datos.get("message", "confianza de detección insuficiente"),
+            )
+            return False
         if datos.get("deduplicado", False):
             self._log.info("[BACKEND DEDUPLICADO] Ingreso ID #%d consolidado para Track #%d | Placa: %s", ingreso_id, tracking_id, placa)
             # Las fotos de este intento no las referencia ninguna fila

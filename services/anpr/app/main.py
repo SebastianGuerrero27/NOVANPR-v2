@@ -30,6 +30,7 @@ from app.infraestructura.config import (
     OCR_VERIFIER_MAX_MS,
     REGISTRO_MAX_MS,
     OCR_VERIFIER_VOTE_WEIGHT,
+    PLATE_REGISTRATION_MIN_CONFIDENCE,
     RTSP_URL,
     RUNNING_IN_DOCKER,
 )
@@ -53,6 +54,7 @@ motor = MotorAnpr(
         peso_voto_verificador=OCR_VERIFIER_VOTE_WEIGHT,
         espera_verificador_s=OCR_VERIFIER_MAX_MS / 1000.0,
         presupuesto_registro_s=REGISTRO_MAX_MS / 1000.0 if REGISTRO_MAX_MS > 0 else None,
+        confianza_minima_registro=PLATE_REGISTRATION_MIN_CONFIDENCE,
     ),
     DependenciasMotor(
         crear_fuente_video=create_video_source,

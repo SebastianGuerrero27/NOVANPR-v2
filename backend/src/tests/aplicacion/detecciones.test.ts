@@ -80,7 +80,7 @@ describe('Detecciones · servicio ANPR', () => {
 
     const repetido = preparar();
     repetido.repositorio.mismoPaso.mockResolvedValue({ id: 9, fecha_hora_ingreso: AHORA });
-    expect(await repetido.casos.ingreso({ tracking_id: 4, ruta_imagen_ingreso: 'x.jpg' }))
+    expect(await repetido.casos.ingreso({ tracking_id: 4, ruta_imagen_ingreso: 'x.jpg', confianza_deteccion: 0.23 }))
       .toEqual({ nuevo: false, respuesta: expect.objectContaining({ ingreso_id: 9, deduplicado: true }) });
     expect(repetido.repositorio.crearIngreso).not.toHaveBeenCalled();
 
@@ -93,10 +93,70 @@ describe('Detecciones · servicio ANPR', () => {
     expect(eventos.emitir).toHaveBeenCalledWith('deteccion:nueva', expect.objectContaining({ id: 15 }));
   });
 
+  it('fase 1: descarta y audita detecciones inferiores al 23 % sin crear un ingreso', async () => {
+    const { casos, repositorio } = preparar();
+    const resultado = await casos.ingreso({
+      tracking_id: 23,
+      ruta_imagen_ingreso: 'falso-positivo.jpg',
+      placa: 'PBA1234',
+      confianza_deteccion: 0.229,
+      fuente: 'rtsp',
+      camara_id: 2,
+    });
+
+    expect(resultado).toEqual({
+      nuevo: false,
+      respuesta: {
+        message: 'Paso descartado: confianza de detección inferior al 23 %.',
+        descartado: true,
+      },
+    });
+    expect(repositorio.registrarDescarte).toHaveBeenCalledWith({
+      trackingId: 23,
+      motivo: 'confianza_deteccion_baja',
+      texto: 'PBA1234',
+      confianza: 0.229,
+      fuente: 'rtsp',
+      camaraId: 2,
+    });
+    expect(repositorio.mismoPaso).not.toHaveBeenCalled();
+    expect(repositorio.crearIngreso).not.toHaveBeenCalled();
+  });
+
+  it('fase 1: acepta el umbral de 23 % y rechaza confianzas fuera de rango', async () => {
+    const minimo = preparar();
+    const resultado = await minimo.casos.ingreso({
+      tracking_id: 24,
+      ruta_imagen_ingreso: 'umbral.jpg',
+      confianza_deteccion: 0.23,
+    });
+    expect(resultado.nuevo).toBe(true);
+    expect(minimo.repositorio.crearIngreso).toHaveBeenCalledWith(
+      expect.objectContaining({ confianza: 0.23 }),
+    );
+
+    const invalida = preparar();
+    expect((await fallo(invalida.casos.ingreso({
+      tracking_id: 25,
+      ruta_imagen_ingreso: 'confianza-invalida.jpg',
+      confianza_deteccion: 1.1,
+    }))).tipo).toBe('validacion');
+    expect(invalida.repositorio.crearIngreso).not.toHaveBeenCalled();
+
+    const sinConfianza = preparar();
+    expect((await fallo(sinConfianza.casos.ingreso({
+      tracking_id: 26,
+      ruta_imagen_ingreso: 'sin-confianza.jpg',
+    }))).tipo).toBe('validacion');
+    expect(sinConfianza.repositorio.crearIngreso).not.toHaveBeenCalled();
+  });
+
   it('fase 1: el mismo paso se busca en la cámara que lo vio; una cámara inexistente no se usa', async () => {
     const { casos, repositorio } = preparar();
     repositorio.existeCamara.mockResolvedValue(false);
-    await casos.ingreso({ tracking_id: 7, ruta_imagen_ingreso: 'x.jpg', placa: 'PBA1234', camara_id: 99 });
+    await casos.ingreso({
+      tracking_id: 7, ruta_imagen_ingreso: 'x.jpg', placa: 'PBA1234', camara_id: 99, confianza_deteccion: 0.23,
+    });
     expect(repositorio.mismoPaso).toHaveBeenCalledWith(7, 'PBA1234', null, 'ingreso');
     expect(repositorio.crearIngreso).toHaveBeenCalledWith(expect.objectContaining({ camaraId: null, tipoMovimiento: 'ingreso' }));
   });
@@ -104,7 +164,9 @@ describe('Detecciones · servicio ANPR', () => {
   it('fase 1: conserva como salida la dirección configurada en la cámara', async () => {
     const { casos, repositorio } = preparar();
     repositorio.direccionCamara.mockResolvedValue('salida');
-    const r = await casos.ingreso({ tracking_id: 12, ruta_imagen_ingreso: 'salida.jpg', camara_id: 2 });
+    const r = await casos.ingreso({
+      tracking_id: 12, ruta_imagen_ingreso: 'salida.jpg', camara_id: 2, confianza_deteccion: 0.23,
+    });
     expect(repositorio.crearIngreso).toHaveBeenCalledWith(expect.objectContaining({ tipoMovimiento: 'salida' }));
     expect(r.respuesta.message).toBe('Salida registrada (pendiente de OCR).');
   });

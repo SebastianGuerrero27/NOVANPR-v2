@@ -19,7 +19,7 @@ sistema los supere. El protocolo para obtener esas cifras está en
 |---|---|---|---|
 | Captura | RTSP desde MediaMTX (flujo principal de la cámara, credenciales del servicio). Cola de un solo cuadro: el análisis toma siempre el más reciente y los intermedios se descartan contados | Flujo nativo (1080p 25 fps en la prueba) | — |
 | Movimiento | MOG2 sobre el cuadro reducido a 320 px, con la máscara de zonas (área de detección menos exclusiones). Sin movimiento no se ejecuta el detector | Cada cuadro analizado | `MOTION_GATE_ENABLED`, `MOTION_GATE_MIN_FRACTION`=0,002, `MOTION_GATE_MAX_SKIP`=5 |
-| Detección de placas | YOLO26n `models/license_plate_detector.pt`; inferencia sobre el recorte del área de detección | 512 px; umbral alto 0,22 y bajo ≈0,055 para el seguimiento | `PLATE_CONFIDENCE_THRESHOLD`, `ROI_CROP_INFERENCE`=true |
+| Detección de placas | YOLO26n `models/license_plate_detector.pt`; inferencia sobre el recorte del área de detección | 512 px; umbral alto 0,22 y bajo ≈0,055 para el seguimiento; no se procesa ni registra una detección con confianza <0,23 | `PLATE_CONFIDENCE_THRESHOLD`, `ROI_CROP_INFERENCE`=true |
 | Filtro geométrico | Una detección con el centro fuera del área o dentro de una exclusión se descarta | — | Zonas por cámara (Cámaras › Zonas) |
 | Seguimiento | Asociación en dos fases al estilo ByteTrack con filtro de Kalman | Pista viva hasta 4 cuadros analizados sin detección | — |
 | OCR rápido | fast-plate-ocr `cct-s-v2-global` (ONNX) por pista, en un hilo aparte | Enfriamiento 0,25 s por pista | `OCR_ENGINE=plate`, `OCR_THREADS`=2 |

@@ -35,6 +35,7 @@ import cv2
 import numpy as np
 
 from app.aplicacion.verificacion_placa import toca_borde_lateral
+from app.infraestructura.config import PLATE_REGISTRATION_MIN_CONFIDENCE
 from app.infraestructura.logger import get_logger
 
 logger = get_logger("frame_selector")
@@ -268,6 +269,8 @@ class BestFrameSelector:
         acumuló al menos `min_consecutive_frames` candidatos — evita que una detección
         de un solo frame (vibración, falso positivo puntual) dispare una captura.
         """
+        if confidence < PLATE_REGISTRATION_MIN_CONFIDENCE:
+            return None
         if self.should_ignore_track(tracking_id):
             return None
 

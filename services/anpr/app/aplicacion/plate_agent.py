@@ -29,6 +29,7 @@ from ultralytics import YOLO
 
 from app.infraestructura.config import PLATE_MODEL_PATH
 from app.infraestructura.ocr_engine import OcrEngine, OcrResult, create_ocr_engine
+from app.infraestructura.low_light import enhance_low_light, is_low_light
 from app.infraestructura.plate_rectifier import get_rectifier
 from app.infraestructura.logger import get_logger
 from app.dominio.plate_parser import (
@@ -319,6 +320,10 @@ class PlateEnhancementAgent:
         try:
             # Filtro bilateral para suavizar ruido de compresión sin borrar aristas de caracteres
             bilateral = cv2.bilateralFilter(resized, d=5, sigmaColor=50, sigmaSpace=50)
+
+            # En noche se corrige primero la exposición; CLAHE solo recupera contraste local.
+            if is_low_light(bilateral):
+                return enhance_low_light(bilateral)
 
             # CLAHE en el canal de luminosidad
             lab = cv2.cvtColor(bilateral, cv2.COLOR_BGR2LAB)

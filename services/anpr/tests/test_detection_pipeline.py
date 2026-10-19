@@ -13,6 +13,7 @@ import numpy as np
 
 from app.dominio.models import Detection
 from app.infraestructura.detectors import MockDetector
+from app.aplicacion.movimiento import CompuertaInferencia
 from app.aplicacion.detector import (
     _COLOR_LEIDA,
     DetectionPipeline,
@@ -59,6 +60,75 @@ class TestDetectionPipelineDI(unittest.TestCase):
         first_id = roi.tracking_id
         rois2 = self.pipeline.detect_and_track(self.frame)
         self.assertEqual(rois2[0].tracking_id, first_id)
+
+    def test_dark_scene_is_enhanced_only_for_inference(self):
+        night_frame = np.full((480, 640, 3), 8, dtype=np.uint8)
+        original = night_frame.copy()
+        self.pipeline._compuerta = CompuertaInferencia(activa=False)
+        received = []
+        predict = self.mock_det.predict
+
+        def capture_inference_frame(frame):
+            received.append(frame.copy())
+            return predict(frame)
+
+        self.mock_det.predict = capture_inference_frame
+
+        self.pipeline.detect_and_track(night_frame)
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0].shape, night_frame.shape)
+        self.assertGreater(float(np.median(received[0])), float(np.median(night_frame)))
+        self.assertTrue(np.array_equal(night_frame, original))
+
+    def test_low_confidence_detection_needs_two_consistent_inferences_to_start_track(self):
+        weak_plate = Detection(
+            bbox=[100.0, 150.0, 220.0, 190.0],
+            confidence=0.12,
+            class_name="plate",
+        )
+        self.mock_det.set_detections([weak_plate])
+
+        self.assertEqual(self.pipeline.detect_and_track(self.frame), [])
+        self.assertEqual(len(self.pipeline._trackers), 0)
+
+        weak_plate = Detection(
+            bbox=[112.0, 150.0, 232.0, 190.0],
+            confidence=0.11,
+            class_name="plate",
+        )
+        self.mock_det.set_detections([weak_plate])
+        rois = self.pipeline.detect_and_track(self.frame)
+        self.assertEqual(rois, [])
+        self.assertEqual(len(self.pipeline._trackers), 1)
+
+        self.mock_det.set_detections([
+            Detection(
+                bbox=[124.0, 150.0, 244.0, 190.0],
+                confidence=0.23,
+                class_name="plate",
+            )
+        ])
+        rois = self.pipeline.detect_and_track(self.frame)
+        self.assertEqual(len(rois), 1)
+        self.assertEqual(rois[0].confidence, 0.23)
+
+    def test_isolated_low_confidence_detection_does_not_create_track(self):
+        weak_plate = Detection(
+            bbox=[100.0, 150.0, 220.0, 190.0],
+            confidence=0.12,
+            class_name="plate",
+        )
+        self.mock_det.set_detections([weak_plate])
+        self.assertEqual(self.pipeline.detect_and_track(self.frame), [])
+
+        self.mock_det.set_detections([])
+        self.assertEqual(self.pipeline.detect_and_track(self.frame), [])
+        self.assertEqual(len(self.pipeline._trackers), 0)
+
+        self.mock_det.set_detections([weak_plate])
+        self.assertEqual(self.pipeline.detect_and_track(self.frame), [])
+        self.assertEqual(len(self.pipeline._trackers), 0)
 
     def test_coordenadas_dentro_del_cuadro(self):
         """Las cajas de las pistas quedan dentro del cuadro (son las que dibuja el HUD)."""

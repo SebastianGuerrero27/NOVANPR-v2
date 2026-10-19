@@ -27,6 +27,8 @@ DEBUG_SHOW_WINDOW: bool = os.getenv("DEBUG_SHOW_WINDOW", "false").lower() in ("t
 PLATE_MODEL_PATH: str = os.getenv("PLATE_MODEL_PATH", "models/license_plate_detector.pt")
 YOLO_CONFIDENCE_THRESHOLD: float = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.45"))
 PLATE_CONFIDENCE_THRESHOLD: float = float(os.getenv("PLATE_CONFIDENCE_THRESHOLD", "0.22"))
+# No se procesa OCR ni se registra un paso con una detección de placa inferior al 23 %.
+PLATE_REGISTRATION_MIN_CONFIDENCE: float = 0.23
 
 # =============================================================================
 # Proporción de la placa (ANT Ecuador)

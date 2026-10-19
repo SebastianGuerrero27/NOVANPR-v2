@@ -44,10 +44,12 @@ from app.infraestructura.config import (
     MOTO_PLATE_AR_MAX,
     MOTO_PLATE_AR_MIN,
     PLATE_CONFIDENCE_THRESHOLD,
+    PLATE_REGISTRATION_MIN_CONFIDENCE,
     YOLO_CONFIDENCE_THRESHOLD,
 )
 from app.dominio.models import Detection
 from app.infraestructura.detectors import BaseDetector, create_detector
+from app.infraestructura.low_light import enhance_low_light
 from app.infraestructura.ocr_engine import create_ocr_engine
 from app.aplicacion.movimiento import CompuertaInferencia, DetectorMovimiento, Movimiento
 from app.dominio.latencia import Cronometros
@@ -85,6 +87,7 @@ _MIN_SHARPNESS_VARIANCE = 35.0
 # Verificación geométrica por track: el análisis de caracteres (≈3–5 ms) se repite como
 # máximo 4 veces por segundo por track; entre análisis se reutiliza el cuadrilátero.
 _INTERVALO_ANALISIS_S = 0.25
+_INTERVALO_CUADRO_COMPLETO = 3
 
 # Fuentes de cuadros con seguimiento propio: la cámara RTSP asignada al motor
 _FUENTES = ("rtsp",)
@@ -521,6 +524,30 @@ def ventana_inferencia(roi: Optional[list[list[float]]], ancho: int, alto: int) 
     return x1, y1, x2, y2
 
 
+def ventana_movimiento(caja: Optional[list[int]], ancho: int, alto: int) -> Optional[tuple[int, int, int, int]]:
+    """Recorte con contexto alrededor del movimiento para dar más píxeles a objetos lejanos."""
+    if caja is None or ancho <= 0 or alto <= 0:
+        return None
+    x1, y1, x2, y2 = (int(v) for v in caja)
+    x1, x2 = max(0, min(ancho, x1)), max(0, min(ancho, x2))
+    y1, y2 = max(0, min(alto, y1)), max(0, min(alto, y2))
+    bw, bh = x2 - x1, y2 - y1
+    if bw <= 0 or bh <= 0:
+        return None
+
+    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    crop_w = min(ancho, max(128, int(math.ceil(bw * 1.8))))
+    crop_h = min(alto, max(96, int(math.ceil(bh * 1.8))))
+    crop_x1 = max(0, min(ancho - crop_w, int(round(cx - crop_w / 2))))
+    crop_y1 = max(0, min(alto - crop_h, int(round(cy - crop_h / 2))))
+    crop_x2, crop_y2 = crop_x1 + crop_w, crop_y1 + crop_h
+    if crop_w < 32 or crop_h < 32 or crop_w * crop_h > _RECORTE_MAX_FRACCION * ancho * alto:
+        return None
+    if crop_w == ancho and crop_h == alto:
+        return None
+    return crop_x1, crop_y1, crop_x2, crop_y2
+
+
 class DetectionPipeline:
     """
     Pipeline Científico de Detección Liviana y Tracking ByteTrack + Kalman.
@@ -552,6 +579,8 @@ class DetectionPipeline:
         # tracks fantasma cuando el vehículo sale de la escena.
         self._max_age = 4
         self._min_hits = 1
+        self._detecciones_bajas_pendientes: list[tuple[list[float], float]] = []
+        self._inference_count = 0
 
         # 2. Buffer de Overlays Visuales y Registro de Placas por Track
         self._overlays_lock = threading.Lock()
@@ -851,6 +880,8 @@ class DetectionPipeline:
         """Limpia completamente la memoria de seguimiento, consenso de placas y overlays visuales."""
         with self._trackers_lock:
             self._trackers.clear()
+        self._detecciones_bajas_pendientes.clear()
+        self._inference_count = 0
         with self._overlays_lock:
             self._track_plates.clear()
             self._current_overlays.clear()
@@ -925,14 +956,21 @@ class DetectionPipeline:
         exclusiones_px = self._exclusiones_px(orig_w, orig_h)
         # Con región de interés el detector analiza solo su recorte (más píxeles por placa)
         ventana = ventana_inferencia(self._roi_norm, orig_w, orig_h) if self._recorte_roi else None
+        if (
+            ventana is None
+            and self._inference_count % _INTERVALO_CUADRO_COMPLETO
+            != _INTERVALO_CUADRO_COMPLETO - 1
+        ):
+            ventana = ventana_movimiento(mov.caja, orig_w, orig_h)
         try:
             t_det = time.perf_counter()
+            inference_frame = enhance_low_light(frame)
             if ventana:
                 ox, oy, x2v, y2v = ventana
-                raw_detections = self.detector.predict(np.ascontiguousarray(frame[oy:y2v, ox:x2v]))
+                raw_detections = self.detector.predict(np.ascontiguousarray(inference_frame[oy:y2v, ox:x2v]))
             else:
                 ox = oy = 0
-                raw_detections = self.detector.predict(frame)
+                raw_detections = self.detector.predict(inference_frame)
             dur_detector = time.perf_counter() - t_det
             self.tiempos.registrar("detector", dur_detector)
             for d in raw_detections:
@@ -990,6 +1028,7 @@ class DetectionPipeline:
                             det_low_conf.append(c)
         except Exception as e:
             logger.error("Error en inferencia de matrículas: %s", e)
+        self._inference_count += 1
 
         # Validación inteligente de movimiento para stream RTSP: activar zona de movimiento
         # SOLO cuando hay una detección YOLO de placa/vehículo en esa zona.
@@ -1023,6 +1062,24 @@ class DetectionPipeline:
             new_trk = KalmanBoxTracker(det_high_boxes[d_idx], det_high_conf[d_idx])
             self._trackers.append(new_trk)
 
+        # Las detecciones débiles solo inician un track si reaparecen en una segunda inferencia
+        # consecutiva y consistente. Así se recuperan placas pequeñas sin convertir cada falso
+        # positivo aislado en una pista activa.
+        pending_boxes = [entry[0] for entry in self._detecciones_bajas_pendientes]
+        pending_matches, pending_unmatched, _ = associate_detections_to_trackers(
+            [det_low_boxes[i] for i in unmatched_dets_2], pending_boxes, diou_threshold=-0.35
+        )
+        for low_rel_idx, pending_idx in pending_matches:
+            det_idx = unmatched_dets_2[low_rel_idx]
+            previous_box, previous_conf = self._detecciones_bajas_pendientes[pending_idx]
+            new_trk = KalmanBoxTracker(previous_box, previous_conf)
+            new_trk.update(det_low_boxes[det_idx], det_low_conf[det_idx])
+            self._trackers.append(new_trk)
+        self._detecciones_bajas_pendientes = [
+            (det_low_boxes[unmatched_dets_2[i]], det_low_conf[unmatched_dets_2[i]])
+            for i in pending_unmatched
+        ]
+
         # 6. Poda de tracks muertos
         dead_tracks = []
         for i, trk in enumerate(self._trackers):
@@ -1045,8 +1102,6 @@ class DetectionPipeline:
     def _construir_pistas(self, frame: np.ndarray, mov: Movimiento) -> list[TrackedPlateROI]:
         """Paso 7: regiones rastreadas del cuadro y recuadros del HUD a partir del estado de los tracks."""
         orig_h, orig_w = frame.shape[:2]
-        _, raw_pred_thresh = byte_track_thresholds()
-
         # 7. Construcción de ROIs y Overlays Visuales Tácticos (Respuesta Inmediata al Movimiento)
         tracked_rois: list[TrackedPlateROI] = []
         new_overlays: list[VisualOverlayBox] = []
@@ -1054,7 +1109,11 @@ class DetectionPipeline:
         for trk in self._trackers:
             # Seguimiento inteligente ITS profesional: usar predicción Kalman cuando no hay detección reciente
             # Permitir hasta 4 frames de predicción (~130ms a 30 FPS) para seguimiento fluido sin parpadeos
-            if (trk.hits >= 1 and trk.confidence >= raw_pred_thresh) and trk.time_since_update <= 4:
+            if (
+                trk.hits >= 1
+                and trk.confidence >= PLATE_REGISTRATION_MIN_CONFIDENCE
+                and trk.time_since_update <= 4
+            ):
                 state_box = trk.get_state()
                 x1 = max(0, min(orig_w - 5, int(state_box[0])))
                 y1 = max(0, min(orig_h - 5, int(state_box[1])))

@@ -43,3 +43,14 @@ def test_track_liberado_vuelve_a_ser_elegible():
     assert elegir(selector, caja) is None  # ventana anti-rebote
     selector.liberar(1)
     assert elegir(selector, caja) is not None
+
+
+def test_no_se_selecciona_una_captura_bajo_el_23_por_ciento():
+    selector = BestFrameSelector()
+    caja = [230, 150, 410, 210]
+    frame = cuadro_con_placa(caja)
+    assert selector.evaluate_and_select(2, frame, caja, 0.229, 1) is None
+    assert 2 not in selector._active_candidates
+    assert selector.evaluate_and_select(2, frame, caja, 0.23, 2) is None
+    assert len(selector._active_candidates[2]) == 1
+    assert selector.evaluate_and_select(2, frame, caja, 0.23, 3) is not None

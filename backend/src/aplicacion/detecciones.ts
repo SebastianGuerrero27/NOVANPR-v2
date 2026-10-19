@@ -144,6 +144,7 @@ export interface DependenciasDetecciones {
 }
 
 type Entrada = Record<string, any>;
+const CONFIANZA_MINIMA_DETECCION_REGISTRO = 0.23;
 const cuerpo = (entrada: unknown): Entrada => (entrada && typeof entrada === 'object' ? entrada as Entrada : {});
 
 const entradaListas = (c: Cruce) => ({
@@ -236,6 +237,24 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       const b = cuerpo(entrada);
       const { tracking_id, ruta_imagen_ingreso, confianza_deteccion = null, fuente, camara_id = null, placa = null } = b;
       if (!ruta_imagen_ingreso) throw errorValidacion('La ruta de la imagen de ingreso es obligatoria.');
+      if (typeof confianza_deteccion !== 'number' || !Number.isFinite(confianza_deteccion)
+          || confianza_deteccion < 0 || confianza_deteccion > 1) {
+        throw errorValidacion('La confianza de detección debe ser un número entre 0 y 1.');
+      }
+      if (confianza_deteccion < CONFIANZA_MINIMA_DETECCION_REGISTRO) {
+        await d.repositorio.registrarDescarte({
+          trackingId: Number.isInteger(tracking_id) ? tracking_id : -1,
+          motivo: 'confianza_deteccion_baja',
+          texto: typeof placa === 'string' ? normalizarPlaca(placa).substring(0, 50) : null,
+          confianza: confianza_deteccion,
+          fuente: normalizarFuente(fuente),
+          camaraId: Number.isInteger(camara_id) ? camara_id : null,
+        });
+        return {
+          nuevo: false,
+          respuesta: { message: 'Paso descartado: confianza de detección inferior al 23 %.', descartado: true },
+        };
+      }
       const trackingId = Number.isInteger(tracking_id) ? tracking_id : -1;
       const pista = typeof placa === 'string' ? normalizarPlaca(placa) : '';
 
