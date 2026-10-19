@@ -75,6 +75,7 @@ services:
     depends_on:
       - backend
       - anpr
+      - alertmanager
 
   grafana:
     image: grafana/grafana:latest
@@ -106,6 +107,30 @@ services:
           memory: 512m
     depends_on:
       - prometheus
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: anpr-alertmanager
+    ports:
+      # Solo en el equipo anfitrión
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
 
   mediamtx:
     image: bluenviron/mediamtx:1.21.1
