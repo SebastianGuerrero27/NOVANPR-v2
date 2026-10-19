@@ -12,7 +12,7 @@
  *   node e2e_hikvision.js limpiar <id> <ant> borra las detecciones de la prueba y la cámara; devuelve el motor
  */
 const jwt = require('jsonwebtoken');
-const sql = require('mssql');
+const { Pool } = require('pg');
 
 const B = 'http://localhost:5000/api';
 const CLAVE = encodeURIComponent('Ecu911@Garita#26'); // credencial de la cámara simulada (camara.yml)
@@ -29,8 +29,33 @@ async function api(metodo, ruta, cuerpo) {
   let data = null; try { data = await r.json(); } catch { /* sin cuerpo */ }
   return { status: r.status, data };
 }
-const conectar = () => sql.connect({ user: process.env.DB_USER || 'sa', password: process.env.DB_PASSWORD, server: process.env.DB_SERVER,
-  port: Number(process.env.DB_PORT || 1433), database: process.env.DB_NAME || 'ANPR_ECU911', options: { encrypt: false, trustServerCertificate: true } });
+const conectar = () => {
+  const pool = new Pool({
+    user: process.env.DB_USER || 'anpr',
+    password: process.env.DB_PASSWORD,
+    host: process.env.DB_SERVER || 'db',
+    port: Number(process.env.DB_PORT || 5432),
+    database: process.env.DB_NAME || 'ANPR_ECU911',
+  });
+  // Wrapper para compatibilidad con la API mssql original del script
+  pool.request = () => {
+    const params = {};
+    return {
+      input: (nombre, _tipo, valor) => { params[nombre] = valor; return { input: (n, t, v) => params[n] = v }; },
+      query: async (texto) => {
+        // Conversión básica T-SQL → PostgreSQL
+        let pgQuery = texto
+          .replace(/TOP\s*\(\s*@limite\s*\)/gi, 'LIMIT $limite')
+          .replace(/@(\w+)/g, (m, nombre) => `$${Object.keys(params).indexOf(nombre) + 1}`)
+          .replace(/recordset/g, 'rows');
+        const values = Object.values(params);
+        const result = await pool.query(pgQuery, values);
+        return { recordset: result.rows, rowsAffected: [result.rowCount] };
+      },
+    };
+  };
+  return pool.connect().then(() => pool);
+};
 
 async function sesionAdministrador(pool) {
   const u = (await pool.request().query(`SELECT TOP 1 u.id, u.email, u.nombre_completo FROM Usuarios u JOIN Roles r ON r.id = u.rol_id
@@ -52,7 +77,7 @@ async function crear(pool) {
     'la API devuelve ambas URL enmascaradas');
 
   // 2. En la base: contraseña cifrada (AES-256-GCM), nunca en claro
-  const fila = (await pool.request().input('id', sql.Int, c.id).query('SELECT rtsp_url, rtsp_url_vista FROM Camaras WHERE id = @id')).recordset[0];
+  const fila = (await pool.request().input('id', 'INTEGER', c.id).query('SELECT rtsp_url, rtsp_url_vista FROM Camaras WHERE id = $1')).recordset[0];
   const cifrada = u => /^rtsp:\/\/admin:enc\.v1\.[\w-]+\.[\w-]+@camara-hik:554\//.test(u) && !u.includes('Ecu911') && !u.includes('Garita');
   ok(cifrada(fila.rtsp_url) && cifrada(fila.rtsp_url_vista), 'en la base ambas contraseñas están cifradas (enc.v1)');
 
@@ -132,8 +157,8 @@ async function zonas(id) {
 }
 
 async function limpiar(pool, id, previa) {
-  const det = (await pool.request().input('id', sql.Int, id).query(
-    'SELECT id, placa_reconocida, confianza_ocr, lectura_valida, evidencia_lectura FROM DeteccionVehiculo WHERE camara_id = @id ORDER BY id')).recordset;
+  const det = (await pool.request().input('id', 'INTEGER', id).query(
+    'SELECT id, placa_reconocida, confianza_ocr, lectura_valida, evidencia_lectura FROM DeteccionVehiculo WHERE camara_id = $1 ORDER BY id')).recordset;
   console.log(`detecciones registradas por la cámara simulada: ${det.length} → ${det.map(d => `${d.placa_reconocida ?? '—'}(${d.confianza_ocr?.toFixed?.(2) ?? '—'})`).join(', ')}`);
   // Veredicto y salida cruda de cada lector, tal como quedaron guardados (antes de borrar la prueba)
   for (const d of det) {
@@ -155,8 +180,8 @@ async function limpiar(pool, id, previa) {
   ok(b.status === 200, `cámara de prueba eliminada: HTTP ${b.status} ${b.data?.error ?? ''}`);
   if (!previa) {
     // Antes de la prueba no había cámara elegida para el motor: se quita la que dejó la prueba
-    const r = await pool.request().input('id', sql.NVarChar(20), String(id))
-      .query("DELETE FROM ConfiguracionSistema WHERE clave = 'camara_motor_id' AND valor = @id");
+    const r = await pool.request().input('id', 'VARCHAR', String(id))
+      .query("DELETE FROM ConfiguracionSistema WHERE clave = 'camara_motor_id' AND valor = $1");
     console.log(`configuración del motor restaurada (${r.rowsAffected[0]} fila)`);
   }
 }

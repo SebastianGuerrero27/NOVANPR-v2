@@ -28,7 +28,7 @@ flowchart LR
     API[API REST + OpenAPI] --> DOM[Dominio: decisión R1–R7,\nRBAC, horarios, alarmas]
     API --> NOT[Centro de notificaciones\nISA-18.2]
   end
-  API <--> SQL[(SQL Server 2022\nesquema v12)]
+  API <--> SQL[(PostgreSQL 17\nesquema v12)]
   NOT <--> RED[(Redis)]
   NOT -->|Socket.IO · Web Push| WEB[Frontend React 18 + Vite]
   PROM[Prometheus + Grafana] --> API & MOTOR
@@ -90,7 +90,7 @@ capa interna dependa de una externa ([ARQUITECTURA_LIMPIA.md](docs/ARQUITECTURA_
 
 ## 6. Base de datos
 
-SQL Server 2022, esquema v12. Tablas principales: `DeteccionVehiculo` (cada paso con evidencia,
+PostgreSQL 17, esquema v12. Tablas principales: `DeteccionVehiculo` (cada paso con evidencia,
 lectura, validez y decisión), `VehiculosAutorizados` (permisos de placa), `ListaNegra`,
 `SolicitudesAcceso`, `Camaras` (credenciales RTSP cifradas, zonas), `Usuarios`, `Notificaciones` y
 las tablas de auditoría. No hay usuarios, cámaras ni datos de prueba predefinidos. Detalle en
@@ -104,7 +104,7 @@ las tablas de auditoría. No hay usuarios, cámaras ni datos de prueba predefini
 | Backend API (Express) | `anpr-backend` | 5000 | red local |
 | Motor ANPR (FastAPI) | `anpr-service` | 8000 | red local (solo WebSocket con ticket para el navegador) |
 | MediaMTX | `anpr-mediamtx` | 8889 (WHEP), 8189 (WebRTC) · 8554 (RTSP) | WebRTC en la red local; RTSP solo en el equipo |
-| SQL Server 2022 | `anpr-db` | 14333 → 1433 | solo `127.0.0.1` |
+| PostgreSQL 17 | `anpr-db` | 5433 → 5432 | solo `127.0.0.1` |
 | Redis | `anpr-redis` | 6379 | solo `127.0.0.1` |
 | Prometheus / Grafana | `anpr-prometheus` / `anpr-grafana` | 9090 / 3001 | solo `127.0.0.1` |
 

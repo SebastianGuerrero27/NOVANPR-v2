@@ -7,9 +7,9 @@ import path from 'path';
  * empieza a depender de una externa, esta prueba falla y señala el archivo.
  *
  *   dominio/          solo dominio/ (sin paquetes, sin E/S, sin process.env)
- *   aplicacion/       dominio/ y aplicacion/ (sin Express, mssql ni infraestructura)
+ *   aplicacion/       dominio/ y aplicacion/ (sin Express, pg ni infraestructura)
  *   infraestructura/  sin interfaz/, contenedor/ ni Express
- *   interfaz/http/    sin infraestructura/ (la recibe por contenedor/) ni mssql
+ *   interfaz/http/    sin infraestructura/ (la recibe por contenedor/) ni pg
  */
 
 const SRC = path.resolve(__dirname, '..');
@@ -68,7 +68,7 @@ describe('Arquitectura limpia · regla de dependencias', () => {
   });
 
   it('interfaz HTTP: no usa la infraestructura directamente ni SQL', () => {
-    expect(violaciones('interfaz', i => i.capa === 'infraestructura' || i.paquete === 'mssql')).toEqual([]);
+    expect(violaciones('interfaz', i => i.capa === 'infraestructura' || i.paquete === 'pg')).toEqual([]);
     const conSql = archivosDe('interfaz').filter(a => /\b(SELECT|INSERT INTO|UPDATE \w+ SET|DELETE FROM)\b/.test(fs.readFileSync(a, 'utf8')));
     expect(conSql.map(relativo)).toEqual([]);
   });

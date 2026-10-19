@@ -5,9 +5,9 @@
  *
  *   interfaz/http  ──▶  aplicacion (casos de uso + puertos)  ──▶  dominio (reglas puras)
  *         │                        ▲
- *         └──── infraestructura ───┘  (implementa los puertos: SQL Server, Socket.IO, correo…)
+ *         └──── infraestructura ───┘  (implementa los puertos: PostgreSQL, Socket.IO, correo…)
  *
- * Un caso de uso no conoce Express ni mssql: recibe datos ya interpretados, el actor que lo
+ * Un caso de uso no conoce Express ni PostgreSQL directamente: recibe datos ya interpretados, el actor que lo
  * ejecuta y los puertos que necesita, y comunica los fallos con ErrorAplicacion. La capa HTTP
  * traduce cada tipo de error a su código de estado (interfaz/http/respuesta.ts).
  */

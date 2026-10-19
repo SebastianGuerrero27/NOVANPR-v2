@@ -20,33 +20,10 @@ jest.mock('../../infraestructura/db', () => ({
   }),
 }));
 
-/** Transacción simulada de mssql: registra begin, el lote ejecutado, commit y rollback. */
-const mockTransaccion = {
-  begin: jest.fn().mockResolvedValue(undefined),
-  commit: jest.fn().mockResolvedValue(undefined),
-  rollback: jest.fn().mockResolvedValue(undefined),
-  lote: jest.fn(),
-};
-
-jest.mock('mssql', () => {
-  const real = jest.requireActual('mssql');
-  class Transaction {
-    begin = () => mockTransaccion.begin();
-    commit = () => mockTransaccion.commit();
-    rollback = () => mockTransaccion.rollback();
-  }
-  class Request {
-    private readonly entradas: Record<string, unknown> = {};
-    input(nombre: string, _tipo: unknown, valor: unknown) { this.entradas[nombre] = valor; return this; }
-    query(texto: string) { return mockTransaccion.lote(texto, this.entradas); }
-  }
-  return { ...real, Transaction, Request };
-});
-
 const SIN_FILTROS: FiltrosAuditoria = { fuente: 'operaciones', q: null, desde: null, hasta: null, exito: null };
 const ultima = () => mockConsultas[mockConsultas.length - 1];
 
-describe('Repositorio SQL · auditoría', () => {
+describe('Repositorio SQL · auditoría (PostgreSQL)', () => {
   it('el texto buscado y las fechas viajan como parámetros, nunca dentro del SQL', async () => {
     const desde = new Date('2026-10-01T05:00:00Z');
     expect(await repositorioAuditoriaSql.contar({ ...SIN_FILTROS, q: "x' OR 1=1 --", desde })).toBe(3);

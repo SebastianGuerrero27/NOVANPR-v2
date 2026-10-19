@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { ConnectionPool } from 'mssql';
+import type { PostgresPool } from '../../infraestructura/postgres';
 import {
   conClaveVigente, estaProtegida, proteger, protegerCredencialesGuardadas, reiniciarClave, revelar,
 } from '../../infraestructura/servicios/custodiaCredenciales';
@@ -23,7 +23,7 @@ function cifrarCon(entorno: Record<string, string | undefined>, url = URL): stri
   return p;
 }
 
-/** Pool de SQL Server en memoria: la consulta inicial devuelve `filas` y los UPDATE se registran. */
+/** Pool de PostgreSQL en memoria: la consulta inicial devuelve `filas` y los UPDATE se registran. */
 function poolFalso(filas: { id: number; rtsp_url: string; rtsp_url_vista: string | null }[]) {
   const actualizaciones: Record<string, unknown>[] = [];
   const pool = {
@@ -40,7 +40,7 @@ function poolFalso(filas: { id: number; rtsp_url: string; rtsp_url_vista: string
       return req;
     },
   };
-  return { pool: pool as unknown as ConnectionPool, actualizaciones };
+  return { pool: pool as unknown as PostgresPool, actualizaciones };
 }
 
 describe('Custodia de credenciales RTSP (AES-256-GCM)', () => {
