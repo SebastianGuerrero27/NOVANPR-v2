@@ -41,12 +41,13 @@ END
 GO
 IF NOT EXISTS (SELECT 1 FROM Roles WHERE codigo = 'ADMIN')
     INSERT INTO Roles (codigo, nombre, descripcion) VALUES ('ADMIN', N'Administrador', N'Gestión total: usuarios, cámaras, listas, configuración y auditoría.');
-IF NOT EXISTS (SELECT 1 FROM Roles WHERE codigo = 'SUPERVISOR')
-    INSERT INTO Roles (codigo, nombre, descripcion) VALUES ('SUPERVISOR', N'Supervisor', N'Gestión de listas, reportes, evaluación del sistema y validación de ingresos.');
-IF NOT EXISTS (SELECT 1 FROM Roles WHERE codigo = 'OPERADOR')
-    INSERT INTO Roles (codigo, nombre, descripcion) VALUES ('OPERADOR', N'Operador', N'Monitoreo en vivo y validación de ingresos vehiculares.');
+-- Tres roles: Administrador, Guardia y Gestor de permisos. Las bases anteriores (SUPERVISOR,
+-- OPERADOR, GESTOR_ACCESOS) se consolidan en migration_v6_tres_roles.sql
+IF NOT EXISTS (SELECT 1 FROM Roles WHERE codigo = 'GUARDIA') AND NOT EXISTS (SELECT 1 FROM Roles WHERE codigo = 'OPERADOR')
+    INSERT INTO Roles (codigo, nombre, descripcion) VALUES ('GUARDIA', N'Guardia', N'Monitoreo en vivo del punto de control, validación de ingresos y consulta de la lista blanca.');
+IF NOT EXISTS (SELECT 1 FROM Roles WHERE codigo = 'GESTOR_PERMISOS') AND NOT EXISTS (SELECT 1 FROM Roles WHERE codigo = 'GESTOR_ACCESOS')
+    INSERT INTO Roles (codigo, nombre, descripcion) VALUES ('GESTOR_PERMISOS', N'Gestor de permisos', N'Otorga los permisos de placa (lista blanca) y resuelve las solicitudes de acceso.');
 GO
--- El rol GESTOR_ACCESOS (permisos de placa y solicitudes) lo agrega migration_v5_accesos_notificaciones.sql
 
 
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Usuarios')
@@ -151,17 +152,21 @@ BEGIN
         id                   INT IDENTITY(1,1) PRIMARY KEY,
         nombre               NVARCHAR(100) NOT NULL,
         ip                   VARCHAR(45)   NOT NULL,
-        rtsp_url             VARCHAR(255)  NOT NULL,
+        rtsp_url             VARCHAR(512)  NOT NULL,   -- contraseña cifrada (AES-256-GCM)
+        rtsp_url_vista       VARCHAR(512)  NULL,       -- flujo secundario para la vista en vivo
         ubicacion            NVARCHAR(150) NOT NULL,
+        direccion            VARCHAR(10)   NOT NULL CONSTRAINT DF_Camaras_direccion DEFAULT ('ingreso'),
         activa               BIT           NOT NULL DEFAULT 1,
         estado               VARCHAR(20)   NULL DEFAULT 'SIN_VERIFICAR',   -- EN_LINEA | SIN_CONEXION | SIN_VERIFICAR
         ultimo_ping          DATETIME      NULL,
         tiempo_respuesta_ms  INT           NULL,
         mensaje_ping         VARCHAR(255)  NULL,
         roi                  NVARCHAR(1000) NULL,  -- región de interés: JSON [[x,y],...] normalizado 0–1
+        exclusiones          NVARCHAR(MAX) NULL,   -- zonas de exclusión: JSON [[[x,y],...],...] normalizado 0–1
         registrado_por       INT           NULL REFERENCES Usuarios(id),
         created_at           DATETIME      NOT NULL DEFAULT GETDATE(),
-        fecha_actualizacion  DATETIME2     NULL
+        fecha_actualizacion  DATETIME2     NULL,
+        CONSTRAINT CK_Camaras_direccion CHECK (direccion IN ('ingreso', 'salida'))
     );
 END
 GO
@@ -221,7 +226,8 @@ BEGIN
         id                          INT IDENTITY(1,1) PRIMARY KEY,
         tracking_id                 INT           NULL DEFAULT -1,
         camara_id                   INT           NULL REFERENCES Camaras(id),
-        fuente                      VARCHAR(255)  NULL DEFAULT 'webcam',
+        tipo_movimiento             VARCHAR(10)   NOT NULL CONSTRAINT DF_DeteccionVehiculo_tipo_movimiento DEFAULT ('ingreso'),
+        fuente                      VARCHAR(255)  NULL DEFAULT 'rtsp',
         -- Fase 1: captura
         fecha_hora_ingreso          DATETIME      NOT NULL DEFAULT GETDATE(),
         ruta_imagen_ingreso         VARCHAR(255)  NULL,
@@ -265,7 +271,8 @@ BEGIN
         verificacion_detalle        VARCHAR(255)  NULL,
         -- Validez de la lectura (evidencias independientes del motor, ver verificacion_placa.py)
         lectura_valida              BIT           NULL,
-        evidencia_lectura           NVARCHAR(1500) NULL
+        evidencia_lectura           NVARCHAR(1500) NULL,
+        CONSTRAINT CK_DeteccionVehiculo_tipo_movimiento CHECK (tipo_movimiento IN ('ingreso', 'salida'))
     );
     CREATE NONCLUSTERED INDEX IX_Deteccion_FechaHora ON DeteccionVehiculo (fecha_hora_ingreso DESC);
     CREATE NONCLUSTERED INDEX IX_Deteccion_Placa ON DeteccionVehiculo (placa_reconocida);

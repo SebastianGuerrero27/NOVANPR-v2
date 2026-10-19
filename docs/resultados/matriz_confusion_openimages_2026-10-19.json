@@ -1,0 +1,83 @@
+{
+ "fecha": "2026-10-19",
+ "dataset": "Open Images V7, partición test oficial, Vehicle registration plate (sin IsGroupOf/IsDepiction)",
+ "split": "test",
+ "imgsz": 512,
+ "iou": 0.5,
+ "imagenes": 2048,
+ "placas": 2816,
+ "protocolo": "Asignación voraz por confianza (scripts/evaluate_detectors.py); VP+FN = placas etiquetadas; VN no aplica en detección de objetos.",
+ "torch_threads": 4,
+ "modelos": {
+  "produccion": {
+   "ruta": "models/license_plate_detector.pt",
+   "sha256": "3667d8168e8a5a62fddf0992546efa0dc60f37578c9e95e8c0cbc92d4ed74c5c",
+   "ap50": 0.8630348764763672,
+   "ms_por_imagen": 46.406753180662676,
+   "umbrales": {
+    "0.22": {
+     "vp": 2361,
+     "fn": 455,
+     "fp": 338,
+     "precision": 0.8747684327528714,
+     "recall": 0.8384232954545454,
+     "f1": 0.8562103354487761,
+     "iou_medio": 0.8212929265312273
+    },
+    "0.35": {
+     "vp": 2298,
+     "fn": 518,
+     "fp": 149,
+     "precision": 0.9391091131998366,
+     "recall": 0.8160511363636364,
+     "f1": 0.8732661979859395,
+     "iou_medio": 0.8243412588791866
+    }
+   }
+  },
+  "ecuatorianas_sintetico": {
+   "ruta": "models/yolo26n_ecuatorianas_inicial_s0_20261018_225206_candidato.pt",
+   "sha256": "4a6d97fe9c19990ae84bbd886487464acc131752877112bf320ec2cb73dffc47",
+   "ap50": 0.24255815062562497,
+   "ms_por_imagen": 55.70491310986736,
+   "umbrales": {
+    "0.22": {
+     "vp": 1421,
+     "fn": 1395,
+     "fp": 9134,
+     "precision": 0.13462813832306963,
+     "recall": 0.5046164772727273,
+     "f1": 0.21254954752823274,
+     "iou_medio": 0.767640623071518
+    },
+    "0.35": {
+     "vp": 1279,
+     "fn": 1537,
+     "fp": 5394,
+     "precision": 0.19166791548029372,
+     "recall": 0.4541903409090909,
+     "f1": 0.26957529771314154,
+     "iou_medio": 0.7754998691908024
+    }
+   },
+   "mcnemar_vs_produccion": {
+    "0.22": {
+     "solo_referencia": 955,
+     "solo_modelo": 15,
+     "ambos": 1406,
+     "ninguno": 440,
+     "chi2": 908.99,
+     "p": 1.089824607891207e-199
+    },
+    "0.35": {
+     "solo_referencia": 1037,
+     "solo_modelo": 18,
+     "ambos": 1261,
+     "ninguno": 500,
+     "chi2": 982.3,
+     "p": 1.265194490323032e-215
+    }
+   }
+  }
+ }
+}

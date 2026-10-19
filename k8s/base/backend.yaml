@@ -1,7 +1,6 @@
-# API, política de acceso y centro de notificaciones. Aplica las migraciones al arrancar.
-# Una réplica: el registro de migraciones no toma un bloqueo entre instancias. Para escalar, el
-# adaptador Redis de Socket.IO ya reparte las emisiones (el cliente usa solo WebSocket, no requiere
-# sesiones fijas) y el escalamiento de alarmas es atómico; basta con un volumen RWX de evidencia.
+# API, política de acceso y centro de notificaciones. Aplica el esquema PostgreSQL al arrancar.
+# Una réplica para evitar inicializaciones concurrentes del esquema; el adaptador Redis de Socket.IO
+# reparte emisiones y el escalamiento de alarmas es atómico.
 apiVersion: v1
 kind: Service
 metadata:
@@ -68,16 +67,16 @@ spec:
             - name: DB_SERVER
               value: db
             - name: DB_PORT
-              value: "1433"
+              value: "5432"
             - name: DB_NAME
               value: ANPR_ECU911
             - name: DB_USER
-              value: sa
+              value: anpr
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: anpr-secrets
-                  key: MSSQL_SA_PASSWORD
+                  key: DB_PASSWORD
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -88,6 +87,19 @@ spec:
                 secretKeyRef:
                   name: anpr-secrets
                   key: ANPR_SERVICE_TOKEN
+            # Clave AES-256 de las contraseñas RTSP de las cámaras (docs/CAMARA_HIKVISION_ANPR.md)
+            - name: CAMARAS_CLAVE_CIFRADO
+              valueFrom:
+                secretKeyRef:
+                  name: anpr-secrets
+                  key: CAMARAS_CLAVE_CIFRADO
+            # Solo durante una rotación: la clave anterior (para descifrar y volver a cifrar al arrancar)
+            - name: CAMARAS_CLAVE_CIFRADO_ANTERIOR
+              valueFrom:
+                secretKeyRef:
+                  name: anpr-secrets
+                  key: CAMARAS_CLAVE_CIFRADO_ANTERIOR
+                  optional: true
             - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -112,12 +124,12 @@ spec:
               value: redis
             - name: REDIS_PORT
               value: "6379"
-            - name: ENABLE_REDIS_CACHE
-              value: "true"
-            - name: CACHE_TTL_SECONDS
-              value: "3600"
             - name: SOCKET_REDIS_ADAPTER
               value: "true"
+            # Detrás del Ingress (nginx): un salto de proxy. La IP del cliente sale de
+            # X-Forwarded-For para el límite de solicitudes y la auditoría
+            - name: TRUST_PROXY
+              value: "1"
           volumeMounts:
             - name: media
               mountPath: /app/media
@@ -127,9 +139,10 @@ spec:
               port: http
             periodSeconds: 5
             failureThreshold: 60
+          # Listo = API arriba y PostgreSQL respondiendo; vivo = proceso disponible.
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: http
             periodSeconds: 10
           livenessProbe:

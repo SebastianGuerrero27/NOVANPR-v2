@@ -71,6 +71,8 @@ yolo26n-pose.pt
 .env.production.local
 
 # Secretos: nunca versionar archivos .env reales (solo las plantillas .env.example)
+# Copias de respaldo de archivos .env (contienen secretos)
+**/.env.respaldo*
 .env
 **/.env
 !**/.env.example
@@ -101,5 +103,12 @@ dataset/preds/
 backups/
 # Dataset público Open Images (scripts/prepare_openimages_plates.py) y corridas de entrenamiento
 dataset/openimages_plates/
+dataset/openimages_plates_ecuatorianas/labels/*.cache
+dataset/detector_ecuatorianas/
+dataset/.detector_ecuatorianas-prepare-*/
 dataset/openimages_cache/
 dataset/runs/
+# Escenas compuestas con placas ecuatorianas (scripts/componer_placas_ecuatorianas.py) y prueba real
+dataset/detector_ecuador_mixto/
+dataset/openimages_test_ecuador_compuesto/
+dataset/prueba_ecuador_real/

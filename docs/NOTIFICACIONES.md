@@ -2,7 +2,7 @@
 
 ## 1. Requisitos
 
-1. El **Operador** y el **Gestor de accesos** reciben alertas de accesos (vehículo sin permiso, permiso
+1. El **Guardia** y el **Administrador** reciben alertas de accesos (vehículo sin permiso, permiso
    fuera de horario o vencido, placa en lista de alertas, posible placa clonada) en menos de 1 s.
 2. Ninguna alarma se pierde si el navegador estuvo desconectado: se recupera al reconectar.
 3. Las alarmas importantes llegan aunque la pestaña esté cerrada o en segundo plano.
@@ -37,7 +37,7 @@ proveedor privativo, y con una **bandeja persistente** que garantiza la entrega 
 ```mermaid
 flowchart LR
   subgraph Motor[Motor ANPR]
-    OCR[completar-ocr]
+    OCR[completar-ocr\nreevaluar]
   end
   subgraph Backend
     D[dominio/decisionAcceso\npolítica pura R1–R7] --> AV[avisosAcceso\ndecisión → notificación]
@@ -53,6 +53,9 @@ flowchart LR
   WP --> SW[service worker sw.js\nnotificación del SO]
 ```
 
+- **Reevaluación:** el motor registra el paso en menos de 1 s; si después llegan el segundo OCR o
+  los atributos del vehículo y la decisión cambia (p. ej. POR CONFIRMAR → AUTORIZADO, o AUTORIZADO →
+  POR CONFIRMAR porque el vehículo no coincide), se avisa de nuevo; si no cambia, no se repite el aviso.
 - **Guardar antes de emitir:** cada notificación se escribe en la base antes de difundirse; el cliente
   recarga su bandeja al reconectar el socket y fusiona por id (entrega al menos una vez, sin
   duplicados visibles).
@@ -82,17 +85,24 @@ stateDiagram-v2
 - **Reconocimiento global:** la primera persona que reconoce la alarma queda registrada como quien
   la atendió y la alarma deja de estar pendiente para todos. Se mide el tiempo de reconocimiento.
 - **Escalamiento:** alarmas críticas/altas sin reconocer tras `notif_escalamiento_segundos`
-  (90 s por omisión) generan `alarma.escalada` para Supervisor y Administrador (y correo opcional).
+  (90 s por omisión) generan `alarma.escalada` para quien tiene `alarmas:escalamiento` (el Administrador; correo opcional).
   La cota superior del tiempo sin atención es umbral + 15 s (periodo del barrido).
 - **Supresión de avalanchas:** la misma clave (p. ej. `no_registrado:ABC1234`) dentro de la ventana
   del tipo incrementa `repeticiones` y vuelve a marcarla como no leída, en lugar de crear otra alarma.
+- **Quitar de la bandeja** (como en vigilance-heart): cada persona puede eliminar de su bandeja las
+  notificaciones ya **revisadas** (leídas y sin alarma pendiente de atención), una a una con la
+  papelera o todas con *Limpiar revisadas* (pide confirmación). Una alarma pendiente no se puede
+  quitar: primero se atiende. Solo se marca su fila de `NotificacionUsuario`
+  (`fecha_eliminacion`, migración v12): la notificación se conserva para las demás personas, para la
+  trazabilidad (quién la atendió y cuándo) y para las métricas de la §8. Quien la quitó ya no recibe
+  sus cambios de estado; si el evento se repite, le vuelve a aparecer.
 
 ## 5. Catálogo
 
 | Tipo | Prioridad | Destinatarios (permiso) | ACK | Ventana | Push |
 |---|---|---|:-:|---|:-:|
 | `acceso.alerta_seguridad` | según nivel (crítica/alta/media) | `avisos:seguridad` | ✓ | 120 s | ✓ |
-| `acceso.no_registrado` | alta | `avisos:acceso` (garita + gestor) | ✓ | 120 s | ✓ |
+| `acceso.no_registrado` | alta | `avisos:acceso` (guardia y administrador) | ✓ | 120 s | ✓ |
 | `acceso.restringido` (fuera de horario, no vigente, vencido) | alta | `avisos:acceso` | ✓ | 120 s | ✓ |
 | `acceso.vehiculo_no_coincide` (posible placa clonada) | alta | `avisos:acceso` | ✓ | 120 s | ✓ |
 | `acceso.confirmacion` (lectura dudosa / confianza baja) | media | `avisos:garita` | ✓ | 120 s | |
@@ -108,17 +118,20 @@ stateDiagram-v2
 | Método y ruta | Uso |
 |---|---|
 | `GET /api/notificaciones?limite&antes_de&desde&filtro=no_leidas\|pendientes` | Bandeja de la sesión |
-| `GET /api/notificaciones/resumen` | `{ no_leidas, pendientes }` |
+| `GET /api/notificaciones/resumen` | `{ no_leidas, pendientes, revisadas }` |
 | `POST /api/notificaciones/:id/leer` · `POST /leer-todas` | Lectura |
 | `POST /api/notificaciones/:id/reconocer` | ACK de una alarma |
 | `POST /api/notificaciones/reconocer-deteccion/:id` | ACK de las alarmas de un paso (aviso de garita) |
+| `DELETE /api/notificaciones/:id` | Quita una notificación revisada de la bandeja propia (409 si está sin leer o es una alarma pendiente) |
+| `DELETE /api/notificaciones/revisadas` | Quita todas las revisadas de la bandeja propia |
 | `GET /api/notificaciones/push/clave` | Clave pública VAPID |
 | `POST`/`DELETE /api/notificaciones/push/suscripcion` | Alta/baja del navegador |
 | `POST /api/notificaciones/push/prueba` | Push de prueba a los equipos del usuario |
 | `GET /api/notificaciones/metricas?dias` | TTA, escalamiento, avalanchas (permiso `evaluacion:ver`) |
 
 Eventos Socket.IO (sala `usuario:{id}`): `notificacion:nueva`, `notificacion:actualizada`
-(repetición, ACK, resolución o escalamiento). Además: `solicitudes:actualizadas`.
+(repetición, ACK, resolución o escalamiento), `notificacion:eliminada` (`{ ids }`: las quitó la
+misma persona desde otra pestaña o equipo). Además: `solicitudes:actualizadas`.
 
 ## 7. Configuración
 
@@ -150,7 +163,8 @@ notificación; `backend/scripts/benchmark_notificaciones.js`, 200 pasos sin perm
 | 200 | 200 (100 %) | 33,2 ms | 31,5 ms | 40,3 ms | 61,4 ms | 71,1 ms |
 
 Escalamiento con umbral de 20 s: la alarma se escaló a los 34 s (≤ umbral + 15 s) y llegó solo a
-Supervisor y Administrador. Escalado horizontal: verificada la entrega entre dos instancias.
+los roles con `alarmas:escalamiento` (medición de la versión 5, cuando existía el rol Supervisor;
+hoy ese permiso lo tiene solo el Administrador). Escalado horizontal: verificada la entrega entre dos instancias.
 
 Reproducir:
 

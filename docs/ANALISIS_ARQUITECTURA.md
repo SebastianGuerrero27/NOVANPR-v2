@@ -1,5 +1,21 @@
 # Análisis de arquitectura y código · Sistema ANPR ECU 911 (versión 5)
 
+> **Estado vigente (2026-10-14).** Este documento registra el análisis de la versión 5 y se conserva
+> como base del artículo. Desde entonces:
+>
+> - **Roles:** quedan tres (Administrador, Guardia y Gestor de permisos; migración v6). El rol
+>   Supervisor se eliminó y el Gestor de accesos pasó a llamarse Gestor de permisos.
+> - **Pruebas:** backend 45 suites y 741 pruebas; motor 189; frontend 46 (todas en verde).
+> - **Esquema:** v12 (retención de la auditoría, concurrencia optimista en solicitudes, flujo de vista
+>   y credenciales RTSP cifradas, zonas de exclusión, quitar notificaciones revisadas).
+> - **Motor:** registro del paso en menos de 1 s con reevaluación tardía, interpretación de la placa
+>   por mínimo de sustituciones, lectura directa por carácter (E5), regla «solo placas» y
+>   deduplicación por placa y cámara ([AUDITORIA_MOTOR_ANPR.md](AUDITORIA_MOTOR_ANPR.md)).
+> - **Seguridad:** cámaras solo desde la base, destinos de red restringidos (SSRF), cabeceras HTTP y
+>   límite de solicitudes ([SISTEMA_WEB.md](SISTEMA_WEB.md)).
+> - **Interfaz:** colores institucionales, barra de pestañas tipo IDE, dashboard con los 50 ingresos
+>   recientes y placa mostrada con la foto real del recorte.
+
 Documento base para la sección de **materiales y métodos** del artículo: qué se analizó, qué se
 encontró, qué se cambió y por qué, cómo se compara con el estado del arte y cómo se evalúa.
 
@@ -53,15 +69,18 @@ flowchart TB
   PROM[Prometheus/Grafana] --> API & ANPR
 ```
 
-**Capas del backend (puertos y adaptadores, Cockburn 2005):**
+**Capas del backend (arquitectura limpia; detalle en `docs/ARQUITECTURA_LIMPIA.md`):**
 
-- `src/dominio/` — reglas del negocio sin E/S: matriz RBAC (`permisos.ts`), restricciones temporales
-  (`horario.ts`), política de decisión (`decisionAcceso.ts`) y catálogo de alarmas
-  (`notificaciones.ts`). 100 % probadas con pruebas unitarias.
-- `src/services/` — casos de uso y adaptadores: centro de notificaciones (con interfaz `Puertos`
-  inyectable), traductor decisión → notificación, Web Push, Socket.IO, tareas programadas.
-- `src/routes/` — transporte HTTP: autenticación, permiso, validación de entrada, persistencia.
-- `src/app.ts` — composición de la aplicación (sin efectos); `src/index.ts` — arranque.
+- `src/dominio/` — reglas del negocio sin E/S: matriz RBAC (`permisos.ts`), validación de lo que
+  escribe una persona (`validacion.ts`), restricciones temporales (`horario.ts`), política de
+  decisión (`decisionAcceso.ts`), catálogo de alarmas (`notificaciones.ts`) y métricas de
+  evaluación (`evaluacion.ts`).
+- `src/aplicacion/` — casos de uso de cada módulo con sus puertos (interfaces).
+- `src/infraestructura/` — repositorios SQL Server, sesiones, Socket.IO, Web Push, correo,
+  MediaMTX, motor ANPR, métricas y tareas programadas.
+- `src/interfaz/http/` — routers finos (sesión, permiso, caso de uso, respuesta) y catálogo OpenAPI.
+- `src/contenedor/` — raíz de composición; `src/app.ts` — aplicación Express; `src/index.ts` — arranque.
+- `src/tests/arquitectura.test.ts` — prueba de aptitud que hace cumplir la regla de dependencias.
 
 ## 3. Hallazgos
 
@@ -72,15 +91,15 @@ Severidad: **A** alta (correctitud/seguridad), **M** media (mantenibilidad/opera
 | ID | Sev. | Hallazgo | Corrección |
 |---|---|---|---|
 | H1 | M | Autorización por listas de roles repetidas en ~20 sitios (rutas y pantallas); agregar un rol exigía tocarlos todos. | Matriz única `dominio/permisos.ts`, `requierePermiso()` en la API y `puede()` en la interfaz; 52 casos de integración rol × endpoint. |
-| H2 | A | El esquema y las migraciones se ejecutaban sobre el pool conectado a `master`, confiando en que el `USE` de `init.sql` persistiera en la misma conexión del pool (no garantizado). | `config/db.ts:85`: solo `CREATE DATABASE` en master; todo el esquema sobre un pool de la base de destino; se eliminan los `USE` (además permite otro `DB_NAME`). |
-| H3 | M | Todas las migraciones se re-ejecutaban en cada arranque, sin registro de qué se aplicó. | Tabla `SchemaMigraciones` con suma SHA-256 (`config/db.ts:38`); verificado: 0 re-ejecuciones al reiniciar. |
+| H2 | A | El esquema y las migraciones se ejecutaban sobre el pool conectado a `master`, confiando en que el `USE` de `init.sql` persistiera en la misma conexión del pool (no garantizado). | `infraestructura/db.ts:85`: solo `CREATE DATABASE` en master; todo el esquema sobre un pool de la base de destino; se eliminan los `USE` (además permite otro `DB_NAME`). |
+| H3 | M | Todas las migraciones se re-ejecutaban en cada arranque, sin registro de qué se aplicó. | Tabla `SchemaMigraciones` con suma SHA-256 (`infraestructura/db.ts:38`); verificado: 0 re-ejecuciones al reiniciar. |
 | H4 | B | Separador de lotes `\bGO\b` en cualquier posición del texto. | `lotesSql()` separa por `GO` en su propia línea, como `sqlcmd`; probado contra los 15 scripts. |
-| H5 | M | Métricas HTTP etiquetadas con `req.path` (una serie por id: explosión de cardinalidad) y el gauge "en curso" se incrementaba y decrementaba con etiquetas distintas, por lo que nunca volvía a cero. | `rutaNormalizada()` (`services/metrics.ts:189`) y etiqueta fijada al inicio; prueba dedicada. |
+| H5 | M | Métricas HTTP etiquetadas con `req.path` (una serie por id: explosión de cardinalidad) y el gauge "en curso" se incrementaba y decrementaba con etiquetas distintas, por lo que nunca volvía a cero. | `rutaNormalizada()` (`infraestructura/servicios/metrics.ts:189`) y etiqueta fijada al inicio; prueba dedicada. |
 | H6 | M | 21 de 57 pruebas del backend fallaban (obsoletas: `prom-client` v15 asíncrono, mocks de caché mal tipados, integración sin rutas montadas, login con el esquema v1). | Pruebas reescritas; suite 191/191. |
 | H7 | M | La política de autorización (≈130 líneas) estaba mezclada con SQL y difusión en el handler `completar-ocr`, imposible de probar aisladamente. | `dominio/decisionAcceso.ts:89` (tabla R1–R7) con prueba de propiedad: nunca se autoriza sin permiso vigente (360 combinaciones). |
 | H8 | M | Un permiso vencido se trataba como "vehículo no registrado", sin explicación para el personal. | `restriccion_acceso` (`fuera_horario`/`no_iniciada`/`vencida`) con motivo concreto y notificación al gestor. |
-| H9 | B | La tarjeta de pendientes mostraba "En padrón · confirme la placa" también para placas sin permiso con lectura dudosa. | Texto según el caso real (`components/deteccion.tsx`). |
-| H10 | M | Motor ANPR: los registros `_captured_commit_ids` y `_ocr_last_attempt` crecían sin límite en operación 24/7 (fuga de memoria lenta). | `app/utils/memoria.py` purga los tres registros; pruebas con crecimiento acotado. |
+| H9 | B | La tarjeta de pendientes mostraba "En padrón · confirme la placa" también para placas sin permiso con lectura dudosa. | Texto según el caso real (`frontend/src/interfaz/componentes/deteccion.tsx`). |
+| H10 | M | Motor ANPR: los registros `_captured_commit_ids` y `_ocr_last_attempt` crecían sin límite en operación 24/7 (fuga de memoria lenta). | `app/dominio/memoria.py` purga los tres registros; pruebas con crecimiento acotado. |
 | H11 | M | `index.ts` construía la aplicación y abría el puerto en el mismo módulo: no había forma de probar las rutas reales. | `app.ts` (composición) separado de `index.ts` (arranque). |
 | H12 | A | Redis publicado en todas las interfaces sin contraseña (`6379:6379`). | Publicado solo en `127.0.0.1`. |
 | H13 | M | Un cambio de rol o un bloqueo no afectaba a las conexiones Socket.IO abiertas (salas por rol obsoletas). | `alInvalidarCuenta()` cierra las conexiones de la cuenta. |
@@ -95,16 +114,16 @@ Severidad: **A** alta (correctitud/seguridad), **M** media (mantenibilidad/opera
 
 | ID | Sev. | Hallazgo | Recomendación |
 |---|---|---|---|
-| R1 | M | `services/anpr/app/main.py` (1 339 líneas) y `core/detector.py` (1 522) concentran estado global mutable, hilos, HTTP y reglas. | Dividir en paquetes (captura, inferencia, publicación de eventos) con inyección de dependencias. Hacerlo con el conjunto de regresión de `docs/EXPERIMENTO_MODELOS.md` para no degradar la exactitud. |
-| R2 | M | Comparaciones no SARGables `REPLACE(REPLACE(placa,'-',''),' ','') = @placa` (`routes/detecciones.ts:218,300`, `services/plateMatching.ts:103`, `routes/listas.ts:170,254`): no usan índice. | Columna calculada persistida `placa_normalizada` con índice en cada tabla. |
-| R3 | B | `findBlacklistMatch` (`services/plateMatching.ts:71`) lee toda la lista de alertas por evento (O(n)). | Aceptable con n < 10⁴; para más, caché en memoria invalidada con `listas:actualizadas`. |
-| R4 | B | Ventana de deduplicación de 35 s duplicada en el motor (`PLATE_DEBOUNCE_SECONDS`) y en el backend (`routes/detecciones.ts:220,301`). | Parámetro único configurable. |
+| R1 | M | `services/anpr/app/main.py` (1 339 líneas) y `core/detector.py` (1 522) concentran estado global mutable, hilos, HTTP y reglas. | Resuelto para `main.py` (2026-10-05): motor en `aplicacion/motor.py` con estado encapsulado e inyección de dependencias, servidor en `interfaz/api.py`, verificado con pruebas de caracterización de aserciones idénticas. `aplicacion/detector.py` sigue siendo extenso; dividirlo exige el conjunto de regresión de `docs/EXPERIMENTO_MODELOS.md`. |
+| R2 | M | Comparaciones no SARGables `REPLACE(REPLACE(placa,'-',''),' ','') = @placa` (`infraestructura/persistencia/deteccionesSql.ts`, `infraestructura/servicios/plateMatching.ts`, `infraestructura/persistencia/listasSql.ts`): no usan índice. | Columna calculada persistida `placa_normalizada` con índice en cada tabla. |
+| R3 | B | `findBlacklistMatch` (`infraestructura/servicios/plateMatching.ts:71`) lee toda la lista de alertas por evento (O(n)). | Aceptable con n < 10⁴; para más, caché en memoria invalidada con `listas:actualizadas`. |
+| R4 | B | Ventana de deduplicación de 35 s duplicada en el motor (`PLATE_DEBOUNCE_SECONDS`) y en el backend (`dominio/detecciones.ts`, `VENTANA_MISMO_PASO_S`). | Parámetro único configurable. |
 | R5 | M | Reproducibilidad: dependencias sin fijar (`ultralytics>=8.4`, `numpy>=1.26`, `onnxruntime>=1.18`) e imágenes `latest` (SQL Server, Prometheus, Grafana). | Archivo de bloqueo (pip-tools/uv) e imágenes por versión o digest; imprescindible para replicar el experimento. |
 | R6 | B | Pesos `.pt` versionados en git (~18 MB). | Git LFS o DVC, con hash en `MODEL_CARD.md`. |
-| R7 | B | Código archivado (`core/archive/`, `tests/archive/`) y `backend/tests/auth.test.ts` fuera de las raíces de Jest con un secreto embebido. | Eliminar. |
+| R7 | B | Código archivado (`core/archive/`, `tests/archive/`) y `backend/tests/auth.test.ts` fuera de las raíces de Jest con un secreto embebido. | Resuelto: eliminados junto con el resto del código sin uso (2026-10-05). |
 | R8 | M | `docker-compose.yml` es de desarrollo (`uvicorn --reload`, `NODE_ENV=development`, código montado como volumen). | `docker-compose.prod.yml` con imágenes construidas, sin volúmenes de código y con TLS en un proxy (requisito de Web Push fuera de localhost). |
 | R9 | M | JWT en `sessionStorage`, accesible ante un XSS. | Cookie `httpOnly`+`SameSite=Strict` con token anti-CSRF y CSP estricta. |
-| R10 | B | Caché de cuentas de 20 s por instancia (`middlewares/auth.ts:43`): con varias instancias, un bloqueo tarda hasta 20 s en las demás. | Invalidación por Redis pub/sub. |
+| R10 | B | Caché de cuentas de 20 s por instancia (`interfaz/http/middlewares/auth.ts:43`): con varias instancias, un bloqueo tarda hasta 20 s en las demás. | Invalidación por Redis pub/sub. |
 | R11 | B | CI: `eslint` sin configuración (el paso siempre se omite); las pruebas Python requieren todas las dependencias de visión. | Configurar ESLint; marcar pruebas puras para ejecutarlas sin modelos. |
 | R12 | B | 80 bloques `except Exception` en el motor. | Capturar excepciones específicas y contarlas en Prometheus. |
 
@@ -237,5 +256,5 @@ cd backend && node scripts/benchmark_notificaciones.js --api http://localhost:50
 - Laroca, R., Zanlorensi, L. A., Gonçalves, G. R., et al. (2021). An efficient and layout-independent automatic license plate recognition system based on the YOLO detector. *IET Intelligent Transport Systems, 15*(4), 483–503.
 - Sandhu, R. S., Coyne, E. J., Feinstein, H. L., & Youman, C. E. (1996). Role-based access control models. *IEEE Computer, 29*(2), 38–47.
 - Sendelbach, S., & Funk, M. (2013). Alarm fatigue: A patient safety concern. *AACN Advanced Critical Care, 24*(4), 378–386.
-- Silva, S. M., & Jung, C. R. (2018). License plate detection and recognition in unconstrained scenarios. *ECCV 2018*, 580–596.
+- Silva, S. M., & Jung, C. R. (2018). License plate detection and recognition in unconstrained scenarios. *ECCV 2018*, LNCS, 593–609. https://doi.org/10.1007/978-3-030-01258-8_36
 - Thomson, M., Damaggio, E., & Raymor, B. (2016). *Generic Event Delivery Using HTTP Push* (RFC 8030); Thomson, M. (2017). *Message Encryption for Web Push* (RFC 8291); Thomson, M., & Beverloo, P. (2017). *Voluntary Application Server Identification (VAPID) for Web Push* (RFC 8292).

@@ -53,6 +53,41 @@ P/R/F1 con confianza ≥ 0.35. Latencias en un Xeon de 4 vCPU (contenedor), 300 
    prueba ecuatoriana. Si en ese conjunto no supera a la línea base, volver a
    `baseline_yolov8n_koushim.pt`.
 
+## Producción frente al candidato ecuatoriano: generalización (2026-10-09)
+
+El `.env` local usaba `yolo26n_ecuador_candidato.pt` (YOLO26n desde COCO, 80 fotos de 2 placas) y
+en las capturas propias detectaba más placas que producción (101 frente a 92 de 107). Esas capturas
+son de la misma habitación y placas con que se entrenó el candidato, así que se compararon los dos
+en datos que ninguno vio. Detalle: `docs/resultados/detectores_generalizacion_2026-10-09.json`.
+
+**Prueba de Open Images** (2 048 imágenes, 2 816 placas de todo el mundo; mismo protocolo que la
+tabla de arriba, que se reprodujo exactamente):
+
+| Modelo | P / R / F1 con conf 0.35 | P / R / F1 con conf 0.22 (umbral del servicio) |
+|---|---|---|
+| **Producción** | **93.8 % / 81.5 % / 0.873** | **87.4 % / 83.8 % / 0.855** |
+| Candidato ecuatoriano | 17.9 % / 6.0 % / 0.090 | 11.7 % / 7.6 % / 0.092 |
+| Koushim YOLOv8n | 90.5 % / 46.2 % / 0.611 | 85.2 % / 51.6 % / 0.643 |
+
+McNemar por placa con conf 0.22 (`scripts/mcnemar_detectores.py`): producción detecta 2 148 placas que
+el candidato pierde y el candidato 4 que producción pierde (χ² = 2 134, p < 10⁻³⁰⁰).
+
+**Prueba ecuatoriana del piloto** (10 imágenes, 9 placas; las mismas 2 placas del entrenamiento del
+candidato): con el umbral del servicio (0.22, 512 px) ambos detectan 8 de 9 (F1 0.889); el candidato
+ajusta mejor la caja (IoU 0.85 frente a 0.78).
+
+**Motor completo** (`scripts/evaluar_latencia.py`, 12 capturas reales en movimiento con 3 y 8 px de
+desenfoque, variante de producción, corrida única): producción con 0.22 registra 15 placas correctas
+y ninguna errónea; el candidato 15 correctas y 4 erróneas (todas con 8 px); producción con 0.35, 14
+correctas y una placa sin detectar en la foto fija.
+
+**Decisión:** producción (`license_plate_detector.pt`) con `PLATE_CONFIDENCE_THRESHOLD=0.22` en todos
+los entornos; `services/anpr/.env.example` y el `.env` local quedan alineados con el valor por omisión
+del código (antes fijaban el candidato y 0.35). El candidato está sobreajustado a dos placas y una
+habitación: no usarlo. Un detector ecuatoriano solo debe reemplazar a producción si, afinado desde
+este modelo con datos variados (≥ 200 imágenes de muchos vehículos), mantiene el recall en Open
+Images y mejora en una prueba ecuatoriana independiente (reglas al final de esta ficha).
+
 ## Línea base: `baseline_yolov8n_koushim.pt` (producción hasta el 2026-10-01)
 
 | Campo | Valor |
@@ -158,7 +193,37 @@ con un conjunto etiquetado de vehículos ecuatorianos.
 ## Reglas para reemplazar este modelo
 
 1. Al menos 200 imágenes de entrenamiento (el script lo exige salvo `--force`).
-2. El script guarda un **candidato** (`<arquitectura>_ecuador_candidato.pt`) y solo
-   reemplaza producción con `--promote` si su mAP50-95 en validación es mayor.
+2. El script guarda un **candidato** con arquitectura, nombre, semilla y fecha en
+   el archivo; solo reemplaza producción con `--promote` si su mAP50-95 en
+   validación es mayor. La promoción con procedencia sintética está bloqueada;
+   antes de activar se requiere comprobar generalización en fotos reales.
 3. Al promover, se respalda el modelo anterior en `archive/` y se actualiza esta ficha
    con el dataset, la partición y las métricas.
+
+## Afinamiento sintético del 18-10-2026, evaluado el 19-10-2026: no promover
+
+Se entrenaron 10 épocas en Docker desde producción usando los 8.000 recortes
+de `dataset/openimages_plates_ecuatorianas` (7.200 train / 800 val), convertidos
+de pose a detección sin alterar los originales. Son placas sintéticas, no
+fotografías reales de vehículos. Configuración: 256 px, batch 16, CPU/cuatro
+hilos, primeras diez capas congeladas y AdamW 0,0001. La mejor época fue la
+tercera; el PT candidato se guardó desde `best.pt`.
+
+Candidato: `yolo26n_ecuatorianas_inicial_s0_20261018_225206_candidato.pt` y ONNX.
+SHA-256 PT: `4a6d97fe9c19990ae84bbd886487464acc131752877112bf320ec2cb73dffc47`.
+Validación sintética del candidato: mAP50 0,99455, mAP50–95 0,85815.
+
+Prueba real común de Open Images: 2.048 imágenes / 2.816 placas, 512 px:
+
+| Modelo | mAP50 | mAP50–95 |
+|---|---:|---:|
+| Producción conservada | 0,86902 | 0,54588 |
+| Candidato sintético | 0,26771 | 0,14453 |
+
+**No usar este candidato en producción:** el afinamiento perdió generalización
+en escenas reales. Producción conserva su SHA-256 original
+`3667d8168e8a5a62fddf0992546efa0dc60f37578c9e95e8c0cbc92d4ed74c5c`.
+ONNX es compatible con el adaptador del motor y su arquitectura se registra en
+metadatos; esto no modifica el resultado de precisión ni justifica activarlo.
+
+[Informe y curvas](../../../docs/resultados/entrenamiento_ecuatorianas_2026-10-18.md).
