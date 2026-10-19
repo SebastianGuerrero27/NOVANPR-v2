@@ -61,3 +61,22 @@ def test_caracteres_sin_lectura_directa():
     # Una lectura de otra longitud no respalda ninguna posición
     assert caracteres_sin_lectura_directa("PSY589", ["PSY5891"]) == list(enumerate("PSY589"))
     assert caracteres_sin_lectura_directa("PSY589", []) == list(enumerate("PSY589"))
+
+
+@pytest.mark.parametrize("texto, tipo, servicio", [
+    ("PEA1234", "Gubernamental", "Gobierno central"),
+    ("PXA1234", "Uso oficial", "Uso oficial"),
+    ("QMC5678", "GAD", "Gobierno Autónomo Descentralizado (GAD)"),
+    ("GUA1234", "Comercial", "Comercial (taxis y buses)"),
+    ("PSA1234", "Particular", "Particular"),
+    ("PBA1234", "Particular", "Particular"),
+])
+def test_el_servicio_sigue_la_tabla_6_de_la_tesis(texto, tipo, servicio):
+    """Misma tipificación que muestra la interfaz (frontend/src/dominio/tipificacion.ts)."""
+    resultado = EcuadorPlateValidator.validate(texto)
+    assert (resultado.tipo_vehiculo, resultado.servicio, resultado.is_valid) == (tipo, servicio, True)
+
+
+def test_las_series_f_son_de_las_fuerzas_armadas_y_son_validas():
+    resultado = EcuadorPlateValidator.validate("FAB1234")
+    assert (resultado.tipo_vehiculo, resultado.is_valid, resultado.confidence_score) == ("Fuerzas Armadas", True, 1.0)

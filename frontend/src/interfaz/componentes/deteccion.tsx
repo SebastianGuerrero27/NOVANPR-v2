@@ -7,7 +7,7 @@ import { colorConfianza, ESTADOS, fechaHora, hora, porcentaje } from '../../domi
 import { urlMedia } from '../../infraestructura/api';
 import { formatearPlaca, placaPropuesta, validarPlaca, validarTexto } from '../../dominio/validacion';
 import { REGLA_MOTIVO_EXCEPCION, REGLA_MOTIVO_MANUAL, REGLA_OBSERVACION_VALIDACION } from '../../dominio/reglas';
-import { Aviso, InsigniaEstado, Modal, Placa } from './ui';
+import { Aviso, InsigniaEstado, InsigniaTipificacion, Modal, Placa } from './ui';
 import { CampoPlaca, CampoTexto } from './campos';
 import { useNotificar } from './Notificaciones';
 import { VisorZoom } from './ZoomDual';
@@ -85,7 +85,7 @@ export const TarjetaDeteccion: React.FC<{ d: Deteccion; onValidar?: (d: Deteccio
   const autorizado = !procesando && d.estado_validacion === 'autorizado';
   const alerta = !procesando && d.estado_validacion === 'alerta';
   const color = procesando ? 'var(--pendiente)' : ESTADOS[d.estado_validacion]?.color ?? 'var(--border)';
-  const fondo = resaltada ? '#fffbeb' : autorizado ? '#f3fcf6' : alerta ? '#fef5f5' : 'var(--surface)';
+  const fondo = resaltada ? 'var(--fondo-resaltado)' : autorizado ? 'var(--fila-autorizado)' : alerta ? 'var(--fila-alerta)' : 'var(--surface)';
   return (
     <article className="animate-fade-in"
       onClick={() => navigate(`/detecciones/${d.id}`)}
@@ -120,6 +120,7 @@ export const TarjetaDeteccion: React.FC<{ d: Deteccion; onValidar?: (d: Deteccio
             <button className="btn btn-sm btn-secondary" onClick={e => { e.stopPropagation(); onValidar(d); }}>Validar</button>
           )}
         </div>
+        {!procesando && d.placa && <InsigniaTipificacion placa={d.placa} />}
         {autorizado && d.autorizado && (
           <div className="truncar" style={{ fontSize: 12, color: 'var(--autorizado)', fontWeight: 600 }} title={d.autorizado.propietario}>
             ✓ {d.autorizado.propietario}{d.autorizado.departamento ? ` (${d.autorizado.departamento})` : ''}

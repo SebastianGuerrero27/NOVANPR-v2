@@ -2,14 +2,16 @@
 Módulo Especializado de Validación y Normalización de Matrículas para Ecuador (ANT).
 Normativa Técnica Oficial de la Agencia Nacional de Tránsito (ANT) y Código Orgánico de Transporte Terrestre.
 
-Tipologías Soportadas:
+Tipologías Soportadas (la provincia y el tipo de servicio siguen la tesis, §1.3.10, Tablas 5 y 6, y
+frontend/src/dominio/tipificacion.ts, que muestra el mismo dato en la interfaz):
   1. Vehículos Particulares: 3 Letras + 3 o 4 Dígitos (ej. PBA-1234, TCG-0987, PSY-589).
-  2. Vehículos Comerciales (Taxis, Buses, Carga Pesada): Segunda letra 'A', 'U', 'Z' (ej. GAA-1234, PUZ-5678).
-  3. Vehículos del Estado / Gubernamentales: Segunda letra 'E' (ej. PEA-1234, GEB-5678).
-  4. Vehículos Municipales / Seccionales: Segunda letra 'M' (ej. PMA-1234, QMC-5678).
-  5. Vehículos de Emergencia (Cruz Roja, Bomberos): Segunda letra 'X' (ej. PXA-1234).
-  6. Motocicletas: 2 Letras + 3 o 4 Dígitos + 1 Letra opcional (ej. AB-123C, PB-1234).
-  7. Cuerpo Diplomático / Organismos Internacionales: CC, CD, OI, AT, PP + 4 Dígitos.
+  2. Vehículos Comerciales (taxis y buses): Segunda letra 'A', 'U', 'Z' (ej. GAA-1234, PUZ-5678).
+  3. Vehículos del Gobierno central: Segunda letra 'E' (ej. PEA-1234, GEB-5678).
+  4. Vehículos de los Gobiernos Autónomos Descentralizados (GAD): Segunda letra 'M' (ej. PMA-1234, QMC-5678).
+  5. Vehículos de uso oficial: Segunda letra 'X' (ej. PXA-1234).
+  6. Fuerzas Armadas: series que inician con 'F' (no es una provincia).
+  7. Motocicletas: 2 Letras + 3 o 4 Dígitos + 1 Letra opcional (ej. AB-123C, PB-1234).
+  8. Cuerpo Diplomático / Organismos Internacionales: CC, CD, OI, AT, PP + 4 Dígitos.
 """
 
 from __future__ import annotations
@@ -50,16 +52,21 @@ CODIGOS_PROVINCIALES_ANT: Dict[str, str] = {
     "Z": "Zamora Chinchipe",
 }
 
-# Tipos de Servicio según la segunda letra de la matrícula
+# Tipos de Servicio según la segunda letra de la matrícula (Tabla 6); cualquier otra es particular
 TIPOS_SERVICIO_SEGUNDA_LETRA: Dict[str, str] = {
-    "A": "Comercial (Transporte Público / Taxi / Bus)",
-    "U": "Comercial (Transporte Público / Carga)",
-    "Z": "Comercial (Transporte Mixto / Carga Liviana)",
-    "E": "Gubernamental / Estado Central",
-    "M": "Gobierno Autónomo Descentralizado / Municipal",
-    "X": "Emergencia / Bomberos / Cruz Roja",
-    "S": "Servicio Público Oficial",
+    "A": "Comercial (taxis y buses)",
+    "U": "Comercial (taxis y buses)",
+    "Z": "Comercial (taxis y buses)",
+    "E": "Gobierno central",
+    "M": "Gobierno Autónomo Descentralizado (GAD)",
+    "X": "Uso oficial",
 }
+TIPO_POR_SEGUNDA_LETRA: Dict[str, str] = {
+    "A": "Comercial", "U": "Comercial", "Z": "Comercial",
+    "E": "Gubernamental", "M": "GAD", "X": "Uso oficial",
+}
+# Las series de las Fuerzas Armadas empiezan con F, que no es una provincia
+LETRA_FUERZAS_ARMADAS = "F"
 
 # Prefijos Especiales Diplomáticos y de Misión
 PREFIJOS_DIPLOMATICOS: Dict[str, str] = {
@@ -136,7 +143,7 @@ class EcuadorPlateValidationResult:
     formatted_plate: str        # Formato normalizado: AAA-1234
     raw_plate: str              # Cadena sin formato
     confidence_score: float     # Nivel de confianza sintáctica (0.0 a 1.0)
-    tipo_vehiculo: str          # "Particular", "Comercial", "Estado", "Diplomático", "Moto"
+    tipo_vehiculo: str          # "Particular", "Comercial", "Gubernamental", "GAD", "Uso oficial", "Fuerzas Armadas", "Diplomático / Misión", "Motocicleta / Bicimoto"
     provincia: str              # Nombre de la provincia emisora (ej. "Pichincha")
     servicio: str               # Descripción del servicio vehicular
     correcciones: tuple = ()    # Sustituciones aplicadas al texto leído: (posición, leído, interpretado)
@@ -198,15 +205,14 @@ class EcuadorPlateValidator:
             letra_prov = clean_no_hyphen[0]
             segunda_letra = clean_no_hyphen[1]
 
-            provincia = CODIGOS_PROVINCIALES_ANT.get(letra_prov, "No Identificada")
-            servicio = TIPOS_SERVICIO_SEGUNDA_LETRA.get(segunda_letra, "Particular (Uso Privado)")
-            tipo_veh = "Comercial" if segunda_letra in ("A", "U", "Z") else (
-                "Gubernamental" if segunda_letra == "E" else (
-                    "Municipal" if segunda_letra == "M" else "Particular"
-                )
-            )
+            if letra_prov == LETRA_FUERZAS_ARMADAS:
+                provincia, servicio, tipo_veh = "No aplica (Fuerzas Armadas)", "Fuerzas Armadas", "Fuerzas Armadas"
+            else:
+                provincia = CODIGOS_PROVINCIALES_ANT.get(letra_prov, "No Identificada")
+                servicio = TIPOS_SERVICIO_SEGUNDA_LETRA.get(segunda_letra, "Particular")
+                tipo_veh = TIPO_POR_SEGUNDA_LETRA.get(segunda_letra, "Particular")
 
-            is_valid_prov = letra_prov in CODIGOS_PROVINCIALES_ANT
+            is_valid_prov = letra_prov in CODIGOS_PROVINCIALES_ANT or letra_prov == LETRA_FUERZAS_ARMADAS
             score = 1.0 if is_valid_prov else 0.85
 
             return EcuadorPlateValidationResult(

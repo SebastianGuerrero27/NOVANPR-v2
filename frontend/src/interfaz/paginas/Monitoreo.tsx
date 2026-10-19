@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, BellOff, Camera, ClipboardPlus, Cpu, Film, Gauge, Pause, Play, Plus, Search, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
+import { Bell, BellOff, Camera, ClipboardPlus, Cpu, Film, Gauge, Pause, Play, Plus, Search, ShieldAlert, ShieldCheck, Trash2, ZoomIn } from 'lucide-react';
 import api, { mensajeError } from '../../infraestructura/api';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
@@ -8,9 +8,9 @@ import { useConsulta, usePaginaVisible } from '../../aplicacion/hooks';
 import type { Camara, Deteccion, EstadoAnpr } from '../../dominio/tipos';
 import { codecVideo, ESTADOS, fecha, fechaHora, hora, numero, relativo } from '../../dominio/formato';
 import { formatearPlaca, normalizarPlaca } from '../../dominio/validacion';
-import { Aviso, Cargando, InsigniaEstado, Modal, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
+import { Aviso, Cargando, InsigniaEstado, InsigniaTipificacion, Modal, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
 import { filtrarEscrito } from '../componentes/campos';
-import { ConfianzaBadge, ImagenEvidencia, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
+import { ConfianzaBadge, describirVehiculo, ImagenEvidencia, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
 import { VisorZoom } from '../componentes/ZoomDual';
 import { EliminarUno, EliminarVarios } from '../componentes/EliminarDetecciones';
 import { alCambiarSonido, fijarSonido, sonarAutorizado, sonarDenegado, sonidoActivo } from '../../infraestructura/avisos';
@@ -286,6 +286,7 @@ const Monitoreo: React.FC = () => {
               <div className="fila" style={{ alignItems: 'stretch', gap: 16, flexWrap: 'wrap' }}>
                 <div className="pila" style={{ gap: 10, minWidth: 220 }}>
                   <Placa valor={ultima.placa} grande />
+                  <InsigniaTipificacion placa={ultima.placa} provincia />
                   <InsigniaEstado estado={ultima.estado_validacion} />
                   <span className="texto-secundario">{ultima.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {fechaHora(ultima.fecha_hora_ingreso)} · {relativo(ultima.fecha_hora_ingreso)}</span>
                   <span style={{ fontSize: 13 }}>
@@ -364,33 +365,43 @@ const TablaIngresosRecientes: React.FC<{ items: Deteccion[]; onValidar: (d: Dete
       {items.length === 0 ? <Vacio titulo="Sin ingresos procesados" texto="Los ingresos aparecerán aquí en cuanto el motor termine de leer cada placa." /> : (
         <div className="tabla-contenedor">
           <table className="tabla">
-            <thead><tr><th>Fecha y hora</th><th>Placa</th><th>Vehículo / titular</th><th className="num ocultar-movil">Confianza</th><th>Evidencia</th><th /></tr></thead>
+            <thead><tr>
+              <th>Placa</th><th>Tipificación</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>Cámara</th>
+              <th className="ocultar-movil">Vehículo / titular</th><th className="num ocultar-movil">Confianza OCR</th><th>Validación</th><th />
+            </tr></thead>
             <tbody>
               {items.map(d => {
                 const aut = d.estado_validacion === 'autorizado';
                 const ale = d.estado_validacion === 'alerta';
                 return (
                   <tr key={d.id} className={`clic${aut ? ' fila-autorizado' : ale ? ' fila-alerta' : ''}`} onClick={() => navigate(`/detecciones/${d.id}`)}>
-                    <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 700 }}>{hora(d.fecha_hora_ingreso)}</strong><span className="secundario">{fecha(d.fecha_hora_ingreso)}</span></td>
                     <td className="nowrap">
-                      <span className="mono" style={{ fontWeight: 900, letterSpacing: 1.5, fontSize: 14, color: aut ? 'var(--autorizado)' : ale ? 'var(--alerta)' : 'var(--pendiente)' }}>{d.placa ?? 'SIN LECTURA'}</span>
+                      <span className="mono" style={{ fontWeight: 900, letterSpacing: 1.5, fontSize: 14, color: aut ? 'var(--autorizado)' : ale ? 'var(--alerta)' : 'var(--pendiente)' }}>{d.placa ? formatearPlaca(d.placa) : 'SIN LECTURA'}</span>
                       {aut && <span className="marca-estado ok">OK</span>}
                       {ale && <span className="marca-estado alerta">ALERTA</span>}
                     </td>
-                    <td style={{ maxWidth: 240 }}>
+                    {/* Derivada de la placa: también para los vehículos que no están autorizados */}
+                    <td><InsigniaTipificacion placa={d.placa} provincia /></td>
+                    <td className="nowrap">{fecha(d.fecha_hora_ingreso)}</td>
+                    <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 700 }}>{hora(d.fecha_hora_ingreso)}</strong></td>
+                    <td><InsigniaEstado estado={d.estado_validacion} /></td>
+                    <td>{d.camara ? <>{d.camara.nombre}<span className="secundario">{d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {d.camara.ubicacion}</span></>
+                      : <span className="texto-secundario">{d.fuente === 'manual' ? 'Registro manual' : d.tipo_movimiento === 'salida' ? 'Salida' : '—'}</span>}</td>
+                    <td className="ocultar-movil" style={{ maxWidth: 220 }}>
                       <span className="truncar" style={{ display: 'block', color: aut ? 'var(--autorizado)' : ale ? 'var(--alerta)' : undefined, fontWeight: aut || ale ? 600 : undefined }}>
-                        {aut ? `✓ ${d.autorizado?.propietario ?? 'Lista blanca'}` : ale ? `⚠ ${d.alerta?.motivo ?? 'Lista negra'}` : ESTADOS[d.estado_validacion].etiqueta}
+                        {aut ? `✓ ${d.autorizado?.propietario ?? 'Lista blanca'}` : ale ? `⚠ ${d.alerta?.motivo ?? 'Lista negra'}` : describirVehiculo(d)}
                       </span>
-                      <span className="secundario truncar">{[d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso', d.camara?.nombre].filter(Boolean).join(' · ')}</span>
+                      {aut && d.autorizado?.departamento && <span className="secundario truncar">{d.autorizado.departamento}</span>}
                     </td>
                     <td className="num ocultar-movil"><ConfianzaBadge valor={d.confianza_ocr} /></td>
-                    <td onClick={e => { e.stopPropagation(); setZoom(d); }} className="miniatura-zoom" title="Ampliar evidencia" style={{ width: 86 }}>
-                      <ImagenEvidencia ruta={d.imagen_placa || d.imagen_vehiculo} alt="" alto={36} ajuste="contain" fondoOscuro />
-                    </td>
                     <td className="acciones-celda" onClick={e => e.stopPropagation()}>
                       {d.estado_validacion === 'pendiente_revision' && !d.validado_manualmente
                         ? <button className="btn btn-navy btn-sm" onClick={() => onValidar(d)}>Validar</button>
                         : <button className="btn btn-ghost btn-sm" onClick={() => onValidar(d)}>{d.validado_manualmente ? 'Validado' : 'Corregir'}</button>}
+                    </td>
+                    <td className="acciones-celda" onClick={e => e.stopPropagation()}>
+                      <button className="btn btn-ghost btn-sm btn-icono miniatura-zoom" title="Ampliar evidencia" aria-label="Ampliar evidencia"
+                        disabled={!d.imagen_placa && !d.imagen_vehiculo} onClick={() => setZoom(d)}><ZoomIn size={14} /></button>
                       {onEliminar && <button className="btn btn-ghost btn-sm btn-icono" title="Eliminar registro" aria-label="Eliminar registro" onClick={() => onEliminar(d)}><Trash2 size={14} color="var(--alerta)" /></button>}
                     </td>
                   </tr>

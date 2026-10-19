@@ -8,6 +8,7 @@ import type { EstadoValidacion } from '../../dominio/tipos';
 import { ESTADOS, numero } from '../../dominio/formato';
 import { type ReglaTexto, formatearPlaca, validarTexto } from '../../dominio/validacion';
 import { REGLA_MOTIVO_AUDITORIA } from '../../dominio/reglas';
+import { tipificarPlaca } from '../../dominio/tipificacion';
 import { CampoTexto } from './campos';
 
 /* ─── Contenedores ─── */
@@ -79,6 +80,23 @@ export const Placa: React.FC<{ valor?: string | null; grande?: boolean }> = ({ v
   valor
     ? <span className={`placa${grande ? ' grande' : ''}`}>{formatearPlaca(valor)}</span>
     : <span className={`placa vacia${grande ? ' grande' : ''}`}>Sin lectura</span>;
+
+/**
+ * Tipificación del vehículo por su placa (particular, gobierno, uso oficial, GAD, comercial,
+ * Fuerzas Armadas): la muestra de color reproduce la franja superior de la placa. Con `provincia`
+ * agrega debajo la provincia de matriculación.
+ */
+export const InsigniaTipificacion: React.FC<{ placa?: string | null; provincia?: boolean }> = ({ placa, provincia }) => {
+  const t = tipificarPlaca(placa);
+  if (!t) return <span className="texto-secundario" title="La lectura no tiene un formato de placa ANT">—</span>;
+  const detalle = [t.servicio, t.provincia && `matriculado en ${t.provincia}`].filter(Boolean).join(' · ');
+  return (
+    <span className="tipificacion-celda">
+      <span className={`tipificacion ${t.categoria}${t.publico ? ' publico' : ''}`} title={detalle}>{t.etiqueta}</span>
+      {provincia && t.provincia && <span className="secundario">{t.provincia}</span>}
+    </span>
+  );
+};
 
 /* ─── Avisos ─── */
 

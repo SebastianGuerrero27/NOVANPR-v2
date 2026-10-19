@@ -10,7 +10,7 @@ import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta, useDiferido, usePaginaVisible } from '../../aplicacion/hooks';
 import type { Deteccion, ResumenPanel } from '../../dominio/tipos';
 import { diaCorto, fecha, fechaHora, hora, numero, relativo, SERIES_ESTADO } from '../../dominio/formato';
-import { Aviso, Cargando, FilasEsqueleto, InsigniaEstado, Kpi, Tarjeta, Vacio } from '../componentes/ui';
+import { Aviso, Cargando, FilasEsqueleto, InsigniaEstado, InsigniaTipificacion, Kpi, Tarjeta, Vacio } from '../componentes/ui';
 import { BarrasApiladas, BarrasHorizontales, Dona, Leyenda } from '../componentes/Graficos';
 import { ConfianzaBadge, describirVehiculo, PlacaFoto, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
 import GestionPermisos from './GestionPermisos';
@@ -202,14 +202,15 @@ const IngresosRecientes: React.FC = () => {
       <div className="tabla-contenedor" style={{ maxHeight: 560 }}>
         <table className="tabla">
           <thead><tr>
-            <th className="num" style={{ width: 44 }}>#</th><th>Placa</th><th>Fecha y hora</th><th>Estado</th><th>Cámara</th>
+            <th className="num" style={{ width: 44 }}>#</th><th>Placa</th><th>Tipificación</th><th>Fecha y hora</th><th>Estado</th><th>Cámara</th>
             <th className="ocultar-movil">Vehículo / titular</th><th className="num ocultar-movil">Confianza OCR</th><th>Validación</th>
           </tr></thead>
           <tbody>
-            {cargando && !datos ? <FilasEsqueleto columnas={8} /> : (datos ?? []).map((d, i) => (
+            {cargando && !datos ? <FilasEsqueleto columnas={9} /> : (datos ?? []).map((d, i) => (
               <tr key={d.id} className="clic" onClick={() => navigate(`/detecciones/${d.id}`)}>
                 <td className="num texto-secundario">{i + 1}</td>
                 <td className="nowrap"><PlacaFoto d={d} /></td>
+                <td><InsigniaTipificacion placa={d.placa} provincia /></td>
                 <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 600 }}>{hora(d.fecha_hora_ingreso)}</strong><span className="secundario">{fecha(d.fecha_hora_ingreso)}</span></td>
                 <td><InsigniaEstado estado={d.estado_validacion} procesando={d.estado_procesamiento === 'pendiente_ocr'} /></td>
                 <td>{d.camara ? <>{d.camara.nombre}<span className="secundario">{d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {d.camara.ubicacion}</span></> : <span className="texto-secundario">{d.fuente === 'manual' ? 'Registro manual' : d.tipo_movimiento === 'salida' ? 'Salida' : '—'}</span>}</td>
