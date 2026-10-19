@@ -1,6 +1,10 @@
 # Afinamiento con el conjunto ecuatoriano entregado
 
-Estado: entrenamiento en curso. Fecha local: 18 de octubre de 2026 (Ecuador).
+Estado: entrenamiento completado el 18 de octubre de 2026; exportación y
+evaluación real verificadas el 19 de octubre de 2026 (Ecuador).
+
+**Decisión: no activar el candidato.** En la prueba real su mAP50–95 fue
+14,45 %, frente a 54,59 % de producción. Se conserva el detector actual.
 
 ## Datos comprobados
 
@@ -31,13 +35,25 @@ motor ANPR completo.
 - Docker: imagen `anpr-train:local`, Python 3.12.15, Torch 2.14.1+cpu,
   Ultralytics 8.4.174. Hardware: Intel Core i9-13900H; no hay GPU NVIDIA
   disponible para Docker.
-- Configuración: máximo 10 épocas, 256 px, batch 16, CPU, cuatro hilos, semilla
+- Configuración: 10 épocas completas, 256 px, batch 16, CPU, cuatro hilos, semilla
   0, primeras diez capas congeladas, AdamW con tasa inicial 0,0001, variación
   multiescala 0,25 y aumentaciones geométricas y de iluminación sin volteos.
 - Corrida: `dataset/runs/yolo26n_ecuatorianas_inicial_s0_20261018_225206`.
 - Contenedor: `anpr-train-ecuatorianas-volumen`.
 - Los datos se leen del volumen `anpr_ecuatorianas_20261018`; resultados y
   modelos se escriben en las carpetas persistentes de Windows.
+
+El CSV registra 4.081,39 segundos acumulados de entrenamiento (68,02 minutos).
+La mejor época registrada fue la tercera: mAP50–95 de 0,85925 en validación
+sintética. El script seleccionó `best.pt`, no los pesos de la última época.
+La revalidación final del archivo candidato registró mAP50 0,99455 y
+mAP50–95 0,85815. Estas cifras son exclusivamente de los 800 recortes sintéticos.
+
+Candidato: `services/anpr/models/yolo26n_ecuatorianas_inicial_s0_20261018_225206_candidato.pt`
+y su archivo `.onnx` del mismo nombre. SHA-256 del PT:
+`4a6d97fe9c19990ae84bbd886487464acc131752877112bf320ec2cb73dffc47`.
+
+![Curvas de las diez épocas](curvas_ecuatorianas_2026-10-18.png)
 
 El primer arranque encontró permisos restrictivos en la carpeta temporal de
 Windows. El preparador ahora hereda permisos normales. El acceso al dataset
@@ -52,26 +68,57 @@ completo. La pausa de diagnóstico duró 36,718 segundos y se reanudó la corrid
 
 ## Evaluación y despliegue
 
-Al finalizar se comprobará la exportación ONNX dinámica mediante ONNX Runtime.
-El benchmark de la red excluye captura, preprocesamiento y OCR: no garantiza
-latencia del sistema inferior a 10 milisegundos.
+La exportación ONNX dinámica pasó las comprobaciones de ONNX Runtime a 256 y
+512 px. El adaptador real `YoloDetector` identificó ambos formatos como YOLO26
+y produjo detecciones equivalentes en dos imágenes a ambas resoluciones:
+IoU mínimo 0,99999918 y diferencia máxima de coordenadas inferior a 0,000031 px.
+El ONNX conserva los metadatos de Ultralytics y agrega la arquitectura y la
+huella del PT de origen, evitando que `/status` informe «desconocida».
 
-Se compararán producción y candidato en las 2.048 imágenes reales y 2.816 placas
-de la prueba de Open Images disponible. Es una evaluación internacional,
-no una prueba exclusiva de Ecuador. Se usa una configuración de evaluación
-separada con rutas Linux y `split=test`; el YAML original de ese conjunto no se
-usa como datos de entrenamiento.
+Medición directa de la red ONNX en CPU con cuatro hilos, entrada cero, tres
+calentamientos y 30 muestras por resolución:
 
-El candidato no sustituye automáticamente producción. Para medir mejora en el
-caso de uso ecuatoriano siguen haciendo falta fotografías reales completas,
-con etiquetas revisadas y separación por vehículo/secuencia/día.
+| Resolución | Mediana | Percentil 95 |
+|---|---:|---:|
+| 256 px | 7,73 ms | 10,20 ms |
+| 512 px | 26,89 ms | 31,40 ms |
+
+Excluye captura, preprocesamiento, OCR y seguimiento. **No demuestra latencia
+ANPR inferior a 10 ms**; el motor utiliza 512 px por defecto.
+Registro: [QA ONNX](onnx_ecuatorianas_2026-10-19.json).
+
+La comparación real usó las mismas 2.048 imágenes y 2.816 placas de Open Images
+para ambos modelos, con Ultralytics 8.4.174, 512 px, batch 16 y CPU/cuatro hilos.
+Es una evaluación internacional, no una prueba exclusiva de Ecuador. El conjunto
+`test` se usó solo para evaluar; no se entrenó con estas imágenes.
+
+| Modelo | Precisión | Recall | mAP50 | mAP50–95 |
+|---|---:|---:|---:|---:|
+| Producción conservada | 94,51 % | 81,14 % | 86,90 % | 54,59 % |
+| Candidato sintético | 39,40 % | 31,89 % | 26,77 % | 14,45 % |
+
+P/R corresponden al punto de máximo F1 elegido por Ultralytics; no representan
+necesariamente el umbral 0,22 del servicio. No compararlos directamente con
+tablas históricas a confianza fija 0,35. Se ha usado el mismo protocolo para
+los dos modelos. Registro completo: [evaluación real](evaluacion_ecuatorianas_2026-10-19.json).
+
+El ajuste con recortes sintéticos perdió generalización sobre escenas reales:
+mAP50–95 disminuyó 40,13 puntos porcentuales. **No promover ni configurar este
+candidato como detector activo.** Los hashes de ambos PT permanecieron idénticos
+antes y después de la evaluación; producción conserva su SHA-256 original.
+
+Para mejorar el caso de uso ecuatoriano hacen falta fotografías completas de
+vehículos y fondos reales, ejemplos positivos y negativos y etiquetas revisadas.
+Separar por vehículo/secuencia/día y mantener una prueba real reservada. Los
+recortes sintéticos pueden complementar esos datos, pero esta corrida demuestra
+que no los sustituyen. El flujo Docker queda disponible para un nuevo afinamiento.
 
 ## Verificación del flujo
 
-22 pruebas y 24 subpruebas aprobadas para preparación, validación, exportación
-y protección de promociones. La imagen Docker se construyó, `pip check` pasó
-y se verificaron imports reales. Las configuraciones de Compose de
-entrenamiento y de montaje de modelos en desarrollo/producción son válidas.
+42 pruebas y 24 subpruebas aprobadas para preparación, validación, exportación,
+metadatos ONNX, identificación de arquitectura PT y protección de promociones.
+La imagen Docker se reconstruyó con el código final: imports sin montajes y
+`pip check` correctos. Se verificó la configuración de Compose de entrenamiento.
 
 Instrucciones: `dataset/LEEME_INSTRUCCIONES.txt` y
 `docs/ENTRENAMIENTO_DOCKER.md`.

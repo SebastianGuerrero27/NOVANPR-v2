@@ -1,0 +1,194 @@
+{
+  "purpose": "Final trained candidate: dynamic ONNX, runtime compatibility and network-only latency",
+  "checked_at_utc": "2026-10-19T13:38:04.158978+00:00",
+  "source_pt_sha256": "4a6d97fe9c19990ae84bbd886487464acc131752877112bf320ec2cb73dffc47",
+  "onnx_sha256": "3c923b9c4aa6246192865e7ec54e3dc1375b836d087a61ac27b12a6623244929",
+  "metadata": {
+    "anpr_architecture": "yolo26",
+    "end2end": "False",
+    "description": "Ultralytics YOLO26n model trained on /workspace/dataset/detector_ecuatorianas/data.yaml",
+    "channels": "3",
+    "author": "Ultralytics",
+    "docs": "https://docs.ultralytics.com",
+    "head": "Detect",
+    "anpr_source_pt_sha256": "4a6d97fe9c19990ae84bbd886487464acc131752877112bf320ec2cb73dffc47",
+    "version": "8.4.174",
+    "batch": "1",
+    "license": "AGPL-3.0 License (https://ultralytics.com/license)",
+    "stride": "32",
+    "task": "detect",
+    "date": "2026-10-19T13:36:52.382311+00:00",
+    "imgsz": "[256, 256]",
+    "names": "{0: 'license_plate'}",
+    "args": "{'data': None, 'batch': 1, 'fraction': 1.0, 'quantize': None, 'nms': None, 'dynamic': True, 'simplify': False, 'opset': 17}"
+  },
+  "latency_scope": "CPU ORT, 4 threads, zero input; excludes preprocessing, OCR and video; 3 warmups and 30 samples",
+  "dynamic_input": {
+    "shape": [
+      1,
+      3,
+      512,
+      512
+    ],
+    "output_shapes": [
+      [
+        1,
+        5,
+        5376
+      ]
+    ],
+    "finite": true
+  },
+  "runtime": "app.infraestructura.detectors.YoloDetector from mounted current application",
+  "confidence_threshold": 0.22,
+  "comparisons": [
+    {
+      "image": "pose_000000.jpg",
+      "imgsz": 256,
+      "pt_count": 1,
+      "onnx_count": 1,
+      "matches": [
+        {
+          "matched": true,
+          "class_id": 0,
+          "class_name_pt": "license_plate",
+          "class_name_onnx": "license_plate",
+          "bbox_pt": [
+            8.855871200561523,
+            5.938503742218018,
+            81.63553619384766,
+            40.472747802734375
+          ],
+          "bbox_onnx": [
+            8.855871200561523,
+            5.938505172729492,
+            81.63553619384766,
+            40.472747802734375
+          ],
+          "iou": 0.999999958577015,
+          "max_coordinate_difference_px": 1.430511474609375e-06,
+          "confidence_pt": 0.8679763674736023,
+          "confidence_onnx": 0.8679763078689575,
+          "confidence_abs_difference": 5.960464477539063e-08
+        }
+      ],
+      "passed": true
+    },
+    {
+      "image": "pose_000010.jpg",
+      "imgsz": 256,
+      "pt_count": 1,
+      "onnx_count": 1,
+      "matches": [
+        {
+          "matched": true,
+          "class_id": 0,
+          "class_name_pt": "license_plate",
+          "class_name_onnx": "license_plate",
+          "bbox_pt": [
+            6.298855781555176,
+            17.778217315673828,
+            300.4481506347656,
+            149.39453125
+          ],
+          "bbox_onnx": [
+            6.298855781555176,
+            17.778236389160156,
+            300.4481201171875,
+            149.39450073242188
+          ],
+          "iou": 0.9999995194663491,
+          "max_coordinate_difference_px": 3.0517578125e-05,
+          "confidence_pt": 0.8644134402275085,
+          "confidence_onnx": 0.8644133806228638,
+          "confidence_abs_difference": 5.960464477539063e-08
+        }
+      ],
+      "passed": true
+    },
+    {
+      "image": "pose_000000.jpg",
+      "imgsz": 512,
+      "pt_count": 1,
+      "onnx_count": 1,
+      "matches": [
+        {
+          "matched": true,
+          "class_id": 0,
+          "class_name_pt": "license_plate",
+          "class_name_onnx": "license_plate",
+          "bbox_pt": [
+            6.299487113952637,
+            4.575972557067871,
+            80.70024871826172,
+            38.611209869384766
+          ],
+          "bbox_onnx": [
+            6.299460411071777,
+            4.5759735107421875,
+            80.70023345947266,
+            38.6112174987793
+          ],
+          "iou": 0.9999991838234485,
+          "max_coordinate_difference_px": 2.6702880859375e-05,
+          "confidence_pt": 0.8423829674720764,
+          "confidence_onnx": 0.8423827886581421,
+          "confidence_abs_difference": 1.7881393432617188e-07
+        }
+      ],
+      "passed": true
+    },
+    {
+      "image": "pose_000010.jpg",
+      "imgsz": 512,
+      "pt_count": 1,
+      "onnx_count": 1,
+      "matches": [
+        {
+          "matched": true,
+          "class_id": 0,
+          "class_name_pt": "license_plate",
+          "class_name_onnx": "license_plate",
+          "bbox_pt": [
+            8.584014892578125,
+            18.409631729125977,
+            301.24114990234375,
+            152.3643341064453
+          ],
+          "bbox_onnx": [
+            8.584005355834961,
+            18.409639358520508,
+            301.24114990234375,
+            152.36431884765625
+          ],
+          "iou": 0.9999997965481682,
+          "max_coordinate_difference_px": 1.52587890625e-05,
+          "confidence_pt": 0.8192797899246216,
+          "confidence_onnx": 0.819279670715332,
+          "confidence_abs_difference": 1.1920928955078125e-07
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "network_benchmarks": [
+    {
+      "imgsz": 256,
+      "threads": 4,
+      "samples": 30,
+      "median_ms": 7.731438000007529,
+      "p95_ms": 10.203329049996057
+    },
+    {
+      "imgsz": 512,
+      "threads": 4,
+      "samples": 30,
+      "median_ms": 26.885472000003574,
+      "p95_ms": 31.40288990000925
+    }
+  ],
+  "passed": true,
+  "torch_threads": 2,
+  "pt_architecture": "yolo26",
+  "onnx_architecture_in_runtime": "yolo26"
+}

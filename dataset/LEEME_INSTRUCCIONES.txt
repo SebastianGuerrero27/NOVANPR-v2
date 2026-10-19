@@ -2,6 +2,15 @@
 GUIA: ENTRENAR Y AFINAR EL DETECTOR DE PLACAS, LOCALMENTE O CON DOCKER
 ==============================================================================
 
+RESULTADO DE LA CORRIDA REALIZADA EL 18/10/2026 (VERIFICADA EL 19/10/2026):
+   Entrenamiento Docker completo: 10 epocas, 7.200 train y 800 val, 68 minutos.
+   PT y ONNX: services/anpr/models/
+   yolo26n_ecuatorianas_inicial_s0_20261018_225206_candidato.pt (y .onnx).
+   NO ACTIVAR este candidato: en 2.048 imagenes reales su mAP50-95 fue 14,45%,
+   frente a 54,59% del modelo actual. Se conserva produccion.
+   Informe y curvas: docs/resultados/entrenamiento_ecuatorianas_2026-10-18.md.
+   Los comandos siguientes permiten repetir o iniciar un NUEVO entrenamiento.
+
 1. IMAGENES SOLICITADAS Y ETIQUETAS
 
    Origen: dataset/openimages_plates_ecuatorianas/

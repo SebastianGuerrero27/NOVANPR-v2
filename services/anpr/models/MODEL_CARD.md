@@ -193,7 +193,37 @@ con un conjunto etiquetado de vehículos ecuatorianos.
 ## Reglas para reemplazar este modelo
 
 1. Al menos 200 imágenes de entrenamiento (el script lo exige salvo `--force`).
-2. El script guarda un **candidato** (`<arquitectura>_ecuador_candidato.pt`) y solo
-   reemplaza producción con `--promote` si su mAP50-95 en validación es mayor.
+2. El script guarda un **candidato** con arquitectura, nombre, semilla y fecha en
+   el archivo; solo reemplaza producción con `--promote` si su mAP50-95 en
+   validación es mayor. La promoción con procedencia sintética está bloqueada;
+   antes de activar se requiere comprobar generalización en fotos reales.
 3. Al promover, se respalda el modelo anterior en `archive/` y se actualiza esta ficha
    con el dataset, la partición y las métricas.
+
+## Afinamiento sintético del 18-10-2026, evaluado el 19-10-2026: no promover
+
+Se entrenaron 10 épocas en Docker desde producción usando los 8.000 recortes
+de `dataset/openimages_plates_ecuatorianas` (7.200 train / 800 val), convertidos
+de pose a detección sin alterar los originales. Son placas sintéticas, no
+fotografías reales de vehículos. Configuración: 256 px, batch 16, CPU/cuatro
+hilos, primeras diez capas congeladas y AdamW 0,0001. La mejor época fue la
+tercera; el PT candidato se guardó desde `best.pt`.
+
+Candidato: `yolo26n_ecuatorianas_inicial_s0_20261018_225206_candidato.pt` y ONNX.
+SHA-256 PT: `4a6d97fe9c19990ae84bbd886487464acc131752877112bf320ec2cb73dffc47`.
+Validación sintética del candidato: mAP50 0,99455, mAP50–95 0,85815.
+
+Prueba real común de Open Images: 2.048 imágenes / 2.816 placas, 512 px:
+
+| Modelo | mAP50 | mAP50–95 |
+|---|---:|---:|
+| Producción conservada | 0,86902 | 0,54588 |
+| Candidato sintético | 0,26771 | 0,14453 |
+
+**No usar este candidato en producción:** el afinamiento perdió generalización
+en escenas reales. Producción conserva su SHA-256 original
+`3667d8168e8a5a62fddf0992546efa0dc60f37578c9e95e8c0cbc92d4ed74c5c`.
+ONNX es compatible con el adaptador del motor y su arquitectura se registra en
+metadatos; esto no modifica el resultado de precisión ni justifica activarlo.
+
+[Informe y curvas](../../../docs/resultados/entrenamiento_ecuatorianas_2026-10-18.md).

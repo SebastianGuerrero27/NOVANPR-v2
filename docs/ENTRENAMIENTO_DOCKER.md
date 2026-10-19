@@ -1,5 +1,12 @@
 # Afinar el detector de placas dentro de Docker
 
+La corrida solicitada ya se completó: 10 épocas con los 8.000 recortes entregados,
+PT y ONNX verificados. **Ese candidato no se activa**: su mAP50–95 en 2.048
+imágenes reales fue 14,45 %, frente a 54,59 % de producción. El modelo actual se
+conservó. Consulte [informe, métricas y curvas](resultados/entrenamiento_ecuatorianas_2026-10-18.md).
+Los comandos de esta guía son para futuras corridas; no es necesario repetir la
+preparación ni el entrenamiento ya realizados.
+
 El entrenamiento se ejecuta en un contenedor independiente del motor de video. Puede
 usar los mismos pesos y guardar candidatos mientras el servicio sigue atendiendo;
 ambos procesos comparten CPU y memoria, por lo que conviene programar las corridas

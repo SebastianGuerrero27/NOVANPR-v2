@@ -1,0 +1,113 @@
+{
+  "status": "complete",
+  "started_at_utc": "2026-10-19T13:38:39.432841+00:00",
+  "scope": "Solo detección de placas; excluye OCR, seguimiento, vídeo y ANPR completo.",
+  "dataset": {
+    "root": "/workspace/dataset/openimages_plates",
+    "split": "test",
+    "images": 2048,
+    "boxes": 2816,
+    "labels_and_filenames_sha256": "74ef7780ca0c665160171fbfab5f326f1ea3656f89fa096724d2cddcb357f679",
+    "source": "Open Images V7, partición test existente, Vehicle registration plate",
+    "country": "Internacional; no es una evaluación exclusiva de Ecuador"
+  },
+  "hardware": {
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900H",
+    "logical_cpus": 20,
+    "container_cpu.max": "max 100000",
+    "container_memory.max": "max"
+  },
+  "versions": {
+    "python": "3.12.15",
+    "torch": "2.14.1+cpu",
+    "ultralytics": "8.4.174",
+    "numpy": "2.5.3",
+    "opencv-python": "4.11.0.86"
+  },
+  "protocol": {
+    "data": "/workspace/dataset/runs/afinamiento_ecuatorianas_2026-10-19.data.yaml",
+    "split": "test",
+    "imgsz": 512,
+    "batch": 16,
+    "device": "cpu",
+    "workers": 0,
+    "plots": false,
+    "save_json": false,
+    "save_txt": false,
+    "verbose": false,
+    "half": false,
+    "augment": false,
+    "conf": 0.001,
+    "iou": 0.7,
+    "max_det": 300,
+    "project": "/workspace/dataset/runs",
+    "exist_ok": false,
+    "torch_num_threads": 4,
+    "precision_recall": "Promedios a la confianza de máximo F1 elegida por Ultralytics.",
+    "precision_recall_comparison": "P/R de box.mp/mr no son métricas al umbral fijo del servicio (0.22) ni son directamente comparables con tablas históricas a conf=0.35. Priorizar mAP50 y mAP50-95 entre los dos modelos a imgsz=512.",
+    "map": "AP interpolada Ultralytics; mAP50-95 promedia IoU 0.50:0.05:0.95."
+  },
+  "limitations": [
+    "Open Images test no demuestra precisión a distancias específicas en cámaras locales.",
+    "No se ha auditado aquí la independencia frente a los datos históricos del modelo base.",
+    "Los tiempos son por imagen en validación por lotes; no equivalen a latencia ANPR en vivo."
+  ],
+  "production_changed": false,
+  "models": {
+    "production": {
+      "path": "/workspace/services/anpr/models/license_plate_detector.pt",
+      "sha256": "3667d8168e8a5a62fddf0992546efa0dc60f37578c9e95e8c0cbc92d4ed74c5c",
+      "actual_torch_threads": 4,
+      "precision": 0.9451218243460467,
+      "recall": 0.8114346590909091,
+      "mAP50": 0.8690167415028102,
+      "mAP50_95": 0.5458761897997514,
+      "speed_ms_per_image": {
+        "preprocess": 0.8905230112305901,
+        "inference": 30.688894205566434,
+        "loss": 0.00010090527338690869,
+        "postprocess": 0.36707474609387614
+      },
+      "elapsed_seconds": 87.39661244000001,
+      "raw_metrics": {
+        "metrics/precision(B)": 0.9451218243460467,
+        "metrics/recall(B)": 0.8114346590909091,
+        "metrics/mAP50(B)": 0.8690167415028102,
+        "metrics/mAP50-95(B)": 0.5458761897997514,
+        "fitness": 0.5458761897997514
+      }
+    },
+    "candidate": {
+      "path": "/workspace/services/anpr/models/yolo26n_ecuatorianas_inicial_s0_20261018_225206_candidato.pt",
+      "sha256": "4a6d97fe9c19990ae84bbd886487464acc131752877112bf320ec2cb73dffc47",
+      "actual_torch_threads": 4,
+      "precision": 0.39398082738569784,
+      "recall": 0.31889204545454547,
+      "mAP50": 0.267708521897199,
+      "mAP50_95": 0.1445305981566422,
+      "speed_ms_per_image": {
+        "preprocess": 0.9602455322267334,
+        "inference": 37.66340994287122,
+        "loss": 0.00019794628913771817,
+        "postprocess": 1.1423296401366634
+      },
+      "elapsed_seconds": 96.02785452500001,
+      "raw_metrics": {
+        "metrics/precision(B)": 0.39398082738569784,
+        "metrics/recall(B)": 0.31889204545454547,
+        "metrics/mAP50(B)": 0.267708521897199,
+        "metrics/mAP50-95(B)": 0.1445305981566422,
+        "fitness": 0.1445305981566422
+      }
+    }
+  },
+  "candidate_minus_production": {
+    "precision": -0.5511409969603489,
+    "recall": -0.4925426136363636,
+    "mAP50": -0.6013082196056112,
+    "mAP50_95": -0.4013455916431092
+  },
+  "finished_at_utc": "2026-10-19T13:41:44.817379+00:00"
+}
