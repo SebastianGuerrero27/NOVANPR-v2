@@ -413,7 +413,8 @@ export const EditorRoi: React.FC<{ camara: Camara; onCerrar: () => void; onGuard
             ? <>Use <b>Rectángulo</b> y arrastre sobre el carril, o elija <b>Polígono</b> para una forma irregular. En Seleccionar puede mover la figura con la mano o ajustar vértices. El motor busca placas dentro del área; sin área analiza el cuadro completo.</>
             : <>Dibuje zonas con <b>movimiento falso</b> con rectángulo arrastrando o con polígono. Seleccione y mueva la figura con la mano; dentro de esas áreas el motor ignora movimiento y no busca placas.</>}
         </Aviso>
-        <ReproductorWebRTC etiqueta="ZONAS" capa={capa}
+        {/* Proporción del propio flujo: el cuadro completo queda disponible para dibujar */}
+        <ReproductorWebRTC etiqueta="ZONAS" capa={capa} adaptarProporcion
           onEstadisticas={s => {
             if (s && s.ancho > 0 && s.alto > 0) setResolucion({ ancho: s.ancho, alto: s.alto });
           }}

@@ -54,6 +54,36 @@ function pistasDelMotor(lista: PistaMotor[] | undefined): PistaHud[] {
   }));
 }
 
+const esPoligono = (z: unknown): z is Punto[] => Array.isArray(z) && z.length >= 3
+  && z.every(p => Array.isArray(p) && p.length === 2 && p.every(v => typeof v === 'number' && Number.isFinite(v)));
+
+/**
+ * Área de detección y zonas de exclusión que el motor está aplicando en este momento (vienen en
+ * cada mensaje de /ws/pistas). Se dibujan las del motor y no las guardadas en el navegador: así el
+ * HUD muestra exactamente dónde se buscaron las placas que aparecen en el video.
+ */
+export function zonasDelMotor(m: { roi?: unknown; exclusiones?: unknown }): { roi: Punto[] | null; exclusiones: Punto[][] } {
+  return {
+    roi: esPoligono(m.roi) ? m.roi : null,
+    exclusiones: Array.isArray(m.exclusiones) ? m.exclusiones.filter(esPoligono) : [],
+  };
+}
+
+/**
+ * Proporción (ancho/alto) del reproductor. Si la vista llega con otra proporción que el cuadro del
+ * motor, se usa la del motor (la imagen se estira y conserva la geometría). Con `adaptar` (editor de
+ * zonas) se usa la del propio flujo, sea horizontal, vertical o cuadrado: la imagen llena el
+ * reproductor y la capa de dibujo cubre el cuadro completo. Si no, 16:9 con franjas.
+ */
+export function proporcionReproductor(ajuste: number | null, fuente: number | null, adaptar: boolean): number {
+  if (ajuste) return ajuste;
+  if (adaptar && fuente) return fuente;
+  return 16 / 9;
+}
+
+/** Alto máximo del reproductor que adapta su proporción (un flujo vertical no desborda la pantalla). */
+const ALTO_MAXIMO_ADAPTADO = '68vh';
+
 const Superposicion: React.FC<{ estado: Estado; mensaje?: string | null; pausado: boolean }> = ({ estado, mensaje }) => {
   const contenido = {
     conectando: [<Loader2 key="i" size={26} className="girar" />, 'Conectando con la cámara…'],
@@ -103,7 +133,9 @@ export const ReproductorWebRTC: React.FC<{
   mostrarHud?: boolean;
   /** Capa interactiva colocada exactamente sobre la imagen del video (p. ej. el editor de región) */
   capa?: React.ReactNode;
-}> = ({ obtener, pausado = false, claveReinicio, etiqueta = 'EN VIVO · WebRTC', onFallo, onEstadisticas, mostrarHud = false, capa }) => {
+  /** El reproductor toma la proporción del flujo en lugar de 16:9 (ver proporcionReproductor) */
+  adaptarProporcion?: boolean;
+}> = ({ obtener, pausado = false, claveReinicio, etiqueta = 'EN VIVO · WebRTC', onFallo, onEstadisticas, mostrarHud = false, capa, adaptarProporcion = false }) => {
   const visible = usePaginaVisible();
   const video = useRef<HTMLVideoElement>(null);
   const lienzo = useRef<HTMLCanvasElement>(null);
@@ -118,6 +150,7 @@ export const ReproductorWebRTC: React.FC<{
   // proporción real y la imagen y los recuadros conservan la geometría.
   const [ajuste, setAjuste] = useState<number | null>(null);
   const ajusteActual = useRef<number | null>(null);
+  const [aspectoFuente, setAspectoFuente] = useState<number | null>(null);
   const fallos = useRef(0);
   const activo = visible && !pausado;
 
@@ -139,7 +172,6 @@ export const ReproductorWebRTC: React.FC<{
       const nuevo = aspectoMotor && propio && Math.abs(propio / aspectoMotor - 1) > 0.03 ? aspectoMotor : null;
       if (nuevo !== ajusteActual.current) { ajusteActual.current = nuevo; setAjuste(nuevo); }
     };
-    v.addEventListener('resize', revisarAspecto);
 
     const fallar = (texto: string) => {
       if (cerrado) return;
@@ -156,6 +188,15 @@ export const ReproductorWebRTC: React.FC<{
         setArea(prev => (prev && prev.x === a.x && prev.y === a.y && prev.w === a.w && prev.h === a.h ? prev : { x: a.x, y: a.y, w: a.w, h: a.h }));
       }
     };
+    // El flujo puede cambiar de resolución o proporción después del primer cuadro (otra cámara, un
+    // perfil distinto, reconexión): el elemento no cambia de tamaño, así que el ResizeObserver no se
+    // entera y la capa quedaría sobre una parte de la imagen. 'resize' avisa del cambio del cuadro.
+    const alCambiarCuadro = () => {
+      if (v.videoWidth && v.videoHeight) setAspectoFuente(v.videoWidth / v.videoHeight);
+      revisarAspecto();
+      redibujar();
+    };
+    v.addEventListener('resize', alCambiarCuadro);
     const ro = new ResizeObserver(redibujar);
     ro.observe(v);
 
@@ -173,7 +214,7 @@ export const ReproductorWebRTC: React.FC<{
         });
         // Si no llega ningún cuadro en 10 s, la cámara no está enviando video
         vigilancia = window.setTimeout(() => { if (!v.videoWidth) fallar('La cámara no está enviando video (sin señal).'); }, 10000);
-        v.onloadeddata = () => { fallos.current = 0; setEstado('en_vivo'); setMensaje(null); window.clearTimeout(vigilancia); redibujar(); };
+        v.onloadeddata = () => { fallos.current = 0; setEstado('en_vivo'); setMensaje(null); window.clearTimeout(vigilancia); alCambiarCuadro(); };
         timerStats = window.setInterval(async () => {
           const s = await medir().catch(() => null);
           setStats(s);
@@ -185,7 +226,8 @@ export const ReproductorWebRTC: React.FC<{
             try {
               const m = JSON.parse(ev.data);
               if (typeof m.aspecto === 'number' && m.aspecto !== aspectoMotor) { aspectoMotor = m.aspecto; revisarAspecto(); }
-              hud.actualizar(pistasDelMotor(m.pistas), null, null, []);
+              const zonas = zonasDelMotor(m);
+              hud.actualizar(pistasDelMotor(m.pistas), null, zonas.roi, zonas.exclusiones);
             } catch { /* mensaje inválido */ }
           };
           ws.onclose = () => hud.limpiar();
@@ -201,7 +243,7 @@ export const ReproductorWebRTC: React.FC<{
       window.clearTimeout(vigilancia);
       window.clearInterval(timerStats);
       ro.disconnect();
-      v.removeEventListener('resize', revisarAspecto);
+      v.removeEventListener('resize', alCambiarCuadro);
       ws?.close();
       hud.detener();
       sesion?.cerrar();
@@ -211,8 +253,10 @@ export const ReproductorWebRTC: React.FC<{
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activo, intento, claveReinicio, mostrarHud]);
 
+  const proporcion = proporcionReproductor(ajuste, aspectoFuente, adaptarProporcion);
   return (
-    <div ref={contenedor} style={{ position: 'relative', width: '100%', aspectRatio: ajuste ? String(ajuste) : '16 / 9', background: '#050b16', borderRadius: 10, overflow: 'hidden' }}>
+    <div ref={contenedor} style={{ position: 'relative', aspectRatio: String(proporcion), background: '#050b16', borderRadius: 10, overflow: 'hidden',
+      ...(adaptarProporcion ? { width: `min(100%, calc(${ALTO_MAXIMO_ADAPTADO} * ${proporcion}))`, margin: '0 auto' } : { width: '100%' }) }}>
       <video ref={video} muted playsInline autoPlay style={{ width: '100%', height: '100%', objectFit: ajuste ? 'fill' : 'contain', display: 'block' }} />
       <canvas ref={lienzo} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', display: mostrarHud ? 'block' : 'none' }} />
       {capa && area && estado === 'en_vivo' && (
