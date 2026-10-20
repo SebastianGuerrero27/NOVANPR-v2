@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader2, Maximize2, PauseCircle, Radio, VideoOff } from 'lucide-react';
 import api, { mensajeError } from '../../infraestructura/api';
 import { usePaginaVisible } from '../../aplicacion/hooks';
-import { conectarWhep, crearMedidor, EstadisticasVideo, SesionWhep } from '../../infraestructura/webrtc';
+import { conectarWhep, crearMedidor, ErrorWhep, EstadisticasVideo, SesionWhep } from '../../infraestructura/webrtc';
 import { areaVideo, crearHud, Hud, PistaHud, Punto } from './hud';
 import { Aviso, Modal, Segmentado } from './ui';
 
@@ -233,7 +233,9 @@ export const ReproductorWebRTC: React.FC<{
           ws.onclose = () => hud.limpiar();
         }
       } catch (e) {
-        fallar(mensajeError(e, (e as Error)?.message || 'No se pudo abrir el video.'));
+        // La causa del servidor de video (sin señal, ticket vencido…): mensajeError solo entiende errores de
+        // la API y los demás los mostraba como «Sin conexión con el servidor»
+        fallar(e instanceof ErrorWhep ? e.message : mensajeError(e, 'No se pudo abrir el video.'));
       }
     })();
 
