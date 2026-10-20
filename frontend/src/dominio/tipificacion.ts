@@ -5,12 +5,14 @@
  * así que vale también para los vehículos que no están en la lista blanca (p. ej., un vehículo de
  * gobierno que no está registrado).
  *
- * La Tabla 6 describe las placas de automóvil (tres letras y cuatro dígitos); para las motocicletas
- * no indica el servicio, y los prefijos diplomáticos no están especificados, por eso no se infieren.
+ * La Tabla 6 describe el formato vigente desde 2012 (tres letras y cuatro dígitos). En las placas
+ * antiguas de tres dígitos la segunda letra no sigue esa tabla (en el video de la garita, PXJ-970 tiene
+ * la franja blanca de un particular): se informa la provincia, no el servicio. Para las motocicletas la
+ * tabla no indica el servicio y los prefijos diplomáticos no están especificados: no se infieren.
  */
 import { normalizarPlaca, RE_PLACA_AUTO, RE_PLACA_MOTO } from './validacion';
 
-export type CategoriaPlaca = 'particular' | 'gobierno' | 'oficial' | 'gad' | 'comercial' | 'fuerzas_armadas' | 'motocicleta';
+export type CategoriaPlaca = 'particular' | 'gobierno' | 'oficial' | 'gad' | 'comercial' | 'fuerzas_armadas' | 'motocicleta' | 'antiguo';
 /** Color de la franja superior donde aparece el nombre del país (Tabla 6) */
 export type FranjaPlaca = 'oro' | 'verde_limon' | 'naranja' | 'blanco_plateado';
 
@@ -47,6 +49,7 @@ const COMERCIAL: Servicio = { categoria: 'comercial', etiqueta: 'Vehículo comer
 const PARTICULAR: Servicio = { categoria: 'particular', etiqueta: 'Vehículo particular', corta: 'PARTICULAR', servicio: 'Particular', franja: 'blanco_plateado', publico: false };
 const FUERZAS_ARMADAS: Servicio = { categoria: 'fuerzas_armadas', etiqueta: 'Vehículo de las Fuerzas Armadas', corta: 'FF. AA.', servicio: 'Fuerzas Armadas', franja: null, publico: true };
 const MOTOCICLETA: Servicio = { categoria: 'motocicleta', etiqueta: 'Motocicleta', corta: 'MOTO', servicio: 'No determinado por la placa', franja: null, publico: false };
+const ANTIGUO: Servicio = { categoria: 'antiguo', etiqueta: 'Placa de formato antiguo', corta: '', servicio: 'No determinado (la tabla de servicios es la del formato de 2012)', franja: null, publico: false };
 
 /** Tabla 6: segunda letra → tipo de servicio; cualquier otra letra es particular */
 const POR_SEGUNDA_LETRA: Readonly<Record<string, Servicio>> = { E: GOBIERNO, X: OFICIAL, M: GAD, A: COMERCIAL, U: COMERCIAL, Z: COMERCIAL };
@@ -57,5 +60,6 @@ export function tipificarPlaca(placa: unknown): Tipificacion | null {
   if (RE_PLACA_MOTO.test(p)) return { ...MOTOCICLETA, provincia: null };
   if (!RE_PLACA_AUTO.test(p)) return null;
   if (p[0] === 'F') return { ...FUERZAS_ARMADAS, provincia: null };
+  if (p.length === 6) return { ...ANTIGUO, provincia: PROVINCIAS[p[0]] ?? null };
   return { ...(POR_SEGUNDA_LETRA[p[1]] ?? PARTICULAR), provincia: PROVINCIAS[p[0]] ?? null };
 }

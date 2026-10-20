@@ -340,6 +340,8 @@ export interface CamaraPublica {
   detecciones?: number;
   roi: Punto[] | null;
   exclusiones: Punto[][];
+  /** Cámara de prueba alimentada por un video cargado (no hay equipo físico) */
+  es_video: boolean;
 }
 
 /** Presentación segura: contraseña enmascarada, región de interés y zonas de exclusión interpretadas. */
@@ -355,6 +357,7 @@ export function presentarCamara(c: CamaraGuardada): CamaraPublica {
     created_at: c.created_at, detecciones: c.detecciones ?? undefined,
     roi: parsearRoi(c.roi),
     exclusiones: parsearExclusiones(c.exclusiones),
+    es_video: esUrlVideo(c.rtsp_url || ''),
   };
 }
 
@@ -376,4 +379,54 @@ export function leerAlcance(valor: unknown): Validado<AlcanceTicket> {
     return { ok: false, error: `Alcance inválido. Valores: ${ALCANCES_TICKET.join(', ')}.` };
   }
   return { ok: true, valor: valor as AlcanceTicket };
+}
+
+// ─── Cámaras de prueba con un video cargado ──────────────────────────────────
+
+/**
+ * Una cámara de prueba no apunta a un equipo: su URL es `video://<archivo>`, el archivo que cargó
+ * el administrador. El servidor de medios lo publica en bucle en la misma ruta cam_<id> que usaría
+ * una cámara real, así que el motor, el monitoreo en vivo y los registros funcionan igual.
+ */
+export const RE_URL_VIDEO = /^video:\/\/([a-f0-9]{32}\.(?:mp4|mkv|mov))$/;
+export const esUrlVideo = (url: string) => RE_URL_VIDEO.test(url);
+/** Nombre del archivo de una URL de video (null si no lo es). */
+export const archivoDeVideo = (url: string): string | null => url.match(RE_URL_VIDEO)?.[1] ?? null;
+export const urlDeVideo = (archivo: string) => `video://${archivo}`;
+
+export type FormatoVideo = 'mp4' | 'mkv' | 'mov';
+
+/**
+ * Formato por la firma del archivo, no por la extensión: ISO BMFF ("ftyp" en el byte 4; marca
+ * "qt  " = QuickTime) o Matroska (EBML 1A 45 DF A3). Cualquier otro contenido se rechaza.
+ */
+export function formatoPorFirma(cabecera: Uint8Array): FormatoVideo | null {
+  if (cabecera.length >= 4 && cabecera[0] === 0x1a && cabecera[1] === 0x45 && cabecera[2] === 0xdf && cabecera[3] === 0xa3) return 'mkv';
+  if (cabecera.length >= 12 && String.fromCharCode(...cabecera.slice(4, 8)) === 'ftyp') {
+    return String.fromCharCode(...cabecera.slice(8, 12)) === 'qt  ' ? 'mov' : 'mp4';
+  }
+  return null;
+}
+
+export interface DatosVideoPrueba {
+  nombre: string;
+  ubicacion: string;
+  direccion: DireccionCamara;
+}
+
+/** Datos de la cámara de prueba (los mismos límites que una cámara) y tamaño declarado del archivo. */
+export function leerVideoPrueba(entrada: Record<string, unknown>, bytesDeclarados: number | null, maximoBytes: number): Validado<DatosVideoPrueba> {
+  if (bytesDeclarados === null || !Number.isFinite(bytesDeclarados) || bytesDeclarados <= 0) {
+    return { ok: false, error: 'Envíe el archivo de video en el cuerpo de la solicitud (Content-Length).' };
+  }
+  if (bytesDeclarados > maximoBytes) {
+    return { ok: false, error: `El video supera el máximo de ${Math.floor(maximoBytes / 1048576)} MB.` };
+  }
+  const nombre = validarTexto(entrada.nombre, REGLAS_CAMARA.nombre);
+  if (!nombre.ok) return nombre;
+  const ubicacion = validarTexto(entrada.ubicacion, REGLAS_CAMARA.ubicacion);
+  if (!ubicacion.ok) return ubicacion;
+  const direccion = entrada.direccion === undefined || entrada.direccion === '' ? 'ingreso' : entrada.direccion;
+  if (direccion !== 'ingreso' && direccion !== 'salida') return { ok: false, error: 'Dirección inválida. Valores: ingreso, salida.' };
+  return { ok: true, valor: { nombre: nombre.valor as string, ubicacion: ubicacion.valor as string, direccion } };
 }

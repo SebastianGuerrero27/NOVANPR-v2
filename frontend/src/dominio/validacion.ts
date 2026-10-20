@@ -8,8 +8,9 @@
  * copia la sección superior de este archivo tal cual. Las lecturas automáticas del motor ANPR
  * NO se validan con estas reglas (la cámara informa lo que lee).
  *
- * Placas (formato vigente de la ANT, Ecuador):
- *   - Automóviles: 3 letras + 4 números      ABC1234  (se muestra ABC-1234)
+ * Placas (ANT, Ecuador):
+ *   - Automóviles: 3 letras + 4 números      ABC1234  (se muestra ABC-1234); el formato antiguo,
+ *     aún en circulación, tiene 3 números    ABC123   (se muestra ABC-123)
  *   - Motocicletas: 2 letras + 3 números + 1 letra   AB123C   (se muestra AB-123C)
  */
 
@@ -24,8 +25,8 @@ const error = <T>(mensaje: string): Validado<T> => ({ ok: false, error: mensaje 
 // ─── Placa ───────────────────────────────────────────────────────────────────
 
 export type TipoPlaca = 'auto' | 'moto';
-export const FORMATO_PLACA = 'ABC-1234 (automóvil) o AB-123C (motocicleta)';
-export const RE_PLACA_AUTO = /^[A-Z]{3}\d{4}$/;
+export const FORMATO_PLACA = 'ABC-1234 o ABC-123 (automóvil) o AB-123C (motocicleta)';
+export const RE_PLACA_AUTO = /^[A-Z]{3}\d{3,4}$/;
 export const RE_PLACA_MOTO = /^[A-Z]{2}\d{3}[A-Z]$/;
 
 /** Mayúsculas y sin separadores: "abc-1234" → "ABC1234". */

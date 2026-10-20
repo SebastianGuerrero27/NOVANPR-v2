@@ -20,6 +20,12 @@ describe('Tipificación por la placa (Tabla 6)', () => {
     expect(tipificarPlaca('PBA-1234')).toMatchObject({ categoria: 'particular', etiqueta: 'Vehículo particular', franja: 'blanco_plateado', publico: false });
   });
 
+  it('formato antiguo de 3 dígitos: provincia sí, servicio no (PXJ-970 del video tiene la franja blanca de un particular)', () => {
+    expect(tipificarPlaca('PDO-525')).toMatchObject({ categoria: 'antiguo', provincia: 'Pichincha', publico: false });
+    expect(tipificarPlaca('PXJ970')).toMatchObject({ categoria: 'antiguo', provincia: 'Pichincha' });
+    expect(tipificarPlaca('GEA123')?.categoria).toBe('antiguo');
+  });
+
   it('F inicial: Fuerzas Armadas, aunque la segunda letra sea de otro servicio', () => {
     expect(tipificarPlaca('FEA1234')).toMatchObject({ categoria: 'fuerzas_armadas', publico: true, provincia: null });
   });
@@ -30,7 +36,7 @@ describe('Tipificación por la placa (Tabla 6)', () => {
 
   it('motocicletas sin servicio inferido; lecturas sin formato ANT no se tipifican', () => {
     expect(tipificarPlaca('ab-123c')).toMatchObject({ categoria: 'motocicleta', provincia: null });
-    expect(tipificarPlaca('PSY589')).toBeNull();
+    expect(tipificarPlaca('ABC12')).toBeNull();
     expect(tipificarPlaca(null)).toBeNull();
     expect(tipificarPlaca('')).toBeNull();
   });

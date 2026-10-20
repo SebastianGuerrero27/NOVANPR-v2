@@ -277,7 +277,7 @@ describe('Cámaras · presentación y alcance del ticket', () => {
     })).toEqual({
       id: 1, nombre: 'Garita', ip: '10.0.0.5', ubicacion: 'Acceso', rtsp_url: `rtsp://admin:${MASCARA}@10.0.0.5/101`,
       rtsp_url_vista: null, tiene_credenciales: true, activa: true, estado: 'SIN_VERIFICAR', ultimo_ping: null, tiempo_respuesta_ms: null,
-      mensaje_ping: null, created_at: creada, detecciones: 2, roi: [[0, 0], [1, 0], [1, 1]], exclusiones: [], direccion: 'ingreso',
+      mensaje_ping: null, created_at: creada, detecciones: 2, roi: [[0, 0], [1, 0], [1, 1]], exclusiones: [], direccion: 'ingreso', es_video: false,
     });
   });
 

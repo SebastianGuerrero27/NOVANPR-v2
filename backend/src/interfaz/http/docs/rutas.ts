@@ -346,6 +346,19 @@ export const RUTAS: RutaDoc[] = [
     respuestas: { 201: 'Cámara registrada', 400: 'Datos inválidos' },
   },
   {
+    metodo: 'post', ruta: '/api/camaras/video-prueba', etiqueta: 'Cámaras', acceso: 'camaras:gestionar',
+    resumen: 'Cámara de prueba con un video cargado',
+    descripcion: 'El cuerpo es el archivo de video (MP4, MKV o MOV; se comprueba su firma, no la extensión) con su Content-Type, '
+      + 'y los datos van en la consulta. El servidor de medios lo publica en bucle en cam_<id>: el motor ANPR y el monitoreo en vivo '
+      + 'lo procesan como una cámara real. Solo disponible si el servidor define VIDEOS_PRUEBA_DIR (máximo VIDEOS_PRUEBA_MAX_MB, 2048 MB por omisión).',
+    consulta: {
+      nombre: { tipo: 'string', descripcion: 'Nombre de la cámara (3–100 caracteres)', ejemplo: 'Garita video 19-10' },
+      ubicacion: { tipo: 'string', descripcion: 'Ubicación (3–150 caracteres)', ejemplo: 'Entrada ECU 911 Ambato' },
+      direccion: { tipo: 'string', descripcion: 'ingreso (por omisión) o salida', ejemplo: 'ingreso' },
+    },
+    respuestas: { 201: 'Cámara de prueba creada', 400: 'Datos inválidos, tamaño excesivo o archivo que no es video', 409: 'Función deshabilitada en este servidor' },
+  },
+  {
     metodo: 'put', ruta: '/api/camaras/:id(\\d+)', etiqueta: 'Cámaras', acceso: 'camaras:gestionar',
     resumen: 'Edita una cámara',
     descripcion: 'Si cambia la URL, la conectividad vuelve a verificarse en segundo plano.',

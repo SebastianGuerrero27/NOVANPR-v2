@@ -1,4 +1,4 @@
-import { evidenciaDe, MAX_EVIDENCIA, normalizarFuente, serializarEvidencia } from '../../dominio/detecciones';
+import { esSinPlaca, evidenciaDe, MAX_EVIDENCIA, motivoRevision, normalizarFuente, serializarEvidencia } from '../../dominio/detecciones';
 
 describe('Detecciones · fuente de la detección', () => {
   it('una URL RTSP (con o sin credenciales) se guarda como «rtsp»: nunca la URL', () => {
@@ -34,5 +34,25 @@ describe('Detecciones · evidencia de la lectura', () => {
   it('una evidencia que no es un objeto o que ni recortada cabe no se guarda', () => {
     for (const mala of [null, 'texto', 5, [1, 2]]) expect(serializarEvidencia(mala)).toBeNull();
     expect(serializarEvidencia({ lectura_ocr: 'X'.repeat(MAX_EVIDENCIA) })).toBeNull();
+  });
+});
+
+describe('Detecciones · vehículo sin placa visible', () => {
+  const politica = { confianzaMinima: 0.9 } as never;
+  const paso = (evidencia: object | null, extra: object = {}) => ({
+    estado_validacion: 'pendiente_revision', estado_procesamiento: 'no_legible', validado_manualmente: false,
+    evidencia_lectura: evidencia ? serializarEvidencia(evidencia) : null, ...extra,
+  });
+
+  it('el motivo dice que no tiene placa y pide verificar con la foto', () => {
+    const p = paso({ motivo: 'vehiculo_sin_placa', tipo_vehiculo: 'motocicleta' });
+    expect(esSinPlaca(p)).toBe(true);
+    expect(motivoRevision(p, politica)).toMatch(/^Vehículo sin placa visible/);
+  });
+
+  it('una placa ilegible (con o sin evidencia) tiene su propio motivo; validado por el personal ya no', () => {
+    expect(esSinPlaca(paso(null))).toBe(false);
+    expect(motivoRevision(paso(null), politica)).toMatch(/^La placa no se pudo leer/);
+    expect(motivoRevision(paso({ motivo: 'vehiculo_sin_placa' }, { validado_manualmente: true }), politica)).toBeNull();
   });
 });

@@ -51,7 +51,7 @@ export function recortePlaca(d: Pick<Deteccion, 'imagen_placa' | 'imagen_vehicul
  * La placa tal como la captó la cámara: la foto real del recorte y, al lado (o debajo, en tamaño
  * grande), la lectura del sistema. Si el paso no tiene recorte se indica en lugar de la foto.
  */
-export const PlacaFoto: React.FC<{ d: Pick<Deteccion, 'placa' | 'imagen_placa' | 'imagen_vehiculo'>; alto?: number; grande?: boolean; onClick?: () => void }> =
+export const PlacaFoto: React.FC<{ d: Pick<Deteccion, 'placa' | 'imagen_placa' | 'imagen_vehiculo' | 'sin_placa'>; alto?: number; grande?: boolean; onClick?: () => void }> =
   ({ d, alto = 36, grande, onClick }) => {
     const [error, setError] = useState(false);
     const src = urlMedia(recortePlaca(d));
@@ -65,7 +65,7 @@ export const PlacaFoto: React.FC<{ d: Pick<Deteccion, 'placa' | 'imagen_placa' |
             ? <img src={src} alt={`Placa ${d.placa ?? 'sin lectura'}`} loading="lazy" decoding="async" onError={() => setError(true)} />
             : <ImageOff size={grande ? 22 : 14} />}
         </span>
-        <Placa valor={d.placa} grande={grande} />
+        <Placa valor={d.placa} grande={grande} sinPlaca={d.sin_placa} />
       </span>
     );
   };
@@ -105,7 +105,7 @@ export const TarjetaDeteccion: React.FC<{ d: Deteccion; onValidar?: (d: Deteccio
       </div>
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
         <div className="fila" style={{ justifyContent: 'space-between', gap: 6 }}>
-          {procesando && !d.placa ? <span className="placa vacia">Leyendo…</span> : <Placa valor={d.placa} />}
+          {procesando && !d.placa ? <span className="placa vacia">Leyendo…</span> : <Placa valor={d.placa} sinPlaca={d.sin_placa} />}
           <span className="fila nowrap" style={{ gap: 2 }}>
             <span className="texto-secundario" style={{ fontSize: 11.5 }}>{hora(d.fecha_hora_ingreso)}</span>
             {onEliminar && (
@@ -132,7 +132,9 @@ export const TarjetaDeteccion: React.FC<{ d: Deteccion; onValidar?: (d: Deteccio
               ? <>⏱ {d.restriccion_acceso === 'fuera_horario' ? 'Fuera de horario' : d.restriccion_acceso === 'no_iniciada' ? 'Permiso aún no vigente' : 'Permiso vencido'}{d.autorizado ? ` · ${d.autorizado.propietario}` : ''}</>
               : d.autorizado
                 ? <>ⓘ En padrón ({d.autorizado.propietario}) · confirme la placa</>
-                : <>ⓘ Lectura no confirmada · verifique la placa</>}
+                : d.sin_placa ? <>ⓘ Vehículo sin placa visible · verifique con la foto</>
+                  : d.estado_procesamiento === 'no_legible' ? <>ⓘ Placa no leída · verifique con la foto</>
+                    : <>ⓘ Lectura no confirmada · verifique la placa</>}
           </div>
         )}
         {alerta && (

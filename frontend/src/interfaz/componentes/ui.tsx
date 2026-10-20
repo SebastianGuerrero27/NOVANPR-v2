@@ -76,10 +76,10 @@ export const InsigniaEstado: React.FC<{ estado: EstadoValidacion; procesando?: b
  * formato se muestra tal cual. La imagen de la placa es siempre la foto real del recorte (PlacaFoto,
  * en deteccion.tsx), nunca un dibujo.
  */
-export const Placa: React.FC<{ valor?: string | null; grande?: boolean }> = ({ valor, grande }) =>
+export const Placa: React.FC<{ valor?: string | null; grande?: boolean; sinPlaca?: boolean }> = ({ valor, grande, sinPlaca }) =>
   valor
     ? <span className={`placa${grande ? ' grande' : ''}`}>{formatearPlaca(valor)}</span>
-    : <span className={`placa vacia${grande ? ' grande' : ''}`}>Sin lectura</span>;
+    : <span className={`placa vacia${grande ? ' grande' : ''}`}>{sinPlaca ? 'Sin placa' : 'Sin lectura'}</span>;
 
 /**
  * Tipificación del vehículo por su placa (particular, gobierno, uso oficial, GAD, comercial,

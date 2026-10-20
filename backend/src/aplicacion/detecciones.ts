@@ -303,9 +303,11 @@ export function casosDetecciones(d: DependenciasDetecciones) {
         placaOriginal: placa, confianza, decision, lecturaVerificador: lectura_verificador, latenciaMs: latencia_ms,
       });
 
-      // Sin lectura utilizable: queda para validación del personal (no se elimina la evidencia)
+      // Sin lectura utilizable: queda para validación del personal (no se elimina la evidencia). Se
+      // guarda lo que el motor explicó (p. ej. un vehículo sin placa visible) para mostrar el motivo
       if (!lecturaUtilizable(estado_procesamiento, placa)) {
         await d.repositorio.marcarNoLegible(id, rutaPlaca);
+        if (evidencia) await d.repositorio.guardarVeredicto(id, validez, evidencia);
         await lecturaAutomatica('pendiente_revision');
         return { message: 'Ingreso pendiente de validación manual.', deteccion: await difundir(id, 'deteccion:actualizada') };
       }

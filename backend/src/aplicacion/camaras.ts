@@ -4,6 +4,7 @@ import {
 import {
   type AlcanceTicket, type CamaraGuardada, type CamaraPublica, cambiosCamara, type DatosCamara, leerCamara, leerIdCamara,
   describirExclusiones, LARGO_MAXIMO_IP, leerExclusiones, leerIp, leerRoi, leerUrlRtsp, MASCARA, presentarCamara, type Punto, RE_RUTA_PRUEBA, RE_RUTA_VIDEO,
+  archivoDeVideo, esUrlVideo, leerVideoPrueba, urlDeVideo,
 } from '../dominio/camaras';
 import type { Validado } from '../dominio/validacion';
 
@@ -130,6 +131,8 @@ export interface PuertoServidorVideo {
   estadoRuta(ruta: string): Promise<EstadoRutaVideo | null>;
   /** Cámara registrada y habilitada a la que corresponde una ruta cam_<id> */
   camaraDeRuta(ruta: string): Promise<number | null>;
+  /** Cámara de video de prueba habilitada de esa ruta cam_<id> (la única ruta que se puede publicar) */
+  camaraVideoDeRuta(ruta: string): Promise<number | null>;
 }
 
 /** Credenciales de lectura del video: tickets de 60 s para el navegador y el token del motor. */
@@ -190,8 +193,24 @@ export interface PuertoMotorAnpr {
   urlPublica(): string;
 }
 
+/**
+ * Videos cargados para cámaras de prueba: archivos en el disco que publica el servidor de medios.
+ * La función existe solo si el despliegue la habilita (VIDEOS_PRUEBA_DIR).
+ */
+export interface PuertoVideosPrueba {
+  /** Tamaño máximo en bytes; null si la carga no está habilitada en este servidor */
+  maximoBytes(): number | null;
+  /**
+   * Guarda el contenido como archivo. Rechaza lo que no sea MP4, MKV o MOV por su firma (no por la
+   * extensión) o lo que supere el máximo, sin dejar archivos a medias.
+   */
+  guardar(contenido: AsyncIterable<Uint8Array>, maximoBytes: number): Promise<Validado<{ archivo: string; bytes: number }>>;
+  eliminar(archivo: string): Promise<void>;
+}
+
 export interface DependenciasCamaras {
   repositorio: RepositorioCamaras;
+  videos: PuertoVideosPrueba;
   custodia: PuertoCustodiaCredenciales;
   conectividad: PuertoConectividad;
   video: PuertoServidorVideo;
@@ -226,6 +245,21 @@ export function casosCamaras(d: DependenciasCamaras) {
   async function exigirRed(rtsp: string, ip: string | null): Promise<void> {
     const motivo = await d.conectividad.verificarRed(d.custodia.revelar(rtsp), ip);
     if (motivo) throw errorValidacion(motivo);
+  }
+
+  /**
+   * URL e IP con que se verifica una cámara guardada. Una de video no tiene equipo: se comprueba su
+   * ruta en el servidor de medios con las credenciales del motor (en línea = el video se publica).
+   */
+  const destinoGuardado = (c: { id: number; rtsp_url: string; ip: string }) => (esUrlVideo(c.rtsp_url)
+    ? { rtsp: d.video.urlLecturaMotor(d.video.rutaCamara(c.id)), ip: null, propio: true }
+    : { rtsp: d.custodia.revelar(c.rtsp_url), ip: c.ip, propio: false });
+
+  /** Diagnóstico de una cámara guardada (la de video apunta al servidor de medios propio: sin control de red). */
+  async function diagnosticarGuardada(c: { id: number; rtsp_url: string; ip: string }): Promise<DiagnosticoCamara> {
+    const destino = destinoGuardado(c);
+    const motivo = destino.propio ? null : await d.conectividad.verificarRed(destino.rtsp, destino.ip);
+    return motivo ? fueraDeRed(motivo) : d.conectividad.diagnosticar(destino.rtsp, destino.ip);
   }
 
   /** Resultado de una cámara guardada que quedó fuera de las redes permitidas (no se conecta). */
@@ -311,6 +345,9 @@ export function casosCamaras(d: DependenciasCamaras) {
     async editar(id: number, entrada: unknown, actor: Actor) {
       const actual = await d.repositorio.obtener(id);
       if (!actual) throw errorNoEncontrado('Cámara no encontrada.');
+      if (esUrlVideo(actual.rtsp_url)) {
+        throw errorConflicto('Una cámara de video de prueba no se edita: elimínela o deshabilítela y cargue el video otra vez.');
+      }
       const c = validar(entrada, actual);
       await exigirRed(c.rtsp, c.ip);
       if (c.rtspVista) await exigirRed(c.rtspVista, null);
@@ -381,6 +418,37 @@ export function casosCamaras(d: DependenciasCamaras) {
       await d.auditoria.operacion(actor, 'CAMARA_ELIMINADA', 'camara', id, c.nombre);
       d.eventos.emitir('camara:eliminada', { id });
       sincronizar();
+      const archivo = archivoDeVideo(c.rtsp_url);
+      if (archivo) enSegundoPlano(() => d.videos.eliminar(archivo));
+    },
+
+    /**
+     * Cámara de prueba con un video cargado (MP4, MKV o MOV): el servidor de medios lo publica en
+     * bucle en cam_<id> y desde ahí lo leen el motor y el monitoreo en vivo, como una cámara real.
+     * `bytesDeclarados` es el Content-Length: se rechaza antes de leer si supera el máximo.
+     */
+    async cargarVideo(contenido: AsyncIterable<Uint8Array>, entrada: unknown, bytesDeclarados: number | null, actor: Actor) {
+      const maximo = d.videos.maximoBytes();
+      if (maximo === null) throw errorConflicto('La carga de videos de prueba no está habilitada en este servidor (VIDEOS_PRUEBA_DIR).');
+      const datos = leerVideoPrueba(cuerpo(entrada), bytesDeclarados, maximo);
+      if (!datos.ok) throw errorValidacion(datos.error);
+      const guardado = await d.videos.guardar(contenido, maximo);
+      if (!guardado.ok) throw errorValidacion(guardado.error);
+      const { nombre, ubicacion, direccion } = datos.valor;
+      const id = await d.repositorio.crear({ nombre, ubicacion, ip: 'localhost', rtsp: urlDeVideo(guardado.valor.archivo), rtspVista: null, direccion }, actor.id);
+      await d.auditoria.operacion(actor, 'CAMARA_ALTA', 'camara', id,
+        `${nombre} · ${ubicacion} · video de prueba (${(guardado.valor.bytes / 1048576).toFixed(1)} MB)`);
+      // El servidor de medios tarda unos segundos en abrir el archivo: la primera verificación espera
+      enSegundoPlano(async () => {
+        await d.video.sincronizarRutas();
+        await new Promise(r => setTimeout(r, 4000));
+        const c = await d.repositorio.conexion(id);
+        if (c) await d.conectividad.registrar(id, (await diagnosticarGuardada(c)).rtsp, true);
+        await d.motor.sincronizar();
+      });
+      const camara = await obtener(id);
+      difundir(camara);
+      return camara;
     },
 
     /** Ping + diagnóstico RTSP de una URL que aún no se guarda (formulario). */
@@ -397,8 +465,7 @@ export function casosCamaras(d: DependenciasCamaras) {
     /** Ping ICMP (red) + diagnóstico RTSP de una cámara registrada; el resultado se guarda. */
     async diagnosticar(id: number) {
       const c = await conexion(id);
-      const motivo = await d.conectividad.verificarRed(d.custodia.revelar(c.rtsp_url), c.ip);
-      const r = motivo ? fueraDeRed(motivo) : await d.conectividad.diagnosticar(d.custodia.revelar(c.rtsp_url), c.ip);
+      const r = await diagnosticarGuardada(c);
       await d.conectividad.registrar(id, r.rtsp, true);
       return r;
     },
@@ -406,8 +473,7 @@ export function casosCamaras(d: DependenciasCamaras) {
     async diagnosticarTodas() {
       const camaras = await d.repositorio.habilitadas();
       const detalles = await Promise.all(camaras.map(async c => {
-        const motivo = await d.conectividad.verificarRed(d.custodia.revelar(c.rtsp_url), c.ip);
-        const r = motivo ? fueraDeRed(motivo) : await d.conectividad.diagnosticar(d.custodia.revelar(c.rtsp_url), c.ip);
+        const r = await diagnosticarGuardada(c);
         await d.conectividad.registrar(c.id, r.rtsp, true);
         return { id: c.id, nombre: c.nombre, ...r };
       }));

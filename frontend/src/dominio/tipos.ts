@@ -38,6 +38,8 @@ export interface Deteccion {
   lectura_valida?: boolean | null;
   /** Por qué un paso quedó pendiente (lectura no confirmada, confianza baja o vehículo distinto) */
   motivo_revision?: string | null;
+  /** Vehículo sin placa visible registrado por el motor: la evidencia es la foto */
+  sin_placa?: boolean;
   validacion: { usuario: { id: number; nombre: string; email: string } | null; fecha: string } | null;
 }
 
@@ -106,6 +108,8 @@ export interface Camara {
   roi: [number, number][] | null;
   /** Zonas de exclusión (polígonos normalizados): ahí no cuenta el movimiento ni se buscan placas */
   exclusiones?: [number, number][][];
+  /** Cámara de prueba alimentada por un video cargado (no hay equipo físico) */
+  es_video?: boolean;
 }
 
 export interface Conteos {

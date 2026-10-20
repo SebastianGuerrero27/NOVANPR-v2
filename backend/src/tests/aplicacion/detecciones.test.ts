@@ -178,6 +178,19 @@ describe('Detecciones · servicio ANPR', () => {
     expect(repositorio.marcarNoLegible).toHaveBeenCalledWith(15, 'p.jpg');
     expect(repositorio.registrarLecturaAutomatica).toHaveBeenCalledWith(15, expect.objectContaining({ decision: 'pendiente_revision' }));
     expect(repositorio.guardarDecisionAutomatica).not.toHaveBeenCalled();
+    expect(repositorio.guardarVeredicto).not.toHaveBeenCalled();
+  });
+
+  it('fase 2 de un vehículo sin placa: queda para el personal con la evidencia que explica el motivo', async () => {
+    const { casos, repositorio } = preparar();
+    await casos.completarOcr({
+      ingreso_id: 16, placa_reconocida: null, ruta_imagen_placa: 'vehiculo.jpg', estado_procesamiento: 'no_legible', lectura_valida: false,
+      evidencia_lectura: { motivo: 'vehiculo_sin_placa', tipo_vehiculo: 'automóvil', confianza_vehiculo: 0.91 },
+    });
+    expect(repositorio.marcarNoLegible).toHaveBeenCalledWith(16, 'vehiculo.jpg');
+    expect(repositorio.guardarVeredicto).toHaveBeenCalledWith(16, false,
+      '{"motivo":"vehiculo_sin_placa","tipo_vehiculo":"automóvil","confianza_vehiculo":0.91}');
+    expect(repositorio.guardarDecisionAutomatica).not.toHaveBeenCalled();
   });
 
   it('fase 2 del mismo paso ya procesado: se consolida con el registro previo', async () => {
@@ -370,7 +383,7 @@ describe('Detecciones · acciones del personal', () => {
 
   it('registro manual: valida (placa ANT, motivo), cruza con las listas y no modifica la lista blanca', async () => {
     const { casos, repositorio, auditoria } = preparar();
-    expect((await fallo(casos.registroManual({ placa: 'ABC123', motivo: 'Cámara caída' }, GUARDIA))).tipo).toBe('validacion');
+    expect((await fallo(casos.registroManual({ placa: 'ABC12', motivo: 'Cámara caída' }, GUARDIA))).tipo).toBe('validacion');
     expect((await fallo(casos.registroManual({ placa: 'ABC1234', motivo: 'no' }, GUARDIA))).tipo).toBe('validacion');
     await casos.registroManual({ placa: 'ab-123c', motivo: 'Cámara fuera de servicio' }, GUARDIA);
     expect(repositorio.crearManual).toHaveBeenCalledWith({ placa: 'AB123C', camaraId: null, tipo: null, usuarioId: GUARDIA.id },

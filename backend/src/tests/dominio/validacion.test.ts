@@ -5,6 +5,8 @@ import {
 describe('Validación · placa (ANT Ecuador)', () => {
   it.each([
     ['ABC1234', 'ABC1234', 'auto'],
+    // Formato antiguo de 3 dígitos, aún en circulación (PDO-525, PSY-589)
+    ['PDO-525', 'PDO525', 'auto'],
     ['abc-1234', 'ABC1234', 'auto'],
     [' pba 1234 ', 'PBA1234', 'auto'],
     ['AB123C', 'AB123C', 'moto'],
@@ -13,7 +15,7 @@ describe('Validación · placa (ANT Ecuador)', () => {
     expect(validarPlaca(entrada)).toEqual({ ok: true, valor: { placa, tipo } });
   });
 
-  it.each(['', 'ABC123', 'AB1234', 'ABCD1234', 'ABC12345', '1234ABC', 'A1B2C3D', 'ABC-12A4', 'AB12CD'])('rechaza %p', entrada => {
+  it.each(['', 'ABC12', 'AB1234', 'ABCD1234', 'ABC12345', '1234ABC', 'A1B2C3D', 'ABC-12A4', 'AB12CD'])('rechaza %p', entrada => {
     expect(validarPlaca(entrada).ok).toBe(false);
   });
 

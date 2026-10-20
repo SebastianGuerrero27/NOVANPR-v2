@@ -170,7 +170,7 @@ const Detecciones: React.FC = () => {
                   <tr key={d.id} className={`clic${d.estado_validacion === 'autorizado' ? ' fila-autorizado' : d.estado_validacion === 'alerta' ? ' fila-alerta' : ''}`} onClick={() => navigate(`/detecciones/${d.id}`)}>
                     <td onClick={e => { e.stopPropagation(); if (d.imagen_placa || d.imagen_vehiculo) setZoom(d); }} className="miniatura-zoom" title="Ampliar evidencia">
                       <ImagenEvidencia ruta={d.imagen_placa || d.imagen_vehiculo} alt="" alto={40} ajuste="contain" fondoOscuro /></td>
-                    <td className="nowrap"><Placa valor={d.placa} /> <MarcaEstado d={d} />{d.tipo_movimiento === 'salida' && <span className="marca-estado salida">SALIDA</span>}</td>
+                    <td className="nowrap"><Placa valor={d.placa} sinPlaca={d.sin_placa} /> <MarcaEstado d={d} />{d.tipo_movimiento === 'salida' && <span className="marca-estado salida">SALIDA</span>}</td>
                     <td><InsigniaTipificacion placa={d.placa} provincia /></td>
                     <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 600 }}>{hora(d.fecha_hora_ingreso)}</strong><span className="secundario">{fecha(d.fecha_hora_ingreso)}</span></td>
                     <td><InsigniaEstado estado={d.estado_validacion} procesando={d.estado_procesamiento === 'pendiente_ocr'} /></td>

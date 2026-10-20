@@ -597,7 +597,10 @@ a.kpi:hover, button.kpi:hover { border-color: var(--kpi-color, var(--border-stro
 .tipificacion.comercial { --franja: #f97316; }
 .tipificacion.particular { --franja: #cbd5e1; }
 .tipificacion.fuerzas_armadas { --franja: #4b5563; }
-.tipificacion.motocicleta::before { background: var(--surface-3); }
+.tipificacion.motocicleta::before, .tipificacion.antiguo::before { background: var(--surface-3); }
+/* Progreso de una carga (video de prueba) */
+.barra-progreso { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.barra-progreso > span { display: block; height: 100%; background: var(--pendiente); transition: width 0.2s; }
 
 /* Botones */
 .btn {

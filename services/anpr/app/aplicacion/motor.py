@@ -31,11 +31,19 @@ import numpy as np
 
 from app.aplicacion.detector import _ESTADOS_FINALES, compute_crop_sharpness
 from app.dominio.latencia import Cronometros, VentanaDescartes, VentanaLatencia
+from app.aplicacion.paso_sin_placa import (
+    MOTIVO_PLACA_NO_LEIDA,
+    MOTIVO_SIN_PLACA,
+    EventoMovimiento,
+    ParametrosSinPlaca,
+    VigilanteSinPlaca,
+)
 from app.aplicacion.verificacion_placa import (
     MIN_CARACTERES,
     analizar_caracteres,
     cuadrilatero_placa,
     evaluar_lectura,
+    punto_permitido,
     recorte_con_margen,
     toca_borde_lateral,
 )
@@ -64,6 +72,8 @@ ENFRIAMIENTO_OCR_S = 0.25
 # Valor de `fuente` que se envía al backend: el tipo de entrada, nunca la URL (lleva credenciales);
 # la cámara de origen va en camara_id
 FUENTE_RTSP = "rtsp"
+#: Ids de los pasos sin placa: lejos de los de las pistas del seguimiento (contador del proceso)
+_BASE_PISTA_SIN_PLACA = 10_000_000
 # Capturas de un mismo track: si la foto elegida resulta ilegible, el selector elige otro cuadro
 # del mismo paso en lugar de perder el vehículo (hasta este número de intentos)
 MAX_INTENTOS_CAPTURA = 3
@@ -113,6 +123,15 @@ class ConfigMotor:
     espera_vehiculo_s: float = 5.0
     #: Confianza mínima del detector para registrar un paso (PLATE_REGISTRATION_MIN_CONFIDENCE)
     confianza_minima_registro: float = 0.23
+    #: Vehículos sin placa visible: el paso se registra con su foto (app/aplicacion/paso_sin_placa.py)
+    sin_placa_activo: bool = True
+    sin_placa: ParametrosSinPlaca = field(default_factory=ParametrosSinPlaca)
+    #: Espera tras el evento para que el flujo de placas termine, y tope si quedan pistas sin resolver
+    espera_sin_placa_s: float = 5.0
+    espera_sin_placa_max_s: float = 20.0
+    #: El detector de vehículos (COCO) confirma el paso: confianza y alto mínimo (fracción del cuadro)
+    confianza_vehiculo_min: float = 0.40
+    alto_vehiculo_min: float = 0.12
 
 
 @dataclass
@@ -136,6 +155,8 @@ class DependenciasMotor:
     #: Métricas Prometheus (update_fps, record_detection…)
     metricas: Any
     logger: Any
+    #: Detector de vehículos COCO para los pasos sin placa: función cuadro -> [(tipo, confianza, caja)], o None
+    detector_vehiculos: Callable[[], Any] = lambda: None
 
 
 def nitidez_recorte(frame: np.ndarray, plate_bbox: list[int]) -> Optional[float]:
@@ -234,6 +255,11 @@ class MotorAnpr:
         #: Texto crudo de las lecturas rápidas de cada pista (otros cuadros), antes de interpretar
         #: confusiones: evidencia de que un carácter se leyó tal cual. (lecturas, hora de la última)
         self._crudos_rapidos: dict[int, tuple[list[str], float]] = {}
+        #: Vehículos sin placa: eventos de movimiento de la zona y hora del último paso registrado por el
+        #: flujo de placas (si registró durante el evento, el paso ya tiene su evidencia)
+        self._vigilante = VigilanteSinPlaca(config.sin_placa)
+        self._ultimo_ingreso = 0.0
+        self._pasos_sin_placa = 0
 
         # Cuadro compartido entre el productor y el consumidor: un solo lugar (el más reciente), con
         # su hora de captura; los intermedios que no alcanzan a analizarse se descartan y se cuentan
@@ -497,6 +523,9 @@ class MotorAnpr:
 
                 # 3. Calidad del cuadro y disparo de la captura fotográfica
                 self._evaluar_capturas(selector, rois, frame, idx)
+
+                # 4. Vehículos sin placa visible: movimiento en la zona sin un paso registrado
+                self._vigilar_sin_placa(pipeline, rois, frame, hora)
             except Exception as e:
                 self._log.error("Error en hilo de detección desacoplado: %s", e)
                 self._m.record_detection_error("deteccion")
@@ -706,6 +735,7 @@ class MotorAnpr:
                     self._placa_de_pista.clear()
                     self._pistas_activas = set()
                     self._crudos_rapidos.clear()
+                self._vigilante.reiniciar()
                 self._ultimo_seq_publicado = None
                 if self._pipeline:
                     self._pipeline.clear_all_tracks()
@@ -801,6 +831,127 @@ class MotorAnpr:
             self._capturas_por_track.pop(tracking_id, None)
         if self._pipeline:
             self._pipeline.update_track_plate(tracking_id, "", 0.0, "leida")
+
+    # ─── Vehículos sin placa visible ────────────────────────────────────────
+
+    def _vigilar_sin_placa(self, pipeline: Any, rois: list, frame: np.ndarray, hora: float) -> None:
+        """Alimenta el vigilante con el movimiento de la zona; un evento cerrado se revisa aparte."""
+        if not self._config.sin_placa_activo:
+            return
+        mov = pipeline.ultimo_movimiento() if hasattr(pipeline, "ultimo_movimiento") else None
+        if mov is None:
+            return
+        placa_vista = any(getattr(r, "confidence", 0.0) >= self._config.confianza_minima_registro for r in rois)
+        evento = self._vigilante.alimentar(hora, mov.fraccion, frame, placa_vista)
+        if evento is not None:
+            self._ejecutor_reevaluacion.submit(self._evaluar_sin_placa, evento, self.camara_id)
+
+    def _evaluar_sin_placa(self, evento: EventoMovimiento, camara: int) -> None:
+        """
+        Tras el evento espera a que el flujo de placas termine. Si no registró el paso y el detector de
+        vehículos confirma uno dentro de la zona, se registra con su foto, pendiente de verificación:
+        una persona u otro objeto que se mueve no se registra.
+        """
+        try:
+            limite = evento.fin + self._config.espera_sin_placa_max_s
+            time.sleep(max(0.0, evento.fin + self._config.espera_sin_placa_s - time.time()))
+            while True:
+                with self._candado:
+                    registrado = self._ultimo_ingreso >= evento.inicio - 2.0
+                    pendientes = self._pistas_activas - set(self._pistas_resueltas)
+                if registrado:
+                    self._log.info("[SIN PLACA] Evento de %.1f s: el flujo de placas ya registró el paso.", evento.duracion_s)
+                    return
+                if not pendientes or time.time() >= limite:
+                    break
+                time.sleep(1.0)
+            detectar = self._dep.detector_vehiculos()
+            if camara != self.camara_id or detectar is None:
+                return
+            vehiculo = self._vehiculo_en_zona(detectar, evento)
+            if vehiculo is None:
+                self._log.info("[SIN PLACA] Movimiento de %.1f s sin vehículo en la zona (persona u otro objeto): no se registra.",
+                               evento.duracion_s)
+                self._m.record_detection("movimiento_sin_vehiculo", str(camara))
+                return
+            self._registrar_sin_placa(evento, vehiculo, camara)
+        except Exception as e:
+            self._log.error("Error al revisar un paso sin placa: %s", e)
+            self._m.record_detection_error("sin_placa")
+
+    def _vehiculo_en_zona(self, detectar: Callable[[np.ndarray], list], evento: EventoMovimiento) -> Optional[tuple]:
+        """El vehículo más grande de los cuadros del evento cuyo punto de apoyo (centro inferior de la
+        caja) cae en la zona de interés y fuera de las exclusiones: (área, tipo, confianza, caja, cuadro)."""
+        roi = self._pipeline.roi if self._pipeline else None
+        exclusiones = self._pipeline.exclusiones if self._pipeline else []
+        mejor = None
+        for _, _, cuadro in evento.cuadros:
+            alto, ancho = cuadro.shape[:2]
+            roi_px = np.array([[x * ancho, y * alto] for x, y in roi], np.float32) if roi else None
+            excl_px = [np.array([[x * ancho, y * alto] for x, y in z], np.float32) for z in exclusiones]
+            for tipo, conf, caja in detectar(cuadro):
+                x1, y1, x2, y2 = caja
+                if conf < self._config.confianza_vehiculo_min or (y2 - y1) < self._config.alto_vehiculo_min * alto:
+                    continue
+                if not punto_permitido((x1 + x2) / 2, min(y2, alto - 1), roi_px, excl_px):
+                    continue
+                area = (x2 - x1) * (y2 - y1)
+                if mejor is None or area > mejor[0]:
+                    mejor = (area, tipo, conf, caja, cuadro)
+        return mejor
+
+    def _registrar_sin_placa(self, evento: EventoMovimiento, vehiculo: tuple, camara: int) -> None:
+        """Foto del cuadro y del vehículo, y registro en dos fases sin placa (queda pendiente de revisión)."""
+        _, tipo, conf, caja, cuadro = vehiculo
+        with self._candado:
+            self._pasos_sin_placa += 1
+            tracking_id = _BASE_PISTA_SIN_PLACA + self._pasos_sin_placa
+        sello = time.strftime("%Y%m%d_%H%M%S")
+        foto = f"ingreso_{sello}_sinplaca_{tracking_id}.jpg"
+        foto_vehiculo = f"vehiculo_{sello}_{tracking_id}.jpg"
+        self._dep.guardar_imagen(os.path.join(self._dir_media, foto), cuadro)
+        alto, ancho = cuadro.shape[:2]
+        x1, y1, x2, y2 = (int(v) for v in caja)
+        recorte = cuadro[max(0, y1):min(alto, y2), max(0, x1):min(ancho, x2)]
+        if recorte.size:
+            self._dep.guardar_imagen(os.path.join(self._dir_media, foto_vehiculo), recorte)
+        else:
+            foto_vehiculo = foto
+        motivo = MOTIVO_PLACA_NO_LEIDA if evento.placa_vista else MOTIVO_SIN_PLACA
+        res = self._enviar("/api/detecciones/ingreso", {
+            "tracking_id": tracking_id,
+            "placa": None,
+            "ruta_imagen_ingreso": f"/media/{foto}",
+            "confianza_deteccion": round(float(conf), 3),
+            "fuente": FUENTE_RTSP,
+            "camara_id": camara,
+            "metadatos": {
+                "luminancia_media": round(float(cv2.cvtColor(cuadro, cv2.COLOR_BGR2GRAY).mean()), 1),
+                "modelo_detector": self.info_modelos().get("detector"),
+                "vehiculo": {"tipo": tipo},
+            },
+        })
+        datos = res.json() if res is not None and res.status_code in (200, 201) else {}
+        ingreso_id = datos.get("ingreso_id")
+        if not ingreso_id or datos.get("descartado") or datos.get("deduplicado"):
+            if not ingreso_id and not datos.get("descartado"):
+                self._log.error("El backend no aceptó el paso sin placa: %s", getattr(res, "text", res))
+                self._m.record_detection_error("backend")
+            return
+        self._enviar("/api/detecciones/completar-ocr", {
+            "ingreso_id": ingreso_id,
+            "placa_reconocida": None,
+            "confianza_ocr": None,
+            "ruta_imagen_placa": f"/media/{foto_vehiculo}",
+            "estado_procesamiento": "no_legible",
+            "lectura_valida": False,
+            "evidencia_lectura": {
+                "motivo": motivo, "tipo_vehiculo": tipo, "confianza_vehiculo": round(float(conf), 3),
+                "movimiento_max": round(evento.fraccion_max, 3), "duracion_s": round(evento.duracion_s, 1),
+            },
+        })
+        self._m.record_detection("sin_placa", str(camara))
+        self._log.info("PASO SIN PLACA REGISTRADO | Ingreso ID #%d | %s (%.0f%%) | %s", ingreso_id, tipo, conf * 100, motivo)
 
     def _enviar(self, ruta: str, cuerpo: dict) -> Any:
         """POST al backend con reintentos ante fallos transitorios (red, 5xx, 429). Es seguro: el
@@ -1402,6 +1553,8 @@ class MotorAnpr:
             )
             return False
         if datos.get("deduplicado", False):
+            with self._candado:
+                self._ultimo_ingreso = time.time()
             self._log.info("[BACKEND DEDUPLICADO] Ingreso ID #%d consolidado para Track #%d | Placa: %s", ingreso_id, tracking_id, placa)
             # Las fotos de este intento no las referencia ninguna fila
             for nombre in {foto, foto_placa}:
@@ -1413,6 +1566,8 @@ class MotorAnpr:
             return
         if not ingreso_id:
             return
+        with self._candado:
+            self._ultimo_ingreso = time.time()
         self._resolver_pista(tracking_id, limpia)
 
         # Latencia de principio a fin: desde que el vehículo apareció (nacimiento del track) hasta

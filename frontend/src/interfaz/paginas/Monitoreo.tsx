@@ -285,7 +285,7 @@ const Monitoreo: React.FC = () => {
             {!ultima ? <Vacio titulo="Aún no hay pasos registrados" texto="Las detecciones aparecerán aquí en cuanto el motor ANPR registre un vehículo." /> : (
               <div className="fila" style={{ alignItems: 'stretch', gap: 16, flexWrap: 'wrap' }}>
                 <div className="pila" style={{ gap: 10, minWidth: 220 }}>
-                  <Placa valor={ultima.placa} grande />
+                  <Placa valor={ultima.placa} grande sinPlaca={ultima.sin_placa} />
                   <InsigniaTipificacion placa={ultima.placa} provincia />
                   <InsigniaEstado estado={ultima.estado_validacion} />
                   <span className="texto-secundario">{ultima.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {fechaHora(ultima.fecha_hora_ingreso)} · {relativo(ultima.fecha_hora_ingreso)}</span>
@@ -376,7 +376,7 @@ const TablaIngresosRecientes: React.FC<{ items: Deteccion[]; onValidar: (d: Dete
                 return (
                   <tr key={d.id} className={`clic${aut ? ' fila-autorizado' : ale ? ' fila-alerta' : ''}`} onClick={() => navigate(`/detecciones/${d.id}`)}>
                     <td className="nowrap">
-                      <span className="mono" style={{ fontWeight: 900, letterSpacing: 1.5, fontSize: 14, color: aut ? 'var(--autorizado)' : ale ? 'var(--alerta)' : 'var(--pendiente)' }}>{d.placa ? formatearPlaca(d.placa) : 'SIN LECTURA'}</span>
+                      <span className="mono" style={{ fontWeight: 900, letterSpacing: 1.5, fontSize: 14, color: aut ? 'var(--autorizado)' : ale ? 'var(--alerta)' : 'var(--pendiente)' }}>{d.placa ? formatearPlaca(d.placa) : d.sin_placa ? 'SIN PLACA' : 'SIN LECTURA'}</span>
                       {aut && <span className="marca-estado ok">OK</span>}
                       {ale && <span className="marca-estado alerta">ALERTA</span>}
                     </td>

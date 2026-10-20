@@ -69,8 +69,16 @@ export function tipoPorFormato(placa: string): string | null {
 export interface EvidenciaLectura {
   valido?: boolean;
   motivos?: string[];
+  /** 'vehiculo_sin_placa': el motor vio un vehículo en la zona de interés sin placa que leer */
+  motivo?: string;
   [campo: string]: unknown;
 }
+
+/** Motivo que envía el motor cuando registra un vehículo sin placa visible (solo su foto como evidencia). */
+export const MOTIVO_SIN_PLACA = 'vehiculo_sin_placa';
+
+/** El paso es un vehículo sin placa visible registrado por el motor (evidencia: la foto). */
+export const esSinPlaca = (p: { evidencia_lectura?: string | null }) => evidenciaDe(p)?.motivo === MOTIVO_SIN_PLACA;
 
 /** Campos del paso guardado que explican su estado (columnas de DeteccionVehiculo y del permiso). */
 export interface PasoGuardado {
@@ -137,6 +145,11 @@ export function motivoRestriccion(p: PasoGuardado): string | null {
  */
 export function motivoRevision(p: PasoGuardado, politica: PoliticaAutorizacion): string | null {
   if (p.estado_validacion === 'no_reconocido' && !p.validado_manualmente) return motivoRestriccion(p);
+  if (p.estado_procesamiento === 'no_legible' && p.estado_validacion === 'pendiente_revision' && !p.validado_manualmente) {
+    return esSinPlaca(p)
+      ? 'Vehículo sin placa visible: verifique el ingreso con la foto del vehículo y registre la placa si la tiene.'
+      : 'La placa no se pudo leer: verifique el ingreso con la foto.';
+  }
   if (p.estado_validacion !== 'pendiente_revision' || p.validado_manualmente || p.estado_procesamiento !== 'procesado') return null;
   const enPadron = Boolean(p.vehiculo_autorizado_id);
   const ev = evidenciaDe(p);

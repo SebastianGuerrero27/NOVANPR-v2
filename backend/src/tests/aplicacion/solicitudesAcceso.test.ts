@@ -80,7 +80,7 @@ describe('Casos de uso · solicitudes de acceso', () => {
   });
 
   it.each([
-    ['placa fuera del formato', { placa: 'ABC123' }],
+    ['placa fuera del formato', { placa: 'ABC12' }],
     ['responsable con números', { propietario: 'Ana 23' }],
     ['motivo corto', { motivo: 'no' }],
     ['motivo largo', { motivo: 'x'.repeat(301) }],

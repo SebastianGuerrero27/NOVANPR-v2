@@ -6,7 +6,11 @@ import type { AlcanceTicket } from '../../dominio/camaras';
 const TICKET = 'eyJ1IjoxLCJhIjoic3RyZWFtIn0.firma';
 
 function preparar() {
-  const video = { camaraDeRuta: jest.fn(async (ruta: string) => (ruta === 'cam_3' ? 3 : null)) };
+  const video = {
+    camaraDeRuta: jest.fn(async (ruta: string) => (ruta === 'cam_3' || ruta === 'cam_7' ? Number(ruta.slice(4)) : null)),
+    // cam_7: cámara de video de prueba (la única ruta que FFmpeg puede publicar)
+    camaraVideoDeRuta: jest.fn(async (ruta: string) => (ruta === 'cam_7' ? 7 : null)),
+  };
   const tickets = {
     valido: jest.fn((ticket: string | null | undefined, alcance: AlcanceTicket) => ticket === TICKET && alcance === 'stream'),
     esMotor: jest.fn((usuario: string, clave: string) => usuario === 'anpr' && clave === 'token-servicio'),
@@ -50,5 +54,14 @@ describe('Casos de uso · autorización de MediaMTX', () => {
     }
     // Se deniega antes de mirar el ticket
     expect(tickets.valido).not.toHaveBeenCalled();
+  });
+
+  it('publicar: solo FFmpeg con el usuario del motor por RTSP y en la ruta de una cámara de video', async () => {
+    const { casos } = preparar();
+    const publicar = (s: Partial<SolicitudLectura>) => lectura({ action: 'publish', protocol: 'rtsp', user: 'anpr', password: 'token-servicio', query: '', path: 'cam_7', ...s });
+    expect(await casos.autorizarLectura(publicar({}))).toBe(true);
+    expect(await casos.autorizarLectura(publicar({ path: 'cam_3' }))).toBe(false);
+    expect(await casos.autorizarLectura(publicar({ password: 'otra' }))).toBe(false);
+    expect(await casos.autorizarLectura(publicar({ protocol: 'webrtc' }))).toBe(false);
   });
 });

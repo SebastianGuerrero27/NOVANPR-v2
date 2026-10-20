@@ -140,7 +140,8 @@ services:
           memory: 256m
 
   mediamtx:
-    image: bluenviron/mediamtx:1.21.1
+    # Variante con FFmpeg: publica en bucle los videos de las cámaras de prueba (Cámaras › Cargar video)
+    image: bluenviron/mediamtx:1.21.1-ffmpeg
     container_name: anpr-mediamtx
     environment:
       # IP del equipo (host) que el navegador usa para WebRTC; agregar la IP de la LAN para
@@ -156,6 +157,8 @@ services:
       # La API (9997) no se publica: solo la usa el backend dentro de la red de Docker
     volumes:
       - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      # Videos cargados para cámaras de prueba (los escribe el backend; aquí solo se leen)
+      - ./services/anpr/media/videos_prueba:/videos:ro
     restart: always
     # La imagen no trae shell ni utilidades para un healthcheck; el backend sincroniza las rutas de
     # las cámaras por su API cada minuto (las vuelve a crear si MediaMTX se reinicia)
@@ -198,6 +201,9 @@ services:
       - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-ecu911.gob.ec}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - MEDIA_DIR=/app/media
+      # Cámaras de prueba con un video cargado (vacío = función deshabilitada, p. ej. en producción)
+      - VIDEOS_PRUEBA_DIR=/app/media/videos_prueba
+      - VIDEOS_PRUEBA_MAX_MB=${VIDEOS_PRUEBA_MAX_MB:-2048}
       - ANPR_SERVICE_URL=http://anpr:8000
       - ANPR_PUBLIC_URL=${ANPR_PUBLIC_URL:-http://localhost:8000}
       - MEDIAMTX_API_URL=http://mediamtx:9997

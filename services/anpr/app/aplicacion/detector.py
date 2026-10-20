@@ -581,6 +581,8 @@ class DetectionPipeline:
         self._min_hits = 1
         self._detecciones_bajas_pendientes: list[tuple[list[float], float]] = []
         self._inference_count = 0
+        #: Último análisis de movimiento de la zona (lo usa el vigilante de vehículos sin placa)
+        self._ultimo_movimiento: Optional[Movimiento] = None
 
         # 2. Buffer de Overlays Visuales y Registro de Placas por Track
         self._overlays_lock = threading.Lock()
@@ -710,6 +712,10 @@ class DetectionPipeline:
         personas, sombras o cambios de iluminación.
         """
         return self._zona_movimiento[fuente]
+
+    def ultimo_movimiento(self) -> Optional[Movimiento]:
+        """Movimiento de la zona de interés en el último cuadro analizado (None antes del primero)."""
+        return self._ultimo_movimiento
 
     def inferencia_omitida(self, fuente: str = "rtsp") -> bool:
         """True si en el último cuadro de la fuente la compuerta de movimiento omitió el detector."""
@@ -912,6 +918,7 @@ class DetectionPipeline:
         #    inferencia de control. Las pistas y su dibujo se reconstruyen en cada cuadro, de
         #    modo que una lectura OCR o una decisión del backend se ven al instante.
         mov = self._movimiento["rtsp"].analizar(frame, self._roi_norm, self._exclusiones_norm)
+        self._ultimo_movimiento = mov
         self.tiempos.registrar("movimiento", time.perf_counter() - t0)
         if self._pasar_compuerta("rtsp", mov, self._trackers):
             self._actualizar_pistas(frame, mov)
