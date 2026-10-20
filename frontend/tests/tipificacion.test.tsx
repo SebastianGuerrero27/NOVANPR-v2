@@ -20,9 +20,9 @@ describe('Tipificación por la placa (Tabla 6)', () => {
     expect(tipificarPlaca('PBA-1234')).toMatchObject({ categoria: 'particular', etiqueta: 'Vehículo particular', franja: 'blanco_plateado', publico: false });
   });
 
-  it('formato antiguo de 3 dígitos: provincia sí, servicio no (PXJ-970 del video tiene la franja blanca de un particular)', () => {
-    expect(tipificarPlaca('PDO-525')).toMatchObject({ categoria: 'antiguo', provincia: 'Pichincha', publico: false });
-    expect(tipificarPlaca('PXJ970')).toMatchObject({ categoria: 'antiguo', provincia: 'Pichincha' });
+  it('formato antiguo de 3 dígitos: provincia sí, servicio no (PXL-512 del video tiene la franja blanca de un particular)', () => {
+    expect(tipificarPlaca('PDO-418')).toMatchObject({ categoria: 'antiguo', provincia: 'Pichincha', publico: false });
+    expect(tipificarPlaca('PXL512')).toMatchObject({ categoria: 'antiguo', provincia: 'Pichincha' });
     expect(tipificarPlaca('GEA123')?.categoria).toBe('antiguo');
   });
 

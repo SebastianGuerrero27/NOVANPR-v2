@@ -451,6 +451,9 @@ class TrackedPlateROI:
     oriented_box: list[list[int]] = field(default_factory=list)
     # True si el track se ha movido (MOG2): distingue vehículos de objetos quietos
     en_movimiento: bool = False
+    # True si en este cuadro no hubo detección y la caja es la predicción de Kalman (hasta 4 análisis,
+    # ≈ 1,3 s a 3 análisis por segundo): la pista sigue en el HUD, pero no es una vista de la placa
+    predicha: bool = False
 
 
 @dataclass
@@ -1193,6 +1196,7 @@ class DetectionPipeline:
                     quality=round(sharpness, 1),
                     oriented_box=oriented_box,
                     en_movimiento=en_movimiento,
+                    predicha=trk.time_since_update > 0,
                 )
                 tracked_rois.append(roi)
 

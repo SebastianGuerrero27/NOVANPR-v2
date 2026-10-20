@@ -18,7 +18,7 @@ decide el detector de vehículos y el umbral de movimiento (0,15) solo descarta 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -38,8 +38,12 @@ class ParametrosSinPlaca:
     cierre_s: float = 1.5
     #: Máximo del evento para revisarlo (auto 0,64–0,91; moto 0,25; persona lejos ≤ 0,07)
     fraccion_vehiculo: float = 0.15
-    #: Eventos más cortos son ruido (un reflejo, un ave)
-    duracion_min_s: float = 0.8
+    #: Eventos más cortos son ruido (un reflejo, un ave). Con pocos cuadros analizados por segundo
+    #: (≈ 3 en el portátil) una moto que cruza en 2 s deja 2 o 3 muestras: 0,8 s la dejaba fuera
+    #: (19-10-2026); decide igual el detector de vehículos
+    duracion_min_s: float = 0.3
+    #: Cuadros con movimiento que exige el evento (un solo cuadro es un destello)
+    muestras_min: int = 2
     #: Con movimiento sostenido (varios vehículos seguidos) el evento se corta y empieza otro
     duracion_max_s: float = 60.0
     #: Cuadros del evento que se guardan para el detector de vehículos y la evidencia
@@ -55,6 +59,8 @@ class EventoMovimiento:
     cuadros: list[tuple[float, float, np.ndarray]] = field(default_factory=list)
     #: Durante el evento el detector de placas vio algo con forma de placa (con confianza de registro)
     placa_vista: bool = False
+    #: Cuadros analizados con movimiento durante el evento
+    muestras: int = 1
 
     @property
     def duracion_s(self) -> float:
@@ -64,8 +70,11 @@ class EventoMovimiento:
 class VigilanteSinPlaca:
     """Máquina de estados de los eventos de movimiento en la zona de interés (un hilo la alimenta)."""
 
-    def __init__(self, parametros: Optional[ParametrosSinPlaca] = None) -> None:
+    def __init__(self, parametros: Optional[ParametrosSinPlaca] = None,
+                 al_descartar: Optional[Callable[[EventoMovimiento], None]] = None) -> None:
         self.p = parametros or ParametrosSinPlaca()
+        #: Recibe los eventos que se cerraron sin merecer revisión (diagnóstico de los umbrales)
+        self._al_descartar = al_descartar
         self._evento: Optional[EventoMovimiento] = None
         self._ultimo_movimiento = 0.0
 
@@ -99,6 +108,7 @@ class VigilanteSinPlaca:
             if fraccion >= p.fraccion_sostener:
                 self._ultimo_movimiento = hora
                 self._evento.fin = hora
+                self._evento.muestras += 1
             vencido = hora - self._evento.inicio >= p.duracion_max_s
             if hora - self._ultimo_movimiento > p.cierre_s or vencido:
                 cerrado, self._evento = self._evento, None
@@ -110,6 +120,11 @@ class VigilanteSinPlaca:
             self._evento = EventoMovimiento(inicio=hora, fin=hora, fraccion_max=fraccion, placa_vista=placa_vista)
             self._ultimo_movimiento = hora
             self._guardar(hora, fraccion, cuadro)
-        if cerrado and cerrado.fraccion_max >= p.fraccion_vehiculo and cerrado.duracion_s >= p.duracion_min_s and cerrado.cuadros:
+        if cerrado is None:
+            return None
+        if (cerrado.fraccion_max >= p.fraccion_vehiculo and cerrado.duracion_s >= p.duracion_min_s
+                and cerrado.muestras >= p.muestras_min and cerrado.cuadros):
             return cerrado
+        if self._al_descartar is not None:
+            self._al_descartar(cerrado)
         return None

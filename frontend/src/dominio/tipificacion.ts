@@ -6,7 +6,7 @@
  * gobierno que no está registrado).
  *
  * La Tabla 6 describe el formato vigente desde 2012 (tres letras y cuatro dígitos). En las placas
- * antiguas de tres dígitos la segunda letra no sigue esa tabla (en el video de la garita, PXJ-970 tiene
+ * antiguas de tres dígitos la segunda letra no sigue esa tabla (en el video de la garita, PXL-512 tiene
  * la franja blanca de un particular): se informa la provincia, no el servicio. Para las motocicletas la
  * tabla no indica el servicio y los prefijos diplomáticos no están especificados: no se infieren.
  */

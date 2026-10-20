@@ -340,11 +340,13 @@ export function casosDetecciones(d: DependenciasDetecciones) {
      * Fase 3 · reevaluación. El motor registra el paso en menos de 1 s con las evidencias que tiene;
      * cuando llegan el segundo OCR o los atributos del vehículo reenvía su veredicto y el paso se
      * decide de nuevo con las mismas reglas. Se conserva lo que decidió el personal, una alerta no
-     * se rebaja y solo se avisa si el estado cambia.
+     * se rebaja y solo se avisa si el estado cambia. También corrige el paso cuando otra pista del
+     * mismo vehículo leyó mejor la placa (con su foto: `ruta_imagen_placa`).
      */
     async reevaluar(entrada: unknown) {
       const { ingreso_id, placa_reconocida = null, confianza_ocr = null, lectura_verificador = null, lectura_valida = null,
-        evidencia_lectura = null, vehiculo = null } = cuerpo(entrada);
+        evidencia_lectura = null, vehiculo = null, ruta_imagen_placa = null } = cuerpo(entrada);
+      const rutaPlaca = typeof ruta_imagen_placa === 'string' && ruta_imagen_placa ? ruta_imagen_placa.substring(0, 255) : null;
       if (!Number.isInteger(ingreso_id)) throw errorValidacion('El ID de ingreso es obligatorio.');
       const id = ingreso_id as number;
       const actual = await d.repositorio.obtener(id);
@@ -369,7 +371,7 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       const confianza = typeof confianza_ocr === 'number' ? confianza_ocr : typeof actual.confianza_ocr === 'number' ? actual.confianza_ocr : null;
 
       const { dto, decision, permiso } = await decidirLectura(id, {
-        placa, confianza, rutaPlaca: null, validez, lecturaVerificador: lectura_verificador ?? actual.lectura_verificador ?? null,
+        placa, confianza, rutaPlaca, validez, lecturaVerificador: lectura_verificador ?? actual.lectura_verificador ?? null,
         latenciaMs: actual.latencia_ms ?? null,
       });
       const cambio = decision.estado !== actual.estado_validacion;

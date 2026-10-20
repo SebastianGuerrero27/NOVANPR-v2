@@ -31,6 +31,7 @@ import numpy as np
 
 from app.aplicacion.detector import _ESTADOS_FINALES, compute_crop_sharpness
 from app.dominio.latencia import Cronometros, VentanaDescartes, VentanaLatencia
+from app.aplicacion.consolidacion import PasoReciente, Vista, lectura_legible, lee_mejor, mismo_paso, paso_mas_cercano
 from app.aplicacion.paso_sin_placa import (
     MOTIVO_PLACA_NO_LEIDA,
     MOTIVO_SIN_PLACA,
@@ -48,7 +49,7 @@ from app.aplicacion.verificacion_placa import (
     toca_borde_lateral,
 )
 from app.dominio.credenciales import sin_credenciales
-from app.dominio.ecuador_plate_validator import formato_coherente_con_la_placa, validate_ecuadorian_plate
+from app.dominio.ecuador_plate_validator import formato_coherente_con_la_placa, formato_placa, validate_ecuadorian_plate
 from app.dominio.interpretacion_placa import caracteres_sin_lectura_directa
 from app.dominio.memoria import purgar_expirados
 from app.dominio.tasa_cuadros import TasaCuadros
@@ -74,6 +75,13 @@ ENFRIAMIENTO_OCR_S = 0.25
 FUENTE_RTSP = "rtsp"
 #: Ids de los pasos sin placa: lejos de los de las pistas del seguimiento (contador del proceso)
 _BASE_PISTA_SIN_PLACA = 10_000_000
+#: Una lectura que necesitó al menos estos caracteres inferidos por el formato (sin lectura directa)
+#: y que el segundo OCR no confirma no es una placa legible: el marco «ambacar» de un concesionario se
+#: leía Q1GGGG0 → QIG6660, 017G060 → OIT6060 y OIW-6000. En tres pasadas del video de la garita
+#: (19 y 20-10-2026) las 7 lecturas con 2 o más inferidos eran 5 de ese marco o del piso y 2 erróneas
+#: de un auto real (ION-6274 por TBN-6274); ninguna correcta. Si el paso no tiene otra lectura, lo
+#: registra el vigilante de pasos sin placa, con su foto
+_MAX_CARACTERES_INFERIDOS = 2
 # Capturas de un mismo track: si la foto elegida resulta ilegible, el selector elige otro cuadro
 # del mismo paso en lugar de perder el vehículo (hasta este número de intentos)
 MAX_INTENTOS_CAPTURA = 3
@@ -257,7 +265,15 @@ class MotorAnpr:
         self._crudos_rapidos: dict[int, tuple[list[str], float]] = {}
         #: Vehículos sin placa: eventos de movimiento de la zona y hora del último paso registrado por el
         #: flujo de placas (si registró durante el evento, el paso ya tiene su evidencia)
-        self._vigilante = VigilanteSinPlaca(config.sin_placa)
+        self._vigilante = VigilanteSinPlaca(config.sin_placa, al_descartar=self._evento_descartado)
+        #: Un vehículo, un paso (app/aplicacion/consolidacion.py): dónde se vio cada placa y los pasos
+        #: registrados recientes, para unir las pistas que el seguimiento parte en varias
+        self._vistas: dict[int, Vista] = {}
+        self._pasos_recientes: list[PasoReciente] = []
+        #: Correcciones de un paso cuyo registro seguía en curso: se envían al conocerse su ingreso
+        self._correcciones_en_espera: dict[int, dict] = {}
+        #: Ordena los envíos que reemplazan la lectura de un paso (corrección y reevaluación tardía)
+        self._candado_lectura_paso = threading.Lock()
         self._ultimo_ingreso = 0.0
         self._pasos_sin_placa = 0
 
@@ -514,6 +530,7 @@ class MotorAnpr:
                 # 1. Detección y seguimiento (actualiza los overlays del pipeline @ 512 px)
                 rois = pipeline.detect_and_track(frame, imgsz=512)
                 activos = {roi.tracking_id for roi in rois}
+                self._registrar_vistas(rois, hora)
                 self._renovar_pasos(activos)
                 self._m.update_tracking_active(len(activos))
                 self._m.record_inference("rtsp", pipeline.inferencia_omitida("rtsp"))
@@ -736,6 +753,10 @@ class MotorAnpr:
                     self._pistas_activas = set()
                     self._crudos_rapidos.clear()
                 self._vigilante.reiniciar()
+                with self._candado:
+                    self._vistas.clear()
+                    self._pasos_recientes.clear()
+                    self._correcciones_en_espera.clear()
                 self._ultimo_seq_publicado = None
                 if self._pipeline:
                     self._pipeline.clear_all_tracks()
@@ -829,8 +850,129 @@ class MotorAnpr:
             if self._placas_registradas.get(placa) == momento:
                 del self._placas_registradas[placa]
             self._capturas_por_track.pop(tracking_id, None)
+        self._olvidar_paso(tracking_id)
         if self._pipeline:
             self._pipeline.update_track_plate(tracking_id, "", 0.0, "leida")
+
+    # ─── Un vehículo, un paso ───────────────────────────────────────────────
+
+    def _en_motocicleta(self, frame: np.ndarray, caja: list[int]) -> Optional[bool]:
+        """La placa está sobre una motocicleta: alguna que detecte el detector de vehículos contiene su
+        centro (con un margen del 10 %). None sin detector de vehículos: no se decide."""
+        detectar = self._dep.detector_vehiculos()
+        if detectar is None:
+            return None
+        cx, cy = (caja[0] + caja[2]) / 2.0, (caja[1] + caja[3]) / 2.0
+        for tipo, _, (x1, y1, x2, y2) in detectar(frame):
+            mx, my = 0.1 * (x2 - x1), 0.1 * (y2 - y1)
+            if tipo == "motocicleta" and x1 - mx <= cx <= x2 + mx and y1 - my <= cy <= y2 + my:
+                return True
+        return False
+
+    def _registrar_vistas(self, rois: list, hora: float) -> None:
+        """Primera y última vez que se vio la placa de cada pista (para unir las pistas partidas). Solo
+        cuentan las detecciones: con las cajas predichas la pista vieja seguía «viva» hasta 1,3 s
+        después de perderse y se solapaba con la que la continúa (video de la garita, 20-10-2026)."""
+        with self._candado:
+            for roi in rois:
+                if getattr(roi, "predicha", False):
+                    continue
+                caja = [float(v) for v in roi.plate_bbox]
+                vista = self._vistas.get(roi.tracking_id)
+                if vista is None:
+                    self._vistas[roi.tracking_id] = Vista(hora, caja, hora, caja)
+                else:
+                    vista.ultima, vista.caja_ultima = hora, caja
+            if len(self._vistas) > 400:
+                for tid in [t for t, v in self._vistas.items() if hora - v.ultima > 120.0]:
+                    del self._vistas[tid]
+
+    def _recordar_paso(self, tracking_id: int, ingreso_id: int, camara: int, placa: str, valida: bool,
+                       ancho_placa: float, confianza: float) -> None:
+        """El registro del paso terminó (o el backend lo unió a uno existente): el paso reservado recibe
+        su ingreso y se envía la corrección que otra pista dejó mientras tanto."""
+        ahora = time.time()
+        with self._candado:
+            paso = next((p for p in self._pasos_recientes if p.tracking_id == tracking_id and not p.ingreso_id), None)
+            if paso is None:
+                paso = PasoReciente(tracking_id, ingreso_id, camara, placa, valida, ancho_placa, confianza, ahora)
+                self._pasos_recientes.append(paso)
+            paso.ingreso_id = ingreso_id
+            self._pasos_recientes = [p for p in self._pasos_recientes if ahora - p.hora <= 120.0][-50:]
+            correccion = self._correcciones_en_espera.pop(tracking_id, None)
+        if correccion is not None:
+            self._ejecutor_reevaluacion.submit(self._enviar_correccion, {**correccion, "ingreso_id": ingreso_id}, tracking_id)
+
+    def _olvidar_paso(self, tracking_id: int) -> None:
+        """El registro reservado no llegó a crearse: deja de figurar como paso reciente."""
+        with self._candado:
+            self._pasos_recientes = [p for p in self._pasos_recientes if p.tracking_id != tracking_id or p.ingreso_id]
+            perdida = self._correcciones_en_espera.pop(tracking_id, None)
+        if perdida is not None:
+            self._log.warning("[CONSOLIDADO] El registro del track #%d no se creó: se pierde la lectura %s de la pista #%s",
+                              tracking_id, perdida.get("placa_reconocida"),
+                              (perdida.get("evidencia_lectura") or {}).get("consolidada_de_pista"))
+
+    def _consolidar(self, paso: PasoReciente, tracking_id: int, frame: np.ndarray, placa: str, limpia: str, conf: float,
+                    validez: Any, evidencia: dict, caja: list[int], camara: int, caracteres: int) -> None:
+        """La pista nueva es el mismo paso que `paso`: si lee mejor (consolidacion.lee_mejor), corrige su
+        registro (placa, foto de la placa y veredicto) con una reevaluación; en ningún caso crea un
+        registro nuevo. Si el registro de `paso` sigue en curso, la corrección espera a su ingreso."""
+        ancho_placa = float(caja[2] - caja[0])
+        # Un mismo vehículo no lleva placa de auto y de moto: de cerca y en ángulo PDO-418 se leyó PD-0418E
+        legible = (lectura_legible(caracteres, len(validez.caracteres_inferidos))
+                   and formato_placa(limpia) == formato_placa(paso.placa))
+        mejora = limpia != paso.placa and lee_mejor(bool(validez.valido), ancho_placa, float(conf), legible, paso)
+        self._log.info("[CONSOLIDADO] Track #%d es el mismo paso que el %s (track #%d, %s, placa de %.0f px): %s", tracking_id,
+                       f"ingreso #{paso.ingreso_id}" if paso.ingreso_id else "registro en curso", paso.tracking_id, paso.placa,
+                       paso.ancho_placa,
+                       f"se corrige la lectura a {placa} (placa de {ancho_placa:.0f} px)" if mejora else
+                       f"se conserva la lectura registrada (ahora leyó {placa}, placa de {ancho_placa:.0f} px"
+                       f"{'' if legible else ', poco legible'})")
+        if mejora:
+            cuerpo: dict[str, Any] = {
+                "placa_reconocida": placa, "confianza_ocr": round(float(conf), 3),
+                "lectura_valida": validez.valido, "evidencia_lectura": {**evidencia, "consolidada_de_pista": tracking_id},
+            }
+            alto, ancho = frame.shape[:2]
+            x1, y1, x2, y2 = caja
+            recorte = frame[max(0, y1):min(alto, y2), max(0, x1):min(ancho, x2)]
+            if recorte.size:
+                foto = f"placa_{time.strftime('%Y%m%d_%H%M%S')}_{tracking_id}.jpg"
+                self._dep.guardar_imagen(os.path.join(self._dir_media, foto), recorte)
+                cuerpo["ruta_imagen_placa"] = f"/media/{foto}"
+            with self._candado:
+                paso.placa, paso.valida, paso.ancho_placa, paso.confianza = limpia, bool(validez.valido), ancho_placa, float(conf)
+                paso.corregida_por = tracking_id
+                self._placas_registradas[limpia] = time.time()
+                ingreso_id = paso.ingreso_id
+                if not ingreso_id:
+                    self._correcciones_en_espera[paso.tracking_id] = cuerpo
+            if ingreso_id:
+                self._ejecutor_reevaluacion.submit(self._enviar_correccion, {**cuerpo, "ingreso_id": ingreso_id}, paso.tracking_id)
+        self._m.record_detection("consolidada", str(camara))
+        self._resolver_pista(tracking_id, paso.placa)
+
+    def _enviar_correccion(self, cuerpo: dict, tracking_id: int) -> None:
+        try:
+            with self._candado_lectura_paso:
+                res = self._enviar("/api/detecciones/reevaluar", cuerpo)
+            if res is None or res.status_code >= 300:
+                self._log.error("El backend no aceptó la corrección del ingreso #%d: %s", cuerpo["ingreso_id"], getattr(res, "text", res))
+                self._m.record_detection_error("backend")
+                return
+            estado = (res.json().get("deteccion") or {}).get("estado_validacion")
+            if estado and self._pipeline:
+                self._pipeline.fijar_estado_backend(tracking_id, estado)
+        except Exception as e:
+            self._log.error("Error al corregir el ingreso #%d: %s", cuerpo.get("ingreso_id", -1), e)
+            self._m.record_detection_error("reevaluacion")
+
+    def _evento_descartado(self, evento: EventoMovimiento) -> None:
+        """Diagnóstico de los eventos que no se revisaron (calibración de los umbrales con video real)."""
+        if evento.fraccion_max >= 0.08:
+            self._log.info("[SIN PLACA] Evento no revisado: %.1f s, movimiento máximo %.2f, %d muestras",
+                           evento.duracion_s, evento.fraccion_max, evento.muestras)
 
     # ─── Vehículos sin placa visible ────────────────────────────────────────
 
@@ -1077,10 +1219,15 @@ class MotorAnpr:
                 if ver is not None and ver.within_budget:
                     crudo = getattr(ver, "raw", None)
                     placa_v = ""
+                    caja_r = pendiente.contexto.get("caja") or [0, 0, 1, 1]
+                    es_moto_r = (caja_r[2] - caja_r[0]) / max(1.0, float(caja_r[3] - caja_r[1])) <= 1.45
                     if ver.plate:
                         es_valida, formateada, _ = validate_ecuadorian_plate(ver.plate)
-                        if es_valida:
+                        if es_valida and formato_coherente_con_la_placa(formateada, es_moto_r):
                             placa_v = formateada
+                        elif es_valida:
+                            self._log.info("[VERIFICADOR] Track #%d | lectura tardía '%s' no corresponde a la forma de la placa: se conserva '%s'",
+                                           tracking_id, formateada, placa)
                     placa_final, conf_final = (placa_v, ver.confidence) if placa_v else (placa, conf)
                     limpia_v = placa_v.replace("-", "").upper()
                     validez, lecturas, coincide = self._validez(
@@ -1096,6 +1243,9 @@ class MotorAnpr:
                         with self._candado:
                             self._placas_registradas[limpia_final] = time.time()
                             self._placa_de_pista[tracking_id] = limpia_final
+                            for reciente in self._pasos_recientes:
+                                if reciente.ingreso_id == ingreso_id and not reciente.corregida_por:
+                                    reciente.placa = limpia_final
                     self._log.info("[VALIDEZ REEVALUADA] Track #%d | %s | válida=%s | lecturas=%d verificador=%s | %s",
                                    tracking_id, placa_final, validez.valido, lecturas, coincide,
                                    "; ".join(validez.motivos) or "todas las evidencias")
@@ -1110,9 +1260,17 @@ class MotorAnpr:
                     self._m.record_detection_error("vehiculo_fuera_de_tiempo")
                 except Exception as e:
                     self._log.warning("No se pudieron obtener atributos del vehículo (track #%d): %s", tracking_id, e)
-            if len(cuerpo) == 1:
-                return
-            res = self._enviar("/api/detecciones/reevaluar", cuerpo)
+            with self._candado_lectura_paso:
+                with self._candado:
+                    corregido = any(p.ingreso_id == ingreso_id and p.corregida_por for p in self._pasos_recientes)
+                if corregido:
+                    # Otra pista del mismo paso ya corrigió la lectura con una placa más cercana: la
+                    # lectura tardía de esta pista no la reemplaza (solo siguen los atributos del vehículo)
+                    for campo in ("placa_reconocida", "confianza_ocr", "lectura_verificador", "lectura_valida", "evidencia_lectura"):
+                        cuerpo.pop(campo, None)
+                if len(cuerpo) == 1:
+                    return
+                res = self._enviar("/api/detecciones/reevaluar", cuerpo)
             if res is None or res.status_code >= 300:
                 self._log.error("El backend no aceptó la reevaluación del ingreso #%d: %s", ingreso_id, getattr(res, "text", res))
                 self._m.record_detection_error("backend")
@@ -1224,7 +1382,8 @@ class MotorAnpr:
             # Fila de caracteres de la foto (E3, ≈ 5 ms): se analiza antes de esperar al verificador
             alto, ancho = frame.shape[:2]
             caja = [int(v) for v in candidato.plate_bbox]
-            es_moto = (caja[2] - caja[0]) / max(1.0, float(caja[3] - caja[1])) <= 1.45
+            aspecto = (caja[2] - caja[0]) / max(1.0, float(caja[3] - caja[1]))
+            es_moto = aspecto <= 1.45
             recorte, origen = recorte_con_margen(frame, caja)
             analisis = analizar_caracteres(recorte, min_caracteres=2 if es_moto else MIN_CARACTERES)
             previo = pipeline.mejor_analisis(tracking_id) if pipeline else None
@@ -1241,7 +1400,7 @@ class MotorAnpr:
             candidata = placa or (placa_previa if placa_previa and validate_ecuadorian_plate(placa_previa)[0] else "")
             limite_registro: Optional[float] = None
             if (presupuesto is not None and candidata and analisis.caracteres >= 3
-                    and formato_coherente_con_la_placa(candidata, es_moto)):
+                    and formato_coherente_con_la_placa(candidata, es_moto, aspecto)):
                 hora_foto = self._horas_cuadro.get(getattr(candidato, "frame_idx", -1)) or ahora
                 limite_registro = hora_foto + presupuesto - _RESERVA_REGISTRO_S
 
@@ -1260,8 +1419,11 @@ class MotorAnpr:
                     crudo_verificador = getattr(ver, "raw", None)
                 if ver.plate and ver.within_budget:
                     es_valida, formateada, _ = validate_ecuadorian_plate(ver.plate)
-                    if es_valida:
+                    if es_valida and formato_coherente_con_la_placa(formateada, es_moto):
                         placa_verificador, conf_verificador = formateada, ver.confidence
+                    elif es_valida:
+                        # P00418 → PO-0418 (formato de moto) en la placa de un auto: no reemplaza a PDO-418
+                        self._log.info("[VERIFICADOR] Track #%d | '%s' no corresponde a la forma de la placa: no se usa", tracking_id, formateada)
                 self._log.info(
                     "[VERIFICADOR %s] Track #%d | lectura '%s' (%.2f) en %.0f ms%s",
                     verificador.description, tracking_id, ver.plate or "-", ver.confidence, ver.elapsed_ms,
@@ -1326,16 +1488,31 @@ class MotorAnpr:
                 return
 
             # 3.0a Solo placas: la lectura debe corresponder a la forma de la placa (ver
-            #      formato_coherente_con_la_placa). Si no, se trata como foto ilegible: otro cuadro del
-            #      paso o, sin más intentos, se audita el descarte; no se registra un paso.
-            if not formato_coherente_con_la_placa(placa, es_moto):
+            #      formato_coherente_con_la_placa: formato de moto en un recuadro de auto, o de auto en
+            #      un recuadro casi cuadrado salvo que el verificador lea esa placa: LBK-747 de cerca y
+            #      en ángulo midió 1,09:1). Si no, se trata como foto ilegible: otro cuadro del paso
+            #      o, sin más intentos, se audita el descarte; no se registra un paso.
+            if not formato_coherente_con_la_placa(placa, es_moto, None if placa_verificador else aspecto):
                 if self._liberar_para_reintento(tracking_id) and not self._sin_reintento_posible(tracking_id):
-                    self._log.info("[SOLO PLACAS] Track #%d: '%s' tiene formato de moto en una placa de auto; se intentará con otro cuadro",
+                    self._log.info("[SOLO PLACAS] Track #%d: '%s' no corresponde a la forma de la placa (recuadro %.2f:1); se intentará con otro cuadro",
+                                   tracking_id, placa, aspecto)
+                    return
+                self._log.info("[SOLO PLACAS] Track #%d descartado: '%s' no corresponde a la forma de la placa (recuadro %.2f:1; no es una placa o falta un carácter)",
+                               tracking_id, placa, aspecto)
+                self._descartar(tracking_id, "formato_no_corresponde_a_la_placa", placa, conf, camara)
+                return
+
+            # 3.0b Una placa de moto solo está en una moto: el emblema «T5 EVO» de un auto se leyó TS-2117
+            #      y el espejo de otro, con el borde de su placa, JB-5555 (video de la garita, 20-10-2026).
+            #      Lo confirma el detector de vehículos (solo para estas lecturas, que son pocas)
+            if formato_placa(placa) == "moto" and self._en_motocicleta(frame, caja) is False:
+                if self._liberar_para_reintento(tracking_id) and not self._sin_reintento_posible(tracking_id):
+                    self._log.info("[SOLO PLACAS] Track #%d: '%s' tiene formato de moto y no está sobre una moto; se intentará con otro cuadro",
                                    tracking_id, placa)
                     return
-                self._log.info("[SOLO PLACAS] Track #%d descartado: '%s' tiene formato de moto en una placa de auto (no es una placa o falta un carácter)",
+                self._log.info("[SOLO PLACAS] Track #%d descartado: '%s' tiene formato de moto y no está sobre una moto",
                                tracking_id, placa)
-                self._descartar(tracking_id, "formato_no_corresponde_a_la_placa", placa, conf, camara)
+                self._descartar(tracking_id, "placa_de_moto_sin_moto", placa, conf, camara)
                 return
 
             # 3.0 Validez de la lectura (evidencias independientes, ver verificacion_placa.py y
@@ -1353,6 +1530,17 @@ class MotorAnpr:
                 tracking_id, placa, validez.valido, analisis.caracteres, lecturas,
                 verificador_coincide, "; ".join(validez.motivos) or "todas las evidencias",
             )
+
+            # Compuerta "lectura inventada": casi toda la placa salió del formato, no de lo que se leyó
+            if len(validez.caracteres_inferidos) >= _MAX_CARACTERES_INFERIDOS and not verificador_coincide:
+                if self._liberar_para_reintento(tracking_id) and not self._sin_reintento_posible(tracking_id):
+                    self._log.info("[VALIDEZ] Track #%d: '%s' necesitó %d caracteres inferidos; se intentará con otro cuadro",
+                                   tracking_id, placa, len(validez.caracteres_inferidos))
+                    return
+                self._log.info("[VALIDEZ] Track #%d descartado: '%s' necesitó %d caracteres inferidos (no es una placa legible)",
+                               tracking_id, placa, len(validez.caracteres_inferidos))
+                self._descartar(tracking_id, "lectura_inferida", placa, conf, camara)
+                return
 
             # Compuerta "no es placa": sin fila de caracteres y sin ninguna confirmación (rótulos,
             # rejillas, franja "ECUADOR"…). Se libera el track para que un cuadro posterior lo intente.
@@ -1381,6 +1569,21 @@ class MotorAnpr:
             if verificador_pendiente:
                 evidencia["segundo_ocr_pendiente"] = True
 
+            # 3.1a Un vehículo, un paso: una pista que continúa a otra ya registrada (o con una placa casi
+            #      igual) corrige ese registro si lee mejor, en lugar de crear otro
+            with self._candado:
+                paso = mismo_paso(tracking_id, limpia, camara, time.time(), self._vistas, self._pasos_recientes, float(ancho))
+            if paso is not None:
+                self._consolidar(paso, tracking_id, frame, placa, limpia, conf, validez, evidencia, caja, camara, analisis.caracteres)
+                return
+            with self._candado:
+                cercano = paso_mas_cercano(tracking_id, camara, time.time(), self._vistas, self._pasos_recientes)
+            if cercano is not None:
+                previo, hueco, distancia, proporcion = cercano
+                self._log.info("[CONSOLIDADO] Track #%d (%s) es otro paso: el más reciente (track #%d, %s) dista %.1f s y %.0f px"
+                               " (placa %.2f veces la anterior)", tracking_id, placa, previo.tracking_id, previo.placa,
+                               hueco, distancia, proporcion)
+
             # 3.1 Anti-duplicado de la placa confirmada entre fases
             momento = time.time()
             with self._candado:
@@ -1388,6 +1591,10 @@ class MotorAnpr:
                 if hace is None:
                     self._placas_registradas[limpia] = momento
                     self._capturas_por_track[tracking_id] = momento
+                    # El paso queda reservado desde ya: otra pista del mismo vehículo que llegue mientras
+                    # el registro sigue en curso (2–3 s en el portátil) se consolida con él
+                    self._pasos_recientes.append(PasoReciente(tracking_id, 0, camara, limpia, bool(validez.valido),
+                                                              float(caja[2] - caja[0]), float(conf), momento))
                     # Purga de los tres registros en memoria (operación 24/7 sin crecimiento)
                     horizonte = PLATE_DEBOUNCE_SECONDS * 2
                     purgar_expirados(self._placas_registradas, momento, horizonte)
@@ -1447,6 +1654,7 @@ class MotorAnpr:
                 candidato.confidence * 100,
                 minima * 100,
             )
+            self._olvidar_paso(tracking_id)
             self._descartar(
                 tracking_id, "confianza_deteccion_baja", placa, candidato.confidence, camara
             )
@@ -1544,6 +1752,7 @@ class MotorAnpr:
                     os.remove(os.path.join(self._dir_media, nombre))
                 except OSError:
                     pass
+            self._olvidar_paso(tracking_id)
             self._resolver_pista(tracking_id, limpia)
             self._m.record_detection("descartada", str(camara))
             self._log.info(
@@ -1555,6 +1764,11 @@ class MotorAnpr:
         if datos.get("deduplicado", False):
             with self._candado:
                 self._ultimo_ingreso = time.time()
+            if ingreso_id:
+                self._recordar_paso(tracking_id, ingreso_id, camara, limpia, bool(validez.valido),
+                                    float(caja[2] - caja[0]) if caja and len(caja) == 4 else 0.0, float(conf))
+            else:
+                self._olvidar_paso(tracking_id)
             self._log.info("[BACKEND DEDUPLICADO] Ingreso ID #%d consolidado para Track #%d | Placa: %s", ingreso_id, tracking_id, placa)
             # Las fotos de este intento no las referencia ninguna fila
             for nombre in {foto, foto_placa}:
@@ -1565,6 +1779,7 @@ class MotorAnpr:
             self._resolver_pista(tracking_id, limpia)
             return
         if not ingreso_id:
+            self._olvidar_paso(tracking_id)
             return
         with self._candado:
             self._ultimo_ingreso = time.time()
@@ -1594,8 +1809,14 @@ class MotorAnpr:
             # El ingreso existe (pendiente de OCR); el personal lo verá para validarlo
             self._log.error("Fallo al completar el OCR del ingreso #%d en el backend: %s", ingreso_id, e)
             self._m.record_detection_error("backend")
+            self._olvidar_paso(tracking_id)
             return
         self._tiempos.registrar("registro_http_completar", time.perf_counter() - t_http)
+        if getattr(res_ocr, "status_code", 500) < 300:
+            self._recordar_paso(tracking_id, ingreso_id, camara, limpia, bool(validez.valido),
+                                float(caja[2] - caja[0]) if caja and len(caja) == 4 else 0.0, float(conf))
+        else:
+            self._olvidar_paso(tracking_id)
         # El color de la caja en vivo refleja la decisión del backend
         estado_final = None
         try:

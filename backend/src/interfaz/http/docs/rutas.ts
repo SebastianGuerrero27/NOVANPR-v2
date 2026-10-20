@@ -477,6 +477,7 @@ export const RUTAS: RutaDoc[] = [
       lectura_valida: { tipo: 'boolean', descripcion: 'Veredicto nuevo del motor (si llegó el segundo OCR)' },
       evidencia_lectura: { tipo: 'object' },
       vehiculo: { tipo: 'object', descripcion: 'Atributos observados: tipo, color, marca, modelo (segundo factor)' },
+      ruta_imagen_placa: { tipo: 'string', descripcion: 'Foto de la placa de otra pista del mismo vehículo que la leyó mejor', ejemplo: '/media/placa_20261020_054332_846.jpg' },
     },
     respuestas: { 200: 'Reevaluado (o decisión vigente conservada: validado por el personal o alerta)', 400: 'Falta el ID de ingreso', 404: 'Ingreso no encontrado' },
   },

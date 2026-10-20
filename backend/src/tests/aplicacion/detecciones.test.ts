@@ -260,6 +260,13 @@ describe('Detecciones · reevaluación tras el registro rápido', () => {
     expect(avisos.decision).toHaveBeenCalledTimes(1);
   });
 
+  it('otra pista del mismo vehículo que leyó mejor corrige la placa y su foto', async () => {
+    const { casos, repositorio } = preparar({ existente: fila({ estado_validacion: 'pendiente_revision', lectura_valida: false }) });
+    await casos.reevaluar({ ingreso_id: 15, placa_reconocida: 'PFR-6147', confianza_ocr: 1, lectura_valida: true, ruta_imagen_placa: '/media/placa_846.jpg' });
+    expect(repositorio.guardarDecisionAutomatica).toHaveBeenCalledWith(15,
+      expect.objectContaining({ placa: 'PFR6147', rutaPlaca: '/media/placa_846.jpg' }), expect.anything(), expect.anything());
+  });
+
   it('los atributos del vehículo que llegan después aplican el segundo factor: un vehículo distinto deja de estar autorizado', async () => {
     const { casos, repositorio, avisos, compararVehiculo } = preparar({
       permiso: PERMISO_VIGENTE, existente: fila({ estado_validacion: 'autorizado', lectura_valida: true, confianza_ocr: 0.95 }),

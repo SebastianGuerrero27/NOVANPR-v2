@@ -5,8 +5,8 @@ import {
 describe('Validación · placa (ANT Ecuador)', () => {
   it.each([
     ['ABC1234', 'ABC1234', 'auto'],
-    // Formato antiguo de 3 dígitos, aún en circulación (PDO-525, PSY-589)
-    ['PDO-525', 'PDO525', 'auto'],
+    // Formato antiguo de 3 dígitos, aún en circulación (PDO-418, PSY-589)
+    ['PDO-418', 'PDO418', 'auto'],
     ['abc-1234', 'ABC1234', 'auto'],
     [' pba 1234 ', 'PBA1234', 'auto'],
     ['AB123C', 'AB123C', 'moto'],

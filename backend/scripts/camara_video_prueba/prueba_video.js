@@ -7,6 +7,7 @@
  *   node prueba_video.js cargar <archivo> <nombre> <ubicacion>   sube el video por la API (como el botón)
  *   node prueba_video.js zonas <id> '<roi json>'                  guarda el área de detección
  *   node prueba_video.js asignar <id>                             el motor ANPR pasa a procesar la cámara
+ *   node prueba_video.js alternar <id>                            deshabilita / habilita la cámara (el video vuelve a 0:00)
  *   node prueba_video.js estado <id>                              cámara, ruta en MediaMTX y motor
  *   node prueba_video.js detecciones <id>                         pasos registrados por esa cámara
  *
@@ -61,6 +62,7 @@ async function main() {
   ADMIN = await sesionAdministrador();
   if (accion === 'cargar') return cargar(a, b, c);
   if (accion === 'zonas') return console.log(JSON.stringify(await api('PUT', `/camaras/${a}/roi`, { roi: JSON.parse(b), exclusiones: [] })));
+  if (accion === 'alternar') return console.log(JSON.stringify(await api('PATCH', `/camaras/${a}/toggle`)));
   if (accion === 'asignar') return console.log(JSON.stringify(await api('POST', '/monitoreo/camara-activa', { camara_id: Number(a) })));
   if (accion === 'estado') {
     const [camara, ruta, motor] = await Promise.all([api('GET', `/camaras/${a}`), api('GET', `/camaras/video/cam_${a}/estado`), api('GET', '/monitoreo/estado')]);

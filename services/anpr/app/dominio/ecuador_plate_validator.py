@@ -274,14 +274,26 @@ def formato_placa(plate_text: str) -> str:
     return EcuadorPlateValidator.interpretar(plate_text).formato
 
 
-def formato_coherente_con_la_placa(plate_text: str, es_moto: bool) -> bool:
+#: Ancho / alto mínimo del recuadro de una placa de auto. La placa de auto es alargada y solo se ve
+#: casi cuadrada de canto, ilegible. En el video de la garita (19 y 20-10-2026) los 4 recuadros
+#: casi cuadrados leídos como placa de auto (0,79–1,03) eran el adoquinado del piso; los de las
+#: placas de auto reales midieron entre 1,36 y 2,89
+ASPECTO_MIN_PLACA_AUTO = 1.15
+
+
+def formato_coherente_con_la_placa(plate_text: str, es_moto: bool, aspecto: Optional[float] = None) -> bool:
     """
     Una placa de auto (recuadro alargado, una fila) se lee con formato de auto (3 letras + 3 o 4
     dígitos) o diplomático; las de moto son casi cuadradas, de dos filas. Una lectura con formato de
     moto dentro de un recuadro de auto es texto que no es una placa (teclado, pantalla, rótulo) o una
-    placa de auto mal leída a la que le falta un carácter (PJF001 → PJ001).
+    placa de auto mal leída a la que le falta un carácter (PJF001 → PJ001). Con el `aspecto` del
+    recuadro (ancho / alto), tampoco lo es una lectura con formato de auto en un recuadro casi
+    cuadrado (ver ASPECTO_MIN_PLACA_AUTO).
     """
-    return es_moto or formato_placa(plate_text) != "moto"
+    formato = formato_placa(plate_text)
+    if aspecto is not None and aspecto < ASPECTO_MIN_PLACA_AUTO and formato in ("particular", "diplomatico"):
+        return False
+    return es_moto or formato != "moto"
 
 
 def validate_ecuadorian_plate(plate_text: str) -> Tuple[bool, str, float]:

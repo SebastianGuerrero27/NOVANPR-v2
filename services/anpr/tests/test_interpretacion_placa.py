@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.dominio.ecuador_plate_validator import EcuadorPlateValidator, validate_ecuadorian_plate
+from app.dominio.ecuador_plate_validator import EcuadorPlateValidator, formato_coherente_con_la_placa, validate_ecuadorian_plate
 from app.dominio.interpretacion_placa import caracteres_sin_lectura_directa
 from app.dominio.plate_parser import disambiguate_plate, extraer_placa, interpretar_lectura
 from app.infraestructura.ocr_verifier import leer_lineas_placa
@@ -80,3 +80,14 @@ def test_el_servicio_sigue_la_tabla_6_de_la_tesis(texto, tipo, servicio):
 def test_las_series_f_son_de_las_fuerzas_armadas_y_son_validas():
     resultado = EcuadorPlateValidator.validate("FAB1234")
     assert (resultado.tipo_vehiculo, resultado.is_valid, resultado.confidence_score) == ("Fuerzas Armadas", True, 1.0)
+
+
+def test_la_forma_del_recuadro_descarta_lecturas_que_no_son_placas():
+    """Moto en un recuadro de auto: texto que no es placa. Auto en un recuadro casi cuadrado: el
+    adoquinado del piso de la garita (92 × 98 px leído SVT-584, 20-10-2026)."""
+    assert not formato_coherente_con_la_placa("PO-0418", es_moto=False, aspecto=1.8)
+    assert not formato_coherente_con_la_placa("SVT-584", es_moto=True, aspecto=0.94)
+    assert not formato_coherente_con_la_placa("TBC-5822", es_moto=True, aspecto=1.0)
+    assert formato_coherente_con_la_placa("AB-123C", es_moto=True, aspecto=1.0)       # placa de moto
+    assert formato_coherente_con_la_placa("GVU-584", es_moto=True, aspecto=1.36)      # auto cerca, en ángulo
+    assert formato_coherente_con_la_placa("SVT-584", es_moto=True)                    # sin la forma: como antes
