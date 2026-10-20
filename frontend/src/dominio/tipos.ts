@@ -48,7 +48,7 @@ export interface DeteccionDetalle extends Deteccion {
     placa: string | null; confianza: number | null; decision: string | null; verificador: string | null;
     latencia_ms: number | null; modelo_detector: string | null; modelo_ocr: string | null;
     valida: boolean | null;
-    evidencia: EvidenciaLectura | null;
+    evidencia: EvidenciaLectura | EvidenciaSinPlaca | null;
   };
   captura: {
     luminancia_media: number | null; distancia_estimada_m: number | null; ancho_placa_px: number | null;
@@ -66,7 +66,8 @@ export interface EvidenciaLectura {
   caracteres: number;
   lecturas: number;
   verificador_coincide: boolean;
-  motivos: string[];
+  /** Puede faltar: el backend lo omite si la evidencia no cabe en su columna (serializarEvidencia) */
+  motivos?: string[];
   angulo?: number;
   regularidad?: number;
   bordes_hallados?: number;
@@ -78,6 +79,17 @@ export interface EvidenciaLectura {
   lectura_ocr_cruda?: string | null;
   lectura_verificador_cruda?: string | null;
   lecturas_rapidas_crudas?: string[] | null;
+}
+
+/** Evidencia de un paso que el motor registró sin lectura de placa (ver dominio/evidencia.ts) */
+export interface EvidenciaSinPlaca {
+  /** 'vehiculo_sin_placa': no vio ninguna placa; 'placa_no_leida': vio algo con forma de placa y no pudo leerlo */
+  motivo: string;
+  tipo_vehiculo?: string | null;
+  confianza_vehiculo?: number | null;
+  /** Fracción máxima de la zona de interés en movimiento durante el paso */
+  movimiento_max?: number | null;
+  duracion_s?: number | null;
 }
 
 export interface Pagina<T> {

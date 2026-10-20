@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { EvidenciaLectura } from '../src/dominio/tipos';
-import { ChecklistValidez } from '../src/interfaz/paginas/DetalleDeteccion';
+import { ChecklistValidez, EvidenciaPasoSinPlaca } from '../src/interfaz/paginas/DetalleDeteccion';
+import { esEvidenciaSinPlaca } from '../src/dominio/evidencia';
 
 const BASE: EvidenciaLectura = {
   valido: true, formato: true, dentro_cuadro: true, caracteres: 6, lecturas: 2, verificador_coincide: true, motivos: [],
@@ -31,5 +32,31 @@ describe('Evidencias de la lectura', () => {
     render(<ChecklistValidez valida ev={BASE} />);
     expect(screen.queryByText('Lectura directa de cada carácter')).toBeNull();
     expect(screen.queryByText(/Texto leído, sin interpretar/)).toBeNull();
+  });
+});
+
+describe('Paso registrado sin lectura de placa', () => {
+  // Así la guarda el motor (services/anpr/app/aplicacion/paso_sin_placa.py): el detalle de la moto
+  // del video de la garita fallaba al abrirse porque la trataba como una lectura de placa
+  const MOTO = { motivo: 'vehiculo_sin_placa', tipo_vehiculo: 'motocicleta', confianza_vehiculo: 0.619, movimiento_max: 0.238, duracion_s: 1 };
+
+  it('se distingue de la evidencia de una lectura', () => {
+    expect(esEvidenciaSinPlaca(MOTO)).toBe(true);
+    expect(esEvidenciaSinPlaca(BASE)).toBe(false);
+    expect(esEvidenciaSinPlaca(null)).toBe(false);
+  });
+
+  it('muestra el vehículo detectado y el movimiento en la zona', () => {
+    render(<EvidenciaPasoSinPlaca ev={MOTO} />);
+    expect(screen.getByText(/sin ninguna placa a la vista/)).toBeTruthy();
+    expect(screen.getByText('motocicleta (confianza 62 %)')).toBeTruthy();
+    expect(screen.getByText('hasta 24 % de la zona de interés')).toBeTruthy();
+  });
+
+  it('una lectura cuya evidencia llegó sin motivos (no cabía en la columna) no rompe el detalle', () => {
+    const sinMotivos: EvidenciaLectura = { ...BASE, valido: false };
+    delete sinMotivos.motivos;
+    render(<ChecklistValidez valida={false} ev={sinMotivos} />);
+    expect(screen.getByText(/evidencias insuficientes/)).toBeTruthy();
   });
 });

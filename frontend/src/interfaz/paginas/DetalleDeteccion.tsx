@@ -5,7 +5,8 @@ import api, { mensajeError, respuestaError } from '../../infraestructura/api';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta } from '../../aplicacion/hooks';
-import type { Deteccion, DeteccionDetalle, EvidenciaLectura } from '../../dominio/tipos';
+import type { Deteccion, DeteccionDetalle, EvidenciaLectura, EvidenciaSinPlaca } from '../../dominio/tipos';
+import { esEvidenciaSinPlaca, MOTIVO_SIN_PLACA } from '../../dominio/evidencia';
 import { colorConfianza, ESTADOS, fechaHora, NIVELES_ALERTA, numero, porcentaje, relativo } from '../../dominio/formato';
 import { formatearPlaca, validarTexto } from '../../dominio/validacion';
 import { REGLA_MOTIVO_CONSULTA } from '../../dominio/reglas';
@@ -57,7 +58,8 @@ export const ChecklistValidez: React.FC<{ valida: boolean | null; ev: EvidenciaL
   if (!ev) {
     return <p className="texto-secundario">El motor no informó evidencias para esta lectura (registro anterior a la verificación por evidencias o paso manual).</p>;
   }
-  const filaOk = !ev.motivos.some(m => m.startsWith('fila'));
+  const motivos = ev.motivos ?? [];
+  const filaOk = !motivos.some(m => m.startsWith('fila'));
   const consenso = ev.lecturas >= 2 || ev.verificador_coincide;
   const items: { ok: boolean | null; titulo: string; detalle: string }[] = [
     { ok: ev.formato, titulo: 'Formato oficial ANT', detalle: ev.formato ? 'La lectura corresponde a un formato de placa vigente.' : 'La lectura no corresponde a un formato de placa ANT.' },
@@ -86,7 +88,7 @@ export const ChecklistValidez: React.FC<{ valida: boolean | null; ev: EvidenciaL
       <Aviso tipo={valida ? 'exito' : 'advertencia'}>
         {valida
           ? <><b>Lectura válida:</b> cumple todas las evidencias; si la placa está en el padrón se autoriza sin intervención (según el criterio configurado).</>
-          : <><b>Lectura no confirmada:</b> {ev.motivos.join('; ')}. Requiere confirmación del personal.</>}
+          : <><b>Lectura no confirmada:</b> {motivos.join('; ') || 'evidencias insuficientes'}. Requiere confirmación del personal.</>}
       </Aviso>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
         {items.map(i => (
@@ -106,6 +108,22 @@ export const ChecklistValidez: React.FC<{ valida: boolean | null; ev: EvidenciaL
     </div>
   );
 };
+
+/** Paso que el motor registró sin lectura de placa: qué vehículo vio y cuánto se movió la zona. */
+export const EvidenciaPasoSinPlaca: React.FC<{ ev: EvidenciaSinPlaca }> = ({ ev }) => (
+  <div className="pila" style={{ gap: 10 }}>
+    <Aviso tipo="advertencia">
+      <b>Sin lectura de placa:</b> {MOTIVO_SIN_PLACA[ev.motivo] ?? 'El motor registró el paso sin leer una placa.'} Verifique el ingreso
+      con la foto y registre la placa si la tiene.
+    </Aviso>
+    <dl className="definiciones">
+      <dt>Vehículo detectado</dt>
+      <dd>{ev.tipo_vehiculo ? `${ev.tipo_vehiculo}${ev.confianza_vehiculo != null ? ` (confianza ${porcentaje(ev.confianza_vehiculo, 0)})` : ''}` : '—'}</dd>
+      <dt>Movimiento en la zona</dt><dd>{ev.movimiento_max != null ? `hasta ${porcentaje(ev.movimiento_max, 0)} de la zona de interés` : '—'}</dd>
+      <dt>Duración del paso</dt><dd>{ev.duracion_s != null ? `${numero(ev.duracion_s)} s` : '—'}</dd>
+    </dl>
+  </div>
+);
 
 const DetalleDeteccion: React.FC = () => {
   const { id } = useParams();
@@ -201,7 +219,11 @@ const DetalleDeteccion: React.FC = () => {
             </dl>
           </Tarjeta>
 
-          {d.estado_procesamiento === 'procesado' && !d.validado_manualmente || la.evidencia ? (
+          {esEvidenciaSinPlaca(la.evidencia) ? (
+            <Tarjeta titulo="Paso sin placa" subtitulo="Evidencia con que el motor ANPR registró el vehículo">
+              <EvidenciaPasoSinPlaca ev={la.evidencia} />
+            </Tarjeta>
+          ) : d.estado_procesamiento === 'procesado' && !d.validado_manualmente || la.evidencia ? (
             <Tarjeta titulo="Validez de la lectura" subtitulo="Evidencias independientes evaluadas por el motor ANPR">
               <ChecklistValidez valida={la.valida} ev={la.evidencia} />
             </Tarjeta>
