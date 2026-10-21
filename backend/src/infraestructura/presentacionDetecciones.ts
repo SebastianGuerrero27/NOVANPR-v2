@@ -36,6 +36,9 @@ export function presentarDeteccion(d: Fila, detalle = false): DeteccionDTO {
     autorizado: d.vehiculo_autorizado_id
       ? { id: d.vehiculo_autorizado_id, propietario: d.propietario, departamento: d.departamento, categoria: d.autorizado_categoria ?? null } : null,
     restriccion_acceso: (d.restriccion_acceso ?? null) as RestriccionAcceso | null,
+    // Hoja de control vehicular de la garita: quién ingresa y por qué
+    persona_ingreso: d.persona_ingreso ?? null,
+    motivo_ingreso: d.motivo_ingreso ?? null,
     validado_manualmente: Boolean(d.validado_manualmente),
     lectura_valida: d.lectura_valida === null || d.lectura_valida === undefined ? null : Boolean(d.lectura_valida),
     motivo_revision: motivoRevision(d as PasoGuardado, politicaAutorizacion()),

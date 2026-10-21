@@ -47,6 +47,7 @@ function preparar(opciones: { alerta?: Fila | null; permiso?: Fila | null; exist
     guardarValidacion: jest.fn().mockResolvedValue(undefined),
     crearManual: jest.fn().mockResolvedValue(30),
     crearSalidaManual: jest.fn().mockResolvedValue(31),
+    guardarDatosIngreso: jest.fn().mockResolvedValue(undefined),
     eliminar: jest.fn().mockResolvedValue(undefined),
     eliminarFiltradas: jest.fn().mockResolvedValue([{ id: 1, ruta_imagen_ingreso: 'a.jpg', ruta_imagen_placa: null }]),
   };
@@ -420,3 +421,38 @@ describe('Detecciones · acciones del personal', () => {
     expect(repositorio.eliminarFiltradas).toHaveBeenLastCalledWith(expect.objectContaining({ estados: ['alerta'] }));
   });
 });
+
+describe('Detecciones · quién ingresa y motivo de ingreso (reporte de control vehicular)', () => {
+  it('validar y registrar a mano guardan los nombres y el motivo, y los anotan en la auditoría', async () => {
+    const { casos, repositorio, auditoria } = preparar();
+    await casos.validar(15, { placa_validada: 'PBA1234', persona_ingreso: '  Ana   Pérez ', motivo_ingreso: 'Reunión de coordinación' }, GUARDIA);
+    expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, { persona: 'Ana Pérez', motivo: 'Reunión de coordinación' });
+    expect(auditoria.operacion).toHaveBeenLastCalledWith(GUARDIA, 'VALIDACION', 'deteccion', 15,
+      expect.stringContaining(' · ingresa: Ana Pérez · motivo de ingreso: Reunión de coordinación'));
+
+    await casos.registroManual({ placa: 'PBA1234', motivo: 'Cámara fuera de servicio', motivo_ingreso: 'Entrega de botellones' }, GUARDIA);
+    expect(repositorio.guardarDatosIngreso).toHaveBeenLastCalledWith(30, { motivo: 'Entrega de botellones' });
+  });
+
+  it('sin los campos no se toca lo guardado; un nombre con caracteres no permitidos se rechaza', async () => {
+    const { casos, repositorio } = preparar();
+    await casos.validar(15, { placa_validada: 'PBA1234' }, GUARDIA);
+    expect(repositorio.guardarDatosIngreso).not.toHaveBeenCalled();
+    expect((await fallo(casos.validar(15, { placa_validada: 'PBA1234', persona_ingreso: 'Ana <b>' }, GUARDIA))).tipo).toBe('validacion');
+    expect(repositorio.guardarValidacion).toHaveBeenCalledTimes(1);   // solo la primera validación: la rechazada no guarda nada
+  });
+
+  it('editar después: solo en ingresos, con algo que guardar; vacío borra el campo', async () => {
+    const { casos, repositorio, eventos } = preparar();
+    const r = await casos.editarIngreso(15, { persona_ingreso: '', motivo_ingreso: 'Recorrido de supervisión' }, GUARDIA);
+    expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, { persona: null, motivo: 'Recorrido de supervisión' });
+    expect(eventos.emitir).toHaveBeenCalledWith('deteccion:actualizada', expect.objectContaining({ id: 15 }));
+    expect(r.message).toBe('Datos del ingreso guardados.');
+
+    expect((await fallo(casos.editarIngreso(15, {}, GUARDIA))).message).toBe('Indique los nombres y apellidos o el motivo de ingreso.');
+    const salida = preparar({ existente: fila({ tipo_movimiento: 'salida' }) });
+    expect((await fallo(salida.casos.editarIngreso(15, { motivo_ingreso: 'Visita' }, GUARDIA))).tipo).toBe('validacion');
+    expect(salida.repositorio.guardarDatosIngreso).not.toHaveBeenCalled();
+  });
+});
+

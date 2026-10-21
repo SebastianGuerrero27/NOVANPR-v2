@@ -40,6 +40,9 @@ export interface Deteccion {
   motivo_revision?: string | null;
   /** Vehículo sin placa visible registrado por el motor: la evidencia es la foto */
   sin_placa?: boolean;
+  /** Quién ingresa y por qué (reporte de control vehicular de la garita) */
+  persona_ingreso?: string | null;
+  motivo_ingreso?: string | null;
   validacion: { usuario: { id: number; nombre: string; email: string } | null; fecha: string } | null;
 }
 

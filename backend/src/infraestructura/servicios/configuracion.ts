@@ -131,6 +131,24 @@ export const DEFINICIONES: Definicion[] = [
     descripcion: 'Nombre de la unidad que aparece en el encabezado, reportes y exportaciones.',
     env: 'UNIDAD_INSTITUCIONAL', omision: 'Coordinación Zonal 3 · Ambato',
   },
+  {
+    clave: 'reporte_control_sede', tipo: 'texto', grupo: 'Institución',
+    etiqueta: 'Encabezado del reporte de control vehicular',
+    descripcion: 'Primera línea del reporte de la garita (PDF y Excel), sobre el título «Reporte de control vehicular».',
+    env: 'REPORTE_CONTROL_SEDE', omision: 'ECU 911 - AMBATO',
+  },
+  {
+    clave: 'reporte_control_lugar', tipo: 'texto', grupo: 'Institución',
+    etiqueta: 'Lugar del reporte de control vehicular',
+    descripcion: 'Línea bajo el título del reporte: el parqueadero o la garita que controla.',
+    env: 'REPORTE_CONTROL_LUGAR', omision: 'PARQUEADERO - GARITA',
+  },
+  {
+    clave: 'reporte_control_ciudad', tipo: 'texto', grupo: 'Institución',
+    etiqueta: 'Ciudad del reporte de control vehicular',
+    descripcion: 'Ciudad con que empieza la línea de la fecha, el agente entrante y el turno.',
+    env: 'REPORTE_CONTROL_CIUDAD', omision: 'Ambato',
+  },
 ];
 
 const guardados = new Map<string, { valor: string; fecha: Date; por: string | null }>();

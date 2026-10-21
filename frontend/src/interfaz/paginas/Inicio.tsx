@@ -12,7 +12,7 @@ import type { Deteccion, ResumenPanel } from '../../dominio/tipos';
 import { diaCorto, fecha, fechaHora, hora, numero, relativo, SERIES_ESTADO } from '../../dominio/formato';
 import { Aviso, Cargando, FilasEsqueleto, InsigniaEstado, InsigniaTipificacion, Kpi, Tarjeta, Vacio } from '../componentes/ui';
 import { BarrasApiladas, BarrasHorizontales, Dona, Leyenda } from '../componentes/Graficos';
-import { ConfianzaBadge, describirVehiculo, PlacaFoto, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
+import { ConfianzaBadge, describirVehiculo, LineaIngreso, PlacaFoto, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
 import GestionPermisos from './GestionPermisos';
 
 function saludo(): string {
@@ -216,6 +216,7 @@ const IngresosRecientes: React.FC = () => {
                 <td>{d.camara ? <>{d.camara.nombre}<span className="secundario">{d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {d.camara.ubicacion}</span></> : <span className="texto-secundario">{d.fuente === 'manual' ? 'Registro manual' : d.tipo_movimiento === 'salida' ? 'Salida' : '—'}</span>}</td>
                 <td className="ocultar-movil" style={{ maxWidth: 240 }}>
                   <span className="truncar" style={{ display: 'block' }}>{d.alerta ? <b style={{ color: 'var(--alerta)' }}>{d.alerta.motivo}</b> : d.autorizado?.propietario ?? describirVehiculo(d)}</span>
+                  <LineaIngreso d={d} />
                 </td>
                 <td className="num ocultar-movil"><ConfianzaBadge valor={d.confianza_ocr} /></td>
                 <td>{d.validado_manualmente

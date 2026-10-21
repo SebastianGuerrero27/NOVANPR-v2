@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Download, Printer, ShieldAlert } from 'lucide-react';
-import api, { mensajeError } from '../../infraestructura/api';
+import { Download, FileSpreadsheet, FileText, Printer, ShieldAlert } from 'lucide-react';
+import api, { mensajeError, mensajeErrorDescarga } from '../../infraestructura/api';
+import logoEcu911 from '../../assets/ecu911.png';
 import { useConsulta } from '../../aplicacion/hooks';
 import type { Camara } from '../../dominio/tipos';
 import { diaCorto, fecha, fechaHora, fechaIsoLocal, limiteDia, NIVELES_ALERTA, nombreDescarga, numero, porcentaje, SERIES_ESTADO } from '../../dominio/formato';
@@ -37,6 +38,53 @@ interface Reporte {
 }
 
 const SERIE_TOTAL = [{ clave: 'total', etiqueta: 'Ingresos', color: '#15315d' }];
+
+type Turno = 'completo' | 'diurno' | 'nocturno';
+
+/**
+ * Reporte de control vehicular de la garita (PDF o Excel con el logo del ECU 911), en el formato de
+ * la hoja que se llenaba a mano: para el período y la cámara elegidos arriba y el turno de aquí.
+ */
+const ControlVehicular: React.FC<{ params: { desde: string; hasta: string; camara?: string }; desde: string; hasta: string }> = ({ params, desde, hasta }) => {
+  const notificar = useNotificar();
+  const [turno, setTurno] = useState<Turno>('completo');
+  const [generando, setGenerando] = useState<'pdf' | 'xlsx' | null>(null);
+  const descargar = async (formato: 'pdf' | 'xlsx') => {
+    setGenerando(formato);
+    try {
+      const x = await api.get('/reportes/control-vehicular', { params: { ...params, turno, formato }, responseType: 'blob' });
+      descargarBlob(x.data, nombreDescarga(x.headers['content-disposition'], `control_vehicular_${desde}_${hasta}_${turno}.${formato}`));
+    } catch (e) {
+      notificar('error', 'No se pudo generar el reporte de control vehicular', await mensajeErrorDescarga(e));
+    } finally {
+      setGenerando(null);
+    }
+  };
+  return (
+    <Tarjeta className="no-imprimir" titulo="Reporte de control vehicular"
+      subtitulo="Hoja de la garita con el logo del ECU 911: fecha, nombres y apellidos, tipo, marca, placa, horas de ingreso y salida y motivo, con la línea del turno y la firma del agente entrante">
+      <div className="filtros">
+        <div className="campo">
+          <span className="etiqueta-campo">Turno</span>
+          <Segmentado<Turno> valor={turno} onCambiar={setTurno} opciones={[
+            { valor: 'completo', etiqueta: 'Día completo' }, { valor: 'diurno', etiqueta: 'Diurno · 07:00–19:00' },
+            { valor: 'nocturno', etiqueta: 'Nocturno · 19:00–07:00' },
+          ]} />
+        </div>
+        <div className="fila" style={{ marginLeft: 'auto' }}>
+          <button className="btn btn-secondary" onClick={() => descargar('xlsx')} disabled={generando !== null}>
+            <FileSpreadsheet size={15} /> {generando === 'xlsx' ? 'Generando…' : 'Descargar Excel'}</button>
+          <button className="btn btn-navy" onClick={() => descargar('pdf')} disabled={generando !== null}>
+            <FileText size={15} /> {generando === 'pdf' ? 'Generando…' : 'Descargar PDF'}</button>
+        </div>
+      </div>
+      <p className="texto-secundario" style={{ marginTop: 10, fontSize: 12.5 }}>
+        El nombre y el motivo se registran al validar el ingreso o en su detalle; sin nombre se usa el titular de la lista blanca. La hora de
+        salida es la siguiente salida de la misma placa (cámara de salida o salida manual). El turno nocturno de un día termina a las 07:00 del siguiente.
+      </p>
+    </Tarjeta>
+  );
+};
 
 const Reportes: React.FC = () => {
   const notificar = useNotificar();
@@ -96,9 +144,16 @@ const Reportes: React.FC = () => {
           </div>
         </Tarjeta>
 
+        <ControlVehicular params={params} desde={r.desde} hasta={r.hasta} />
+
         <div className="solo-imprimir">
-          <h2 style={{ fontSize: 18 }}>Reporte de ingresos vehiculares · Sistema ANPR ECU 911</h2>
-          <p className="texto-secundario">Período: {fecha(`${r.desde}T12:00:00-05:00`)} – {fecha(`${r.hasta}T12:00:00-05:00`)} · {nombreCamara} · generado {fechaHora(new Date())}</p>
+          <div className="fila" style={{ gap: 14, alignItems: 'center' }}>
+            <img src={logoEcu911} alt="ECU 911" style={{ height: 56 }} />
+            <div>
+              <h2 style={{ fontSize: 18 }}>Reporte de ingresos vehiculares · Sistema ANPR ECU 911</h2>
+              <p className="texto-secundario">Período: {fecha(`${r.desde}T12:00:00-05:00`)} – {fecha(`${r.hasta}T12:00:00-05:00`)} · {nombreCamara} · generado {fechaHora(new Date())}</p>
+            </div>
+          </div>
         </div>
 
         {error && <Aviso tipo="error">{error}</Aviso>}

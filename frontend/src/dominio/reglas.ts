@@ -61,6 +61,14 @@ export const REGLA_OBSERVACION_VALIDACION: ReglaTexto = { etiqueta: 'Observació
 export const REGLA_MOTIVO_EXCEPCION: ReglaTexto = { etiqueta: 'Motivo de la excepción', tipo: 'libre', max: 300, min: 5, requerido: true };
 /** Registro manual de un paso. */
 export const REGLA_MOTIVO_MANUAL: ReglaTexto = { etiqueta: 'Motivo del registro manual', tipo: 'libre', max: 300, min: 5, requerido: true };
+/** Quién ingresa: columna «Nombres y apellidos» del reporte de control vehicular de la garita. */
+export const REGLA_PERSONA_INGRESO: ReglaTexto = { etiqueta: 'Nombres y apellidos', tipo: 'nombre', max: 150 };
+/** Motivo de ingreso: columna «Observaciones» de ese reporte. */
+export const REGLA_MOTIVO_INGRESO: ReglaTexto = { etiqueta: 'Motivo de ingreso', tipo: 'libre', max: 300 };
+/** Motivos frecuentes de la hoja de la garita, para elegirlos con un toque */
+export const MOTIVOS_INGRESO_FRECUENTES = [
+  'Reunión', 'Recorrido del ECU 911', 'Mantenimiento', 'Revisión de cámaras', 'Entrega de botellones de agua', 'Compras públicas', 'Visita',
+];
 
 /** Motivo que se pide al confirmar una acción y queda en la auditoría (retiros, bloqueos, bajas, rechazos). */
 export const REGLA_MOTIVO_AUDITORIA: ReglaTexto = { etiqueta: 'Motivo', tipo: 'libre', max: 300, min: 5, requerido: true };

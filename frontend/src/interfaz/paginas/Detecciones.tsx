@@ -10,7 +10,7 @@ import { descargarBlob } from '../../infraestructura/descargas';
 import { normalizarPlaca } from '../../dominio/validacion';
 import { Aviso, FilasEsqueleto, InsigniaEstado, InsigniaTipificacion, Paginacion, Placa, Tarjeta, Vacio } from '../componentes/ui';
 import { filtrarEscrito } from '../componentes/campos';
-import { ConfianzaBadge, describirVehiculo, ImagenEvidencia, ValidarModal } from '../componentes/deteccion';
+import { ConfianzaBadge, describirVehiculo, ImagenEvidencia, LineaIngreso, ValidarModal } from '../componentes/deteccion';
 import { VisorZoom } from '../componentes/ZoomDual';
 import { EliminarUno, EliminarVarios } from '../componentes/EliminarDetecciones';
 import { useAuth } from '../../aplicacion/AuthContext';
@@ -178,6 +178,7 @@ const Detecciones: React.FC = () => {
                     <td className="ocultar-movil" style={{ maxWidth: 240 }}>
                       <span className="truncar" style={{ display: 'block' }}>{d.alerta ? <b style={{ color: 'var(--alerta)' }}>{d.alerta.motivo}</b> : d.autorizado?.propietario ?? describirVehiculo(d)}</span>
                       {d.autorizado?.departamento && <span className="secundario">{d.autorizado.departamento}</span>}
+                      <LineaIngreso d={d} />
                     </td>
                     <td className="num ocultar-movil"><ConfianzaBadge valor={d.confianza_ocr} /></td>
                     <td onClick={e => e.stopPropagation()}>

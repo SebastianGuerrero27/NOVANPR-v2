@@ -10,7 +10,7 @@ import { codecVideo, ESTADOS, fecha, fechaHora, hora, numero, relativo } from '.
 import { formatearPlaca, normalizarPlaca } from '../../dominio/validacion';
 import { Aviso, Cargando, InsigniaEstado, InsigniaTipificacion, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
 import { filtrarEscrito } from '../componentes/campos';
-import { ConfianzaBadge, describirVehiculo, ImagenEvidencia, PlacaFoto, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
+import { ConfianzaBadge, describirVehiculo, ImagenEvidencia, LineaIngreso, PlacaFoto, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
 import { VisorZoom } from '../componentes/ZoomDual';
 import { EliminarUno, EliminarVarios } from '../componentes/EliminarDetecciones';
 import { alCambiarSonido, fijarSonido, sonarAutorizado, sonarDenegado, sonidoActivo } from '../../infraestructura/avisos';
@@ -412,6 +412,7 @@ const TablaIngresosRecientes: React.FC<{
                         {aut ? `✓ ${d.autorizado?.propietario ?? 'Lista blanca'}` : ale ? `⚠ ${d.alerta?.motivo ?? 'Lista negra'}` : describirVehiculo(d)}
                       </span>
                       {aut && d.autorizado?.departamento && <span className="secundario truncar">{d.autorizado.departamento}</span>}
+                      <LineaIngreso d={d} />
                     </td>
                     <td className="num ocultar-movil"><ConfianzaBadge valor={d.confianza_ocr} /></td>
                     <td className="acciones-celda columna-fija" onClick={e => e.stopPropagation()}>

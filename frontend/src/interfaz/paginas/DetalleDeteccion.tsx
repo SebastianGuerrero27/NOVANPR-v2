@@ -12,7 +12,7 @@ import { formatearPlaca, validarTexto } from '../../dominio/validacion';
 import { REGLA_MOTIVO_CONSULTA } from '../../dominio/reglas';
 import { Aviso, Cargando, InsigniaEstado, Modal, Tarjeta, Vacio } from '../componentes/ui';
 import { CampoTexto } from '../componentes/campos';
-import { describirVehiculo, ImagenEvidencia, PlacaFoto, ValidarModal } from '../componentes/deteccion';
+import { DatosIngresoModal, describirVehiculo, ImagenEvidencia, PlacaFoto, ValidarModal } from '../componentes/deteccion';
 import { VisorZoom } from '../componentes/ZoomDual';
 import { useNotificar } from '../componentes/Notificaciones';
 import { FormularioLista } from '../componentes/FormularioLista';
@@ -136,6 +136,7 @@ const DetalleDeteccion: React.FC = () => {
   const [solicitar, setSolicitar] = useState(false);
   const [eliminar, setEliminar] = useState(false);
   const [propietario, setPropietario] = useState(false);
+  const [datosIngreso, setDatosIngreso] = useState(false);
   const [lista, setLista] = useState<'autorizados' | 'alertas' | null>(null);
   const [zoom, setZoom] = useState(false);
 
@@ -252,6 +253,14 @@ const DetalleDeteccion: React.FC = () => {
                 <dt>Acceso</dt><dd>{d.camara ? `${d.camara.nombre} · ${d.camara.ubicacion}` : d.fuente === 'manual' ? 'Registro manual' : '—'}</dd>
                 <dt>Vehículo observado</dt><dd>{describirVehiculo(d)}</dd>
                 {d.autorizado && <><dt>Titular (padrón)</dt><dd>{d.autorizado.propietario}{d.autorizado.departamento && <span className="secundario texto-secundario"> · {d.autorizado.departamento}</span>}</dd></>}
+                {d.tipo_movimiento !== 'salida' && <>
+                  {/* Columnas «Nombres y apellidos» y «Observaciones» del reporte de control vehicular */}
+                  <dt>Quién ingresa</dt>
+                  <dd>{d.persona_ingreso || <span className="texto-secundario">Sin registrar</span>}
+                    {puede('detecciones:validar') && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 6 }} onClick={() => setDatosIngreso(true)}>
+                      <Edit3 size={13} /> {d.persona_ingreso || d.motivo_ingreso ? 'Editar' : 'Registrar'}</button>}</dd>
+                  <dt>Motivo de ingreso</dt><dd>{d.motivo_ingreso || <span className="texto-secundario">Sin registrar</span>}</dd>
+                </>}
                 {d.restriccion_acceso && <><dt>Restricción del permiso</dt><dd><span className="insignia no_reconocido"><Clock size={12} /> {d.restriccion_acceso === 'fuera_horario' ? 'Fuera de horario' : d.restriccion_acceso === 'no_iniciada' ? 'Aún no vigente' : 'Vencido'}</span></dd></>}
                 <dt>Validación</dt><dd>{d.validacion ? `${d.validacion.usuario?.nombre ?? 'Personal'} · ${fechaHora(d.validacion.fecha)}` : 'Automática'}</dd>
                 <dt>Registro</dt><dd className="mono" style={{ fontSize: 12 }}>#{d.id}{d.tracking_id && d.tracking_id > 0 ? ` · track ${d.tracking_id}` : ''}</dd>
@@ -278,6 +287,7 @@ const DetalleDeteccion: React.FC = () => {
           onCerrar={() => setSolicitar(false)} onEnviada={s => { setSolicitar(false); notificar('exito', `Solicitud #${s.id} enviada`, 'El gestor de permisos fue notificado.'); }} />
       )}
       {propietario && <ConsultaPropietario d={d} onCerrar={() => setPropietario(false)} />}
+      {datosIngreso && <DatosIngresoModal d={d} onCerrar={() => setDatosIngreso(false)} onGuardado={() => recargar(true)} />}
       {lista && d.placa && <FormularioLista tipo={lista} inicial={{ placa: d.placa, marca: d.vehiculo.marca, modelo: d.vehiculo.modelo, color: d.vehiculo.color }}
         onCerrar={() => setLista(null)} onGuardado={() => { setLista(null); notificar('exito', lista === 'autorizados' ? 'Vehículo autorizado' : 'Alerta registrada', 'Aplica a los próximos ingresos de la placa.'); }} />}
       {eliminar && <EliminarUno d={d} onCerrar={() => setEliminar(false)} onEliminada={() => navigate('/detecciones', { replace: true })} />}

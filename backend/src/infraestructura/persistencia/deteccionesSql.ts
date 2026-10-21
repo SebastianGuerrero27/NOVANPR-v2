@@ -166,6 +166,14 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
     return r.recordset[0].id;
   },
 
+  async guardarDatosIngreso(id, x) {
+    const request = db().request().input('id', sql.Int, id);
+    const campos: string[] = [];
+    if (x.persona !== undefined) { request.input('persona', sql.VarChar(150), x.persona); campos.push('persona_ingreso = @persona'); }
+    if (x.motivo !== undefined) { request.input('motivo', sql.VarChar(300), x.motivo); campos.push('motivo_ingreso = @motivo'); }
+    if (campos.length) await request.query(`UPDATE DeteccionVehiculo SET ${campos.join(', ')} WHERE id = @id`);
+  },
+
   guardarMetadatos: (id, metadatos) => guardarMetadatosCaptura(db(), id, metadatos as never),
 
   guardarVehiculo: (id, vehiculo) => guardarAtributosVehiculo(db(), id, vehiculo as never),
