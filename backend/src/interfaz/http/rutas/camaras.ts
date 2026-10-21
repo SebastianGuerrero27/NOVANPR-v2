@@ -11,6 +11,7 @@ import { controladorExterno } from '../servicioExterno';
  *   GET    /                 listado (credenciales RTSP enmascaradas)        operacion:monitorear
  *   GET    /:id              detalle (mismo formato que el listado)          operacion:monitorear
  *   POST   /                 alta                                            camaras:gestionar
+ *   POST   /video-prueba     cámara de prueba con un video cargado           camaras:gestionar
  *   PUT    /:id              edición                                         camaras:gestionar
  *   PATCH  /:id/toggle       habilitar / deshabilitar                        camaras:gestionar
  *   PUT    /:id/roi          región de interés y zonas de exclusión          camaras:operar
@@ -45,6 +46,16 @@ router.get('/:id(\\d+)', ...ver, controlador('CAMARAS detalle', 'Error al consul
 
 router.post('/', ...gestionar, controlador('CAMARAS alta', 'Error al registrar la cámara.', async (req, res) => {
   res.status(201).json({ message: 'Cámara registrada.', camera: await camaras.registrar(req.body, actorDe(req)) });
+}));
+
+/**
+ * Cámara de prueba con un video: el cuerpo es el archivo (MP4, MKV o MOV, se comprueba la firma) y
+ * los datos van en la consulta: ?nombre=&ubicacion=&direccion=. Deshabilitada sin VIDEOS_PRUEBA_DIR.
+ */
+router.post('/video-prueba', ...gestionar, controlador('CAMARAS video de prueba', 'Error al cargar el video.', async (req, res) => {
+  const longitud = Number(req.headers['content-length']);
+  const camera = await camaras.cargarVideo(req, req.query, Number.isFinite(longitud) ? longitud : null, actorDe(req));
+  res.status(201).json({ message: 'Video cargado: la cámara de prueba se publica en unos segundos.', camera });
 }));
 
 router.put('/:id(\\d+)', ...gestionar, controlador('CAMARAS edición', 'Error al actualizar la cámara.', async (req, res) => {

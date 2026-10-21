@@ -1,0 +1,191 @@
+{
+ "fecha": "2026-10-19",
+ "dataset": "Prueba compuesta: escenas test de Open Images con placas ecuatorianas sintéticas (recortes val impares, no usados en entrenamiento)",
+ "split": "test",
+ "imgsz": 512,
+ "iou": 0.5,
+ "imagenes": 2048,
+ "placas": 2801,
+ "protocolo": "Asignación voraz por confianza (scripts/evaluate_detectors.py); VP+FN = placas etiquetadas; VN no aplica en detección de objetos.",
+ "torch_threads": 4,
+ "modelos": {
+  "produccion": {
+   "ruta": "models/license_plate_detector.pt",
+   "sha256": "3667d8168e8a5a62fddf0992546efa0dc60f37578c9e95e8c0cbc92d4ed74c5c",
+   "ap50": 0.824843820458165,
+   "ms_por_imagen": 404.87689231441595,
+   "umbrales": {
+    "0.22": {
+     "vp": 2245,
+     "fn": 556,
+     "fp": 369,
+     "precision": 0.8588370313695486,
+     "recall": 0.8014994644769725,
+     "f1": 0.8291782086795937,
+     "iou_medio": 0.7896863560859269,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 408,
+       "vp": 52,
+       "recall": 0.12745098039215685
+      },
+      "16-32": {
+       "placas": 402,
+       "vp": 258,
+       "recall": 0.6417910447761194
+      },
+      "32-64": {
+       "placas": 585,
+       "vp": 538,
+       "recall": 0.9196581196581196
+      },
+      "64-128": {
+       "placas": 950,
+       "vp": 944,
+       "recall": 0.9936842105263158
+      },
+      "128-inf": {
+       "placas": 456,
+       "vp": 453,
+       "recall": 0.993421052631579
+      }
+     }
+    },
+    "0.35": {
+     "vp": 2176,
+     "fn": 625,
+     "fp": 181,
+     "precision": 0.9232074671192193,
+     "recall": 0.7768654052124241,
+     "f1": 0.8437378829003489,
+     "iou_medio": 0.7936229921259501,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 408,
+       "vp": 30,
+       "recall": 0.07352941176470588
+      },
+      "16-32": {
+       "placas": 402,
+       "vp": 227,
+       "recall": 0.5646766169154229
+      },
+      "32-64": {
+       "placas": 585,
+       "vp": 528,
+       "recall": 0.9025641025641026
+      },
+      "64-128": {
+       "placas": 950,
+       "vp": 938,
+       "recall": 0.9873684210526316
+      },
+      "128-inf": {
+       "placas": 456,
+       "vp": 453,
+       "recall": 0.993421052631579
+      }
+     }
+    }
+   }
+  },
+  "ecuador_mixto": {
+   "ruta": "models/yolo26n_ecuador_mixto_s0_20261019_152110_candidato.pt",
+   "sha256": "9d690f2ed8e4efb727b63a626ff5e8b950df78430ec384fa7365246a8608a0c2",
+   "ap50": 0.8794224421947385,
+   "ms_por_imagen": 156.15124386965817,
+   "umbrales": {
+    "0.22": {
+     "vp": 2368,
+     "fn": 433,
+     "fp": 232,
+     "precision": 0.9107692307692308,
+     "recall": 0.8454123527311674,
+     "f1": 0.8768746528420662,
+     "iou_medio": 0.8603568270783277,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 408,
+       "vp": 76,
+       "recall": 0.18627450980392157
+      },
+      "16-32": {
+       "placas": 402,
+       "vp": 320,
+       "recall": 0.7960199004975125
+      },
+      "32-64": {
+       "placas": 585,
+       "vp": 571,
+       "recall": 0.976068376068376
+      },
+      "64-128": {
+       "placas": 950,
+       "vp": 947,
+       "recall": 0.9968421052631579
+      },
+      "128-inf": {
+       "placas": 456,
+       "vp": 454,
+       "recall": 0.9956140350877193
+      }
+     }
+    },
+    "0.35": {
+     "vp": 2299,
+     "fn": 502,
+     "fp": 103,
+     "precision": 0.9571190674437968,
+     "recall": 0.820778293466619,
+     "f1": 0.883720930232558,
+     "iou_medio": 0.8649605374603481,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 408,
+       "vp": 44,
+       "recall": 0.10784313725490197
+      },
+      "16-32": {
+       "placas": 402,
+       "vp": 287,
+       "recall": 0.7139303482587065
+      },
+      "32-64": {
+       "placas": 585,
+       "vp": 568,
+       "recall": 0.9709401709401709
+      },
+      "64-128": {
+       "placas": 950,
+       "vp": 947,
+       "recall": 0.9968421052631579
+      },
+      "128-inf": {
+       "placas": 456,
+       "vp": 453,
+       "recall": 0.993421052631579
+      }
+     }
+    }
+   },
+   "mcnemar_vs_produccion": {
+    "0.22": {
+     "solo_referencia": 8,
+     "solo_modelo": 131,
+     "ambos": 2237,
+     "ninguno": 425,
+     "chi2": 107.08,
+     "p": 4.277433891486427e-25
+    },
+    "0.35": {
+     "solo_referencia": 8,
+     "solo_modelo": 131,
+     "ambos": 2168,
+     "ninguno": 494,
+     "chi2": 107.08,
+     "p": 4.277433891486427e-25
+    }
+   }
+  }
+ }
+}

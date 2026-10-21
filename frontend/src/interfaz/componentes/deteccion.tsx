@@ -6,8 +6,10 @@ import type { Camara, Deteccion } from '../../dominio/tipos';
 import { colorConfianza, ESTADOS, fechaHora, hora, porcentaje } from '../../dominio/formato';
 import { urlMedia } from '../../infraestructura/api';
 import { formatearPlaca, placaPropuesta, validarPlaca, validarTexto } from '../../dominio/validacion';
-import { REGLA_MOTIVO_EXCEPCION, REGLA_MOTIVO_MANUAL, REGLA_OBSERVACION_VALIDACION } from '../../dominio/reglas';
-import { Aviso, InsigniaEstado, Modal, Placa } from './ui';
+import {
+  MOTIVOS_INGRESO_FRECUENTES, REGLA_MOTIVO_EXCEPCION, REGLA_MOTIVO_INGRESO, REGLA_MOTIVO_MANUAL, REGLA_OBSERVACION_VALIDACION, REGLA_PERSONA_INGRESO,
+} from '../../dominio/reglas';
+import { Aviso, InsigniaEstado, InsigniaTipificacion, Modal, Placa } from './ui';
 import { CampoPlaca, CampoTexto } from './campos';
 import { useNotificar } from './Notificaciones';
 import { VisorZoom } from './ZoomDual';
@@ -51,7 +53,7 @@ export function recortePlaca(d: Pick<Deteccion, 'imagen_placa' | 'imagen_vehicul
  * La placa tal como la captó la cámara: la foto real del recorte y, al lado (o debajo, en tamaño
  * grande), la lectura del sistema. Si el paso no tiene recorte se indica en lugar de la foto.
  */
-export const PlacaFoto: React.FC<{ d: Pick<Deteccion, 'placa' | 'imagen_placa' | 'imagen_vehiculo'>; alto?: number; grande?: boolean; onClick?: () => void }> =
+export const PlacaFoto: React.FC<{ d: Pick<Deteccion, 'placa' | 'imagen_placa' | 'imagen_vehiculo' | 'sin_placa'>; alto?: number; grande?: boolean; onClick?: () => void }> =
   ({ d, alto = 36, grande, onClick }) => {
     const [error, setError] = useState(false);
     const src = urlMedia(recortePlaca(d));
@@ -65,7 +67,7 @@ export const PlacaFoto: React.FC<{ d: Pick<Deteccion, 'placa' | 'imagen_placa' |
             ? <img src={src} alt={`Placa ${d.placa ?? 'sin lectura'}`} loading="lazy" decoding="async" onError={() => setError(true)} />
             : <ImageOff size={grande ? 22 : 14} />}
         </span>
-        <Placa valor={d.placa} grande={grande} />
+        <Placa valor={d.placa} grande={grande} sinPlaca={d.sin_placa} />
       </span>
     );
   };
@@ -85,7 +87,7 @@ export const TarjetaDeteccion: React.FC<{ d: Deteccion; onValidar?: (d: Deteccio
   const autorizado = !procesando && d.estado_validacion === 'autorizado';
   const alerta = !procesando && d.estado_validacion === 'alerta';
   const color = procesando ? 'var(--pendiente)' : ESTADOS[d.estado_validacion]?.color ?? 'var(--border)';
-  const fondo = resaltada ? '#fffbeb' : autorizado ? '#f3fcf6' : alerta ? '#fef5f5' : 'var(--surface)';
+  const fondo = resaltada ? 'var(--fondo-resaltado)' : autorizado ? 'var(--fila-autorizado)' : alerta ? 'var(--fila-alerta)' : 'var(--surface)';
   return (
     <article className="animate-fade-in"
       onClick={() => navigate(`/detecciones/${d.id}`)}
@@ -105,7 +107,7 @@ export const TarjetaDeteccion: React.FC<{ d: Deteccion; onValidar?: (d: Deteccio
       </div>
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
         <div className="fila" style={{ justifyContent: 'space-between', gap: 6 }}>
-          {procesando && !d.placa ? <span className="placa vacia">Leyendo…</span> : <Placa valor={d.placa} />}
+          {procesando && !d.placa ? <span className="placa vacia">Leyendo…</span> : <Placa valor={d.placa} sinPlaca={d.sin_placa} />}
           <span className="fila nowrap" style={{ gap: 2 }}>
             <span className="texto-secundario" style={{ fontSize: 11.5 }}>{hora(d.fecha_hora_ingreso)}</span>
             {onEliminar && (
@@ -120,6 +122,7 @@ export const TarjetaDeteccion: React.FC<{ d: Deteccion; onValidar?: (d: Deteccio
             <button className="btn btn-sm btn-secondary" onClick={e => { e.stopPropagation(); onValidar(d); }}>Validar</button>
           )}
         </div>
+        {!procesando && d.placa && <InsigniaTipificacion placa={d.placa} />}
         {autorizado && d.autorizado && (
           <div className="truncar" style={{ fontSize: 12, color: 'var(--autorizado)', fontWeight: 600 }} title={d.autorizado.propietario}>
             ✓ {d.autorizado.propietario}{d.autorizado.departamento ? ` (${d.autorizado.departamento})` : ''}
@@ -131,7 +134,9 @@ export const TarjetaDeteccion: React.FC<{ d: Deteccion; onValidar?: (d: Deteccio
               ? <>⏱ {d.restriccion_acceso === 'fuera_horario' ? 'Fuera de horario' : d.restriccion_acceso === 'no_iniciada' ? 'Permiso aún no vigente' : 'Permiso vencido'}{d.autorizado ? ` · ${d.autorizado.propietario}` : ''}</>
               : d.autorizado
                 ? <>ⓘ En padrón ({d.autorizado.propietario}) · confirme la placa</>
-                : <>ⓘ Lectura no confirmada · verifique la placa</>}
+                : d.sin_placa ? <>ⓘ Vehículo sin placa visible · verifique con la foto</>
+                  : d.estado_procesamiento === 'no_legible' ? <>ⓘ Placa no leída · verifique con la foto</>
+                    : <>ⓘ Lectura no confirmada · verifique la placa</>}
           </div>
         )}
         {alerta && (
@@ -148,6 +153,78 @@ export const TarjetaDeteccion: React.FC<{ d: Deteccion; onValidar?: (d: Deteccio
   );
 };
 
+/** Nombres y apellidos de quien ingresa y motivo de ingreso, tal como se envían a la API. */
+export interface DatosIngreso { persona: string; motivo: string }
+
+export const datosIngresoValidos = (x: DatosIngreso) =>
+  validarTexto(x.persona, REGLA_PERSONA_INGRESO).ok && validarTexto(x.motivo, REGLA_MOTIVO_INGRESO).ok;
+/** Vacío = borrar (la API distingue un campo ausente de uno vacío) */
+export const cuerpoIngreso = (x: DatosIngreso) => ({ persona_ingreso: x.persona.trim(), motivo_ingreso: x.motivo.trim() });
+
+/**
+ * Quién ingresa y por qué: las columnas «Nombres y apellidos» y «Observaciones» del reporte de
+ * control vehicular de la garita. Los motivos frecuentes se eligen con un toque.
+ */
+export const CamposIngreso: React.FC<{ id: string; valor: DatosIngreso; onCambiar: (v: DatosIngreso) => void; onEnter?: () => void }> =
+  ({ id, valor, onCambiar, onEnter }) => (
+    <>
+      <CampoTexto id={`${id}-persona`} className="completo" etiqueta="Nombres y apellidos de quien ingresa" valor={valor.persona}
+        onCambiar={persona => onCambiar({ ...valor, persona })} regla={REGLA_PERSONA_INGRESO} onEnter={onEnter}
+        autoComplete="off" placeholder="Ej.: Ana Pérez" ayuda="Si el vehículo está en la lista blanca, se propone su titular." />
+      <div className="completo pila" style={{ gap: 6 }}>
+        <CampoTexto id={`${id}-motivo`} etiqueta="Motivo de ingreso" valor={valor.motivo} onCambiar={motivo => onCambiar({ ...valor, motivo })}
+          regla={REGLA_MOTIVO_INGRESO} onEnter={onEnter} placeholder="Ej.: reunión con la coordinación zonal" />
+        <div className="fila" style={{ gap: 6 }} role="group" aria-label="Motivos frecuentes">
+          {MOTIVOS_INGRESO_FRECUENTES.map(m => (
+            <button key={m} type="button" className={`btn btn-sm ${valor.motivo === m ? 'btn-navy' : 'btn-secondary'}`}
+              aria-pressed={valor.motivo === m} onClick={() => onCambiar({ ...valor, motivo: m })}>{m}</button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+
+/** Segunda línea de la columna «Vehículo / titular»: quién ingresa y por qué, si se registró. */
+export const LineaIngreso: React.FC<{ d: Pick<Deteccion, 'persona_ingreso' | 'motivo_ingreso'> }> = ({ d }) => {
+  const texto = [d.persona_ingreso, d.motivo_ingreso].filter(Boolean).join(' · ');
+  return texto ? <span className="secundario truncar" title={texto}>{texto}</span> : null;
+};
+
+/** Edita quién ingresó y el motivo de un paso ya registrado (detalle del paso). */
+export const DatosIngresoModal: React.FC<{ d: Deteccion; onCerrar: () => void; onGuardado?: (d: Deteccion) => void }> = ({ d, onCerrar, onGuardado }) => {
+  const notificar = useNotificar();
+  const [datos, setDatos] = useState<DatosIngreso>(() => ({ persona: d.persona_ingreso ?? d.autorizado?.propietario ?? '', motivo: d.motivo_ingreso ?? '' }));
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const valido = datosIngresoValidos(datos);
+  const guardar = async () => {
+    setEnviando(true);
+    setError(null);
+    try {
+      const r = await api.patch(`/detecciones/${d.id}/ingreso`, cuerpoIngreso(datos));
+      notificar('exito', 'Datos del ingreso guardados', formatearPlaca(d.placa) || 'Paso sin placa');
+      onGuardado?.(r.data.deteccion);
+      onCerrar();
+    } catch (e) {
+      setError(mensajeError(e));
+      setEnviando(false);
+    }
+  };
+  return (
+    <Modal titulo="Quién ingresa y motivo" subtitulo={`${formatearPlaca(d.placa) || 'Sin placa'} · ${fechaHora(d.fecha_hora_ingreso)}`} onCerrar={onCerrar} bloquear={enviando}
+      pie={<>
+        <button className="btn btn-secondary" onClick={onCerrar} disabled={enviando}>Cancelar</button>
+        <button className="btn btn-navy" onClick={guardar} disabled={!valido || enviando}>{enviando && <Loader2 size={14} className="girar" />} Guardar</button>
+      </>}>
+      <div className="form-grid">
+        <CamposIngreso id="edi" valor={datos} onCambiar={setDatos} onEnter={() => { if (valido && !enviando) guardar(); }} />
+        <div className="completo"><Aviso tipo="info">Estos datos salen en el reporte de control vehicular (Reportes). El cambio queda en la auditoría.</Aviso></div>
+        {error && <div className="completo"><Aviso tipo="error">{error}</Aviso></div>}
+      </div>
+    </Modal>
+  );
+};
+
 /** Validación / corrección manual de un paso vehicular por el personal. */
 /**
  * Confirmación o corrección de la placa de un paso. Con `excepcion`, una persona con el
@@ -160,10 +237,13 @@ export const ValidarModal: React.FC<{ d: Deteccion; onCerrar: () => void; onVali
   // solo se propone como punto de partida)
   const [placa, setPlaca] = useState(() => placaPropuesta(d.placa_validada || d.placa_reconocida));
   const [observacion, setObservacion] = useState('');
+  const esIngreso = d.tipo_movimiento !== 'salida';
+  // Quién ingresa: lo ya registrado o, si el vehículo está en la lista blanca, su titular
+  const [ingreso, setIngreso] = useState<DatosIngreso>(() => ({ persona: d.persona_ingreso ?? d.autorizado?.propietario ?? '', motivo: d.motivo_ingreso ?? '' }));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reglaObservacion = excepcion ? REGLA_MOTIVO_EXCEPCION : REGLA_OBSERVACION_VALIDACION;
-  const valida = validarPlaca(placa).ok && validarTexto(observacion, reglaObservacion).ok;
+  const valida = validarPlaca(placa).ok && validarTexto(observacion, reglaObservacion).ok && (!esIngreso || datosIngresoValidos(ingreso));
   const [zoom, setZoom] = useState(false);
 
   const guardar = async () => {
@@ -172,6 +252,7 @@ export const ValidarModal: React.FC<{ d: Deteccion; onCerrar: () => void; onVali
     try {
       const r = await api.post(`/detecciones/validar/${d.id}`, {
         placa_validada: placa, observacion: observacion.trim() || undefined, excepcion: excepcion || undefined,
+        ...(esIngreso ? cuerpoIngreso(ingreso) : {}),
       });
       const det: Deteccion = r.data.deteccion;
       notificar(det.estado_validacion === 'alerta' ? 'error' : 'exito', `${det.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} validado: ${formatearPlaca(det.placa)}`, ESTADOS[det.estado_validacion].etiqueta);
@@ -208,6 +289,7 @@ export const ValidarModal: React.FC<{ d: Deteccion; onCerrar: () => void; onVali
             valor={observacion} onCambiar={setObservacion} regla={reglaObservacion}
             onEnter={() => { if (valida && !enviando) guardar(); }}
             placeholder={excepcion ? 'Ej.: reunión extraordinaria autorizada por la Coordinación Zonal' : 'Ej.: placa sucia, lectura corregida por el operador'} />}
+          {esIngreso && <CamposIngreso id="val" valor={ingreso} onCambiar={setIngreso} onEnter={() => { if (valida && !enviando) guardar(); }} />}
         </div>
         {d.tipo_movimiento === 'salida' ? <Aviso tipo="info">La corrección registra únicamente el egreso; no modifica listas ni decisiones de autorización de ingreso.</Aviso> : <Aviso tipo="info">{excepcion
           ? 'La excepción concede solo este paso: el permiso conserva su horario y vigencia. Queda registrada en la auditoría con su usuario y el motivo.'
@@ -230,14 +312,18 @@ export const RegistroManualModal: React.FC<{ onCerrar: () => void; placaInicial?
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const camaraSeleccionada = camaras.find(c => c.id === Number(camara));
+  const esIngreso = camaraSeleccionada?.direccion !== 'salida';
+  const [ingreso, setIngreso] = useState<DatosIngreso>({ persona: '', motivo: '' });
   useEffect(() => { api.get('/camaras').then(r => setCamaras(r.data)).catch(() => undefined); }, []);
-  const valido = validarPlaca(placa).ok && validarTexto(motivo, REGLA_MOTIVO_MANUAL).ok;
+  const valido = validarPlaca(placa).ok && validarTexto(motivo, REGLA_MOTIVO_MANUAL).ok && (!esIngreso || datosIngresoValidos(ingreso));
 
   const guardar = async () => {
     setEnviando(true);
     setError(null);
     try {
-      const r = await api.post('/detecciones/registro-manual', { placa, motivo: motivo.trim(), camara_id: camara ? Number(camara) : undefined });
+      const r = await api.post('/detecciones/registro-manual', {
+        placa, motivo: motivo.trim(), camara_id: camara ? Number(camara) : undefined, ...(esIngreso ? cuerpoIngreso(ingreso) : {}),
+      });
       const d: Deteccion = r.data.deteccion;
       notificar(d.estado_validacion === 'alerta' ? 'error' : 'exito', `${d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} manual registrada: ${formatearPlaca(d.placa)}`, ESTADOS[d.estado_validacion].etiqueta);
       onCerrar();
@@ -266,6 +352,7 @@ export const RegistroManualModal: React.FC<{ onCerrar: () => void; placaInicial?
         <CampoTexto id="man-motivo" className="completo" etiqueta="Motivo del registro manual*" valor={motivo} onCambiar={setMotivo}
           regla={REGLA_MOTIVO_MANUAL} multilinea ayuda="Entre 5 y 300 caracteres."
           placeholder="Ej.: cámara fuera de servicio, placa ilegible por suciedad, ingreso de visita" />
+        {esIngreso && <CamposIngreso id="man" valor={ingreso} onCambiar={setIngreso} />}
         <div className="completo"><Aviso tipo="info">{camaraSeleccionada?.direccion === 'salida'
           ? 'La salida se registra como movimiento independiente y no modifica permisos ni decisiones de ingreso.'
           : 'El ingreso se cruza con las listas como cualquier lectura. No modifica el padrón de autorizados: para autorizar un vehículo use la pantalla de listas.'}</Aviso></div>

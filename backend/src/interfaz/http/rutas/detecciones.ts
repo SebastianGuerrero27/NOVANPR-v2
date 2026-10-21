@@ -18,6 +18,7 @@ import { actorDe, controlador, idDe } from '../respuesta';
  *   GET  /buscar-placa/:placa  situación de una placa en las listas y su historial
  *   GET  /:id                  detalle completo con lectura automática, metadatos y auditoría
  *   POST /validar/:id          corrección / confirmación del personal (excepción con accesos:excepcion)
+ *   PATCH /:id/ingreso         nombres y apellidos de quien ingresa y motivo de ingreso
  *   POST /registro-manual      paso registrado a mano (cámara sin lectura, visita, etc.)
  *   DELETE /:id                detecciones:eliminar, con motivo auditado (borra también la evidencia)
  *   DELETE /                   eliminación masiva (todas o las filtradas), detecciones:eliminar
@@ -84,6 +85,11 @@ router.post('/validar/:id(\\d+)', ...validar, controlador('DETECCIONES validar',
 
 router.post('/registro-manual', ...validar, controlador('DETECCIONES registro manual', 'Error al registrar el ingreso manual.', async (req, res) => {
   res.status(201).json(await detecciones.registroManual(req.body, actorDe(req)));
+}));
+
+router.patch('/:id(\\d+)/ingreso', ...validar, controlador('DETECCIONES datos del ingreso', 'Error al guardar los datos del ingreso.', async (req, res) => {
+  const id = idDe(req, res);
+  if (id !== null) res.json(await detecciones.editarIngreso(id, req.body, actorDe(req)));
 }));
 
 router.delete('/:id(\\d+)', ...eliminar, controlador('DETECCIONES eliminar', 'Error al eliminar la detección.', async (req, res) => {

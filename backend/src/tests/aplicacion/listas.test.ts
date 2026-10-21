@@ -41,9 +41,9 @@ describe('Casos de uso · listas', () => {
     expect(avisos.registroAgregado).toHaveBeenCalledWith(LISTA_BLANCA, expect.objectContaining({ id: 77 }), ACTOR);
   });
 
-  it('registrar: rechaza placas fuera del formato AAA-1234 / AA-123A sin tocar la base', async () => {
+  it('registrar: rechaza placas fuera del formato AAA-1234 / AAA-123 / AA-123A sin tocar la base', async () => {
     const { casos, repositorio } = preparar();
-    const e = await fallo(casos.registrar(LISTA_BLANCA, { placa: 'ABC123', propietario: 'Juan Pérez' }, ACTOR));
+    const e = await fallo(casos.registrar(LISTA_BLANCA, { placa: 'ABC12', propietario: 'Juan Pérez' }, ACTOR));
     expect(e.tipo).toBe('validacion');
     expect(e.message).toMatch(/ABC-1234/);
     expect(repositorio.buscarPorPlaca).not.toHaveBeenCalled();

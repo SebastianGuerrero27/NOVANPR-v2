@@ -1,4 +1,5 @@
 import { formatearPlacaParcial } from '../../dominio/validacion';
+import { tipificarPlaca } from '../../dominio/tipificacion';
 
 /**
  * HUD de detección sobre el video, al estilo Rekor Scout / OpenALPR:
@@ -76,10 +77,12 @@ function conAlfa(hex: string, alfa: number): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alfa})`;
 }
 
-function textoInsignia(p: PistaHud): string {
+/** Placa leída, su tipificación (particular, gobierno…) y el estado decidido por el backend. */
+export function textoInsignia(p: PistaHud): string {
   if (p.placa) {
     const estado = p.estado ? TEXTO_ESTADO[p.estado] : undefined;
-    return `${formatearPlacaParcial(p.placa)}  •  ${estado ?? `${Math.round(p.confianzaPlaca * 100)}%`}`;
+    const tipo = tipificarPlaca(p.placa);
+    return [formatearPlacaParcial(p.placa), tipo?.corta, estado ?? `${Math.round(p.confianzaPlaca * 100)}%`].filter(Boolean).join('  •  ');
   }
   const pct = `${Math.round(p.confianza * 100)}%`;
   return p.parcial && p.parcial.length >= 3 ? `◌ ${formatearPlacaParcial(p.parcial)}  •  ${pct}` : `◌ ESCANEANDO OCR  •  ${pct}`;

@@ -8,9 +8,9 @@ import type { Camara, Deteccion, EstadoValidacion, Pagina } from '../../dominio/
 import { ESTADOS, fecha, hora, limiteDia, nombreDescarga } from '../../dominio/formato';
 import { descargarBlob } from '../../infraestructura/descargas';
 import { normalizarPlaca } from '../../dominio/validacion';
-import { Aviso, FilasEsqueleto, InsigniaEstado, Paginacion, Placa, Tarjeta, Vacio } from '../componentes/ui';
+import { Aviso, FilasEsqueleto, InsigniaEstado, InsigniaTipificacion, Paginacion, Placa, Tarjeta, Vacio } from '../componentes/ui';
 import { filtrarEscrito } from '../componentes/campos';
-import { ConfianzaBadge, describirVehiculo, ImagenEvidencia, ValidarModal } from '../componentes/deteccion';
+import { ConfianzaBadge, describirVehiculo, ImagenEvidencia, LineaIngreso, ValidarModal } from '../componentes/deteccion';
 import { VisorZoom } from '../componentes/ZoomDual';
 import { EliminarUno, EliminarVarios } from '../componentes/EliminarDetecciones';
 import { useAuth } from '../../aplicacion/AuthContext';
@@ -162,21 +162,23 @@ const Detecciones: React.FC = () => {
           <div className="tabla-contenedor">
             <table className="tabla">
               <thead><tr>
-                <th style={{ width: 78 }}>Evidencia</th><th>Placa</th><th>Fecha y hora</th><th>Estado</th><th>Cámara</th>
+                <th style={{ width: 78 }}>Evidencia</th><th>Placa</th><th>Tipificación</th><th>Fecha y hora</th><th>Estado</th><th>Cámara</th>
                 <th className="ocultar-movil">Vehículo / titular</th><th className="num ocultar-movil">Confianza OCR</th><th>Validación</th>{esAdmin && <th />}
               </tr></thead>
               <tbody>
-                {cargando && !datos ? <FilasEsqueleto columnas={esAdmin ? 9 : 8} /> : datos?.items.map(d => (
+                {cargando && !datos ? <FilasEsqueleto columnas={esAdmin ? 10 : 9} /> : datos?.items.map(d => (
                   <tr key={d.id} className={`clic${d.estado_validacion === 'autorizado' ? ' fila-autorizado' : d.estado_validacion === 'alerta' ? ' fila-alerta' : ''}`} onClick={() => navigate(`/detecciones/${d.id}`)}>
                     <td onClick={e => { e.stopPropagation(); if (d.imagen_placa || d.imagen_vehiculo) setZoom(d); }} className="miniatura-zoom" title="Ampliar evidencia">
                       <ImagenEvidencia ruta={d.imagen_placa || d.imagen_vehiculo} alt="" alto={40} ajuste="contain" fondoOscuro /></td>
-                    <td className="nowrap"><Placa valor={d.placa} /> <MarcaEstado d={d} />{d.tipo_movimiento === 'salida' && <span className="marca-estado salida">SALIDA</span>}</td>
+                    <td className="nowrap"><Placa valor={d.placa} sinPlaca={d.sin_placa} /> <MarcaEstado d={d} />{d.tipo_movimiento === 'salida' && <span className="marca-estado salida">SALIDA</span>}</td>
+                    <td><InsigniaTipificacion placa={d.placa} provincia /></td>
                     <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 600 }}>{hora(d.fecha_hora_ingreso)}</strong><span className="secundario">{fecha(d.fecha_hora_ingreso)}</span></td>
                     <td><InsigniaEstado estado={d.estado_validacion} procesando={d.estado_procesamiento === 'pendiente_ocr'} /></td>
                     <td>{d.camara ? <>{d.camara.nombre}<span className="secundario">{d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {d.camara.ubicacion}</span></> : <span className="texto-secundario">{d.fuente === 'manual' ? 'Registro manual' : d.tipo_movimiento === 'salida' ? 'Salida' : '—'}</span>}</td>
                     <td className="ocultar-movil" style={{ maxWidth: 240 }}>
                       <span className="truncar" style={{ display: 'block' }}>{d.alerta ? <b style={{ color: 'var(--alerta)' }}>{d.alerta.motivo}</b> : d.autorizado?.propietario ?? describirVehiculo(d)}</span>
                       {d.autorizado?.departamento && <span className="secundario">{d.autorizado.departamento}</span>}
+                      <LineaIngreso d={d} />
                     </td>
                     <td className="num ocultar-movil"><ConfianzaBadge valor={d.confianza_ocr} /></td>
                     <td onClick={e => e.stopPropagation()}>

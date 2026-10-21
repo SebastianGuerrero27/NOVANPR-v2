@@ -5,13 +5,14 @@ import api, { mensajeError, respuestaError } from '../../infraestructura/api';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta } from '../../aplicacion/hooks';
-import type { Deteccion, DeteccionDetalle, EvidenciaLectura } from '../../dominio/tipos';
+import type { Deteccion, DeteccionDetalle, EvidenciaLectura, EvidenciaSinPlaca } from '../../dominio/tipos';
+import { esEvidenciaSinPlaca, MOTIVO_SIN_PLACA } from '../../dominio/evidencia';
 import { colorConfianza, ESTADOS, fechaHora, NIVELES_ALERTA, numero, porcentaje, relativo } from '../../dominio/formato';
 import { formatearPlaca, validarTexto } from '../../dominio/validacion';
 import { REGLA_MOTIVO_CONSULTA } from '../../dominio/reglas';
 import { Aviso, Cargando, InsigniaEstado, Modal, Tarjeta, Vacio } from '../componentes/ui';
 import { CampoTexto } from '../componentes/campos';
-import { describirVehiculo, ImagenEvidencia, PlacaFoto, ValidarModal } from '../componentes/deteccion';
+import { DatosIngresoModal, describirVehiculo, ImagenEvidencia, PlacaFoto, ValidarModal } from '../componentes/deteccion';
 import { VisorZoom } from '../componentes/ZoomDual';
 import { useNotificar } from '../componentes/Notificaciones';
 import { FormularioLista } from '../componentes/FormularioLista';
@@ -57,7 +58,8 @@ export const ChecklistValidez: React.FC<{ valida: boolean | null; ev: EvidenciaL
   if (!ev) {
     return <p className="texto-secundario">El motor no informó evidencias para esta lectura (registro anterior a la verificación por evidencias o paso manual).</p>;
   }
-  const filaOk = !ev.motivos.some(m => m.startsWith('fila'));
+  const motivos = ev.motivos ?? [];
+  const filaOk = !motivos.some(m => m.startsWith('fila'));
   const consenso = ev.lecturas >= 2 || ev.verificador_coincide;
   const items: { ok: boolean | null; titulo: string; detalle: string }[] = [
     { ok: ev.formato, titulo: 'Formato oficial ANT', detalle: ev.formato ? 'La lectura corresponde a un formato de placa vigente.' : 'La lectura no corresponde a un formato de placa ANT.' },
@@ -86,7 +88,7 @@ export const ChecklistValidez: React.FC<{ valida: boolean | null; ev: EvidenciaL
       <Aviso tipo={valida ? 'exito' : 'advertencia'}>
         {valida
           ? <><b>Lectura válida:</b> cumple todas las evidencias; si la placa está en el padrón se autoriza sin intervención (según el criterio configurado).</>
-          : <><b>Lectura no confirmada:</b> {ev.motivos.join('; ')}. Requiere confirmación del personal.</>}
+          : <><b>Lectura no confirmada:</b> {motivos.join('; ') || 'evidencias insuficientes'}. Requiere confirmación del personal.</>}
       </Aviso>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
         {items.map(i => (
@@ -107,6 +109,22 @@ export const ChecklistValidez: React.FC<{ valida: boolean | null; ev: EvidenciaL
   );
 };
 
+/** Paso que el motor registró sin lectura de placa: qué vehículo vio y cuánto se movió la zona. */
+export const EvidenciaPasoSinPlaca: React.FC<{ ev: EvidenciaSinPlaca }> = ({ ev }) => (
+  <div className="pila" style={{ gap: 10 }}>
+    <Aviso tipo="advertencia">
+      <b>Sin lectura de placa:</b> {MOTIVO_SIN_PLACA[ev.motivo] ?? 'El motor registró el paso sin leer una placa.'} Verifique el ingreso
+      con la foto y registre la placa si la tiene.
+    </Aviso>
+    <dl className="definiciones">
+      <dt>Vehículo detectado</dt>
+      <dd>{ev.tipo_vehiculo ? `${ev.tipo_vehiculo}${ev.confianza_vehiculo != null ? ` (confianza ${porcentaje(ev.confianza_vehiculo, 0)})` : ''}` : '—'}</dd>
+      <dt>Movimiento en la zona</dt><dd>{ev.movimiento_max != null ? `hasta ${porcentaje(ev.movimiento_max, 0)} de la zona de interés` : '—'}</dd>
+      <dt>Duración del paso</dt><dd>{ev.duracion_s != null ? `${numero(ev.duracion_s)} s` : '—'}</dd>
+    </dl>
+  </div>
+);
+
 const DetalleDeteccion: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -118,6 +136,7 @@ const DetalleDeteccion: React.FC = () => {
   const [solicitar, setSolicitar] = useState(false);
   const [eliminar, setEliminar] = useState(false);
   const [propietario, setPropietario] = useState(false);
+  const [datosIngreso, setDatosIngreso] = useState(false);
   const [lista, setLista] = useState<'autorizados' | 'alertas' | null>(null);
   const [zoom, setZoom] = useState(false);
 
@@ -201,7 +220,11 @@ const DetalleDeteccion: React.FC = () => {
             </dl>
           </Tarjeta>
 
-          {d.estado_procesamiento === 'procesado' && !d.validado_manualmente || la.evidencia ? (
+          {esEvidenciaSinPlaca(la.evidencia) ? (
+            <Tarjeta titulo="Paso sin placa" subtitulo="Evidencia con que el motor ANPR registró el vehículo">
+              <EvidenciaPasoSinPlaca ev={la.evidencia} />
+            </Tarjeta>
+          ) : d.estado_procesamiento === 'procesado' && !d.validado_manualmente || la.evidencia ? (
             <Tarjeta titulo="Validez de la lectura" subtitulo="Evidencias independientes evaluadas por el motor ANPR">
               <ChecklistValidez valida={la.valida} ev={la.evidencia} />
             </Tarjeta>
@@ -230,6 +253,14 @@ const DetalleDeteccion: React.FC = () => {
                 <dt>Acceso</dt><dd>{d.camara ? `${d.camara.nombre} · ${d.camara.ubicacion}` : d.fuente === 'manual' ? 'Registro manual' : '—'}</dd>
                 <dt>Vehículo observado</dt><dd>{describirVehiculo(d)}</dd>
                 {d.autorizado && <><dt>Titular (padrón)</dt><dd>{d.autorizado.propietario}{d.autorizado.departamento && <span className="secundario texto-secundario"> · {d.autorizado.departamento}</span>}</dd></>}
+                {d.tipo_movimiento !== 'salida' && <>
+                  {/* Columnas «Nombres y apellidos» y «Observaciones» del reporte de control vehicular */}
+                  <dt>Quién ingresa</dt>
+                  <dd>{d.persona_ingreso || <span className="texto-secundario">Sin registrar</span>}
+                    {puede('detecciones:validar') && <button className="btn btn-ghost btn-sm" style={{ marginLeft: 6 }} onClick={() => setDatosIngreso(true)}>
+                      <Edit3 size={13} /> {d.persona_ingreso || d.motivo_ingreso ? 'Editar' : 'Registrar'}</button>}</dd>
+                  <dt>Motivo de ingreso</dt><dd>{d.motivo_ingreso || <span className="texto-secundario">Sin registrar</span>}</dd>
+                </>}
                 {d.restriccion_acceso && <><dt>Restricción del permiso</dt><dd><span className="insignia no_reconocido"><Clock size={12} /> {d.restriccion_acceso === 'fuera_horario' ? 'Fuera de horario' : d.restriccion_acceso === 'no_iniciada' ? 'Aún no vigente' : 'Vencido'}</span></dd></>}
                 <dt>Validación</dt><dd>{d.validacion ? `${d.validacion.usuario?.nombre ?? 'Personal'} · ${fechaHora(d.validacion.fecha)}` : 'Automática'}</dd>
                 <dt>Registro</dt><dd className="mono" style={{ fontSize: 12 }}>#{d.id}{d.tracking_id && d.tracking_id > 0 ? ` · track ${d.tracking_id}` : ''}</dd>
@@ -256,6 +287,7 @@ const DetalleDeteccion: React.FC = () => {
           onCerrar={() => setSolicitar(false)} onEnviada={s => { setSolicitar(false); notificar('exito', `Solicitud #${s.id} enviada`, 'El gestor de permisos fue notificado.'); }} />
       )}
       {propietario && <ConsultaPropietario d={d} onCerrar={() => setPropietario(false)} />}
+      {datosIngreso && <DatosIngresoModal d={d} onCerrar={() => setDatosIngreso(false)} onGuardado={() => recargar(true)} />}
       {lista && d.placa && <FormularioLista tipo={lista} inicial={{ placa: d.placa, marca: d.vehiculo.marca, modelo: d.vehiculo.modelo, color: d.vehiculo.color }}
         onCerrar={() => setLista(null)} onGuardado={() => { setLista(null); notificar('exito', lista === 'autorizados' ? 'Vehículo autorizado' : 'Alerta registrada', 'Aplica a los próximos ingresos de la placa.'); }} />}
       {eliminar && <EliminarUno d={d} onCerrar={() => setEliminar(false)} onEliminada={() => navigate('/detecciones', { replace: true })} />}

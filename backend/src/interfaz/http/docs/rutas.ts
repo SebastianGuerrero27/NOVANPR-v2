@@ -346,6 +346,19 @@ export const RUTAS: RutaDoc[] = [
     respuestas: { 201: 'Cámara registrada', 400: 'Datos inválidos' },
   },
   {
+    metodo: 'post', ruta: '/api/camaras/video-prueba', etiqueta: 'Cámaras', acceso: 'camaras:gestionar',
+    resumen: 'Cámara de prueba con un video cargado',
+    descripcion: 'El cuerpo es el archivo de video (MP4, MKV o MOV; se comprueba su firma, no la extensión) con su Content-Type, '
+      + 'y los datos van en la consulta. El servidor de medios lo publica en bucle en cam_<id>: el motor ANPR y el monitoreo en vivo '
+      + 'lo procesan como una cámara real. Solo disponible si el servidor define VIDEOS_PRUEBA_DIR (máximo VIDEOS_PRUEBA_MAX_MB, 2048 MB por omisión).',
+    consulta: {
+      nombre: { tipo: 'string', descripcion: 'Nombre de la cámara (3–100 caracteres)', ejemplo: 'Garita video 19-10' },
+      ubicacion: { tipo: 'string', descripcion: 'Ubicación (3–150 caracteres)', ejemplo: 'Entrada ECU 911 Ambato' },
+      direccion: { tipo: 'string', descripcion: 'ingreso (por omisión) o salida', ejemplo: 'ingreso' },
+    },
+    respuestas: { 201: 'Cámara de prueba creada', 400: 'Datos inválidos, tamaño excesivo o archivo que no es video', 409: 'Función deshabilitada en este servidor' },
+  },
+  {
     metodo: 'put', ruta: '/api/camaras/:id(\\d+)', etiqueta: 'Cámaras', acceso: 'camaras:gestionar',
     resumen: 'Edita una cámara',
     descripcion: 'Si cambia la URL, la conectividad vuelve a verificarse en segundo plano.',
@@ -464,6 +477,7 @@ export const RUTAS: RutaDoc[] = [
       lectura_valida: { tipo: 'boolean', descripcion: 'Veredicto nuevo del motor (si llegó el segundo OCR)' },
       evidencia_lectura: { tipo: 'object' },
       vehiculo: { tipo: 'object', descripcion: 'Atributos observados: tipo, color, marca, modelo (segundo factor)' },
+      ruta_imagen_placa: { tipo: 'string', descripcion: 'Foto de la placa de otra pista del mismo vehículo que la leyó mejor', ejemplo: '/media/placa_20261020_054332_846.jpg' },
     },
     respuestas: { 200: 'Reevaluado (o decisión vigente conservada: validado por el personal o alerta)', 400: 'Falta el ID de ingreso', 404: 'Ingreso no encontrado' },
   },
@@ -516,6 +530,8 @@ export const RUTAS: RutaDoc[] = [
       tipo_vehiculo: { tipo: 'string', ejemplo: 'Automóvil' },
       observacion: { tipo: 'string', descripcion: 'Texto libre sin < >, hasta 300 caracteres (obligatoria con excepción, mínimo 5)' },
       excepcion: { tipo: 'boolean', descripcion: 'Autorizar por excepción' },
+      persona_ingreso: { tipo: 'string', descripcion: 'Nombres y apellidos de quien ingresa (letras, hasta 150); vacío lo borra', ejemplo: 'Ana Pérez' },
+      motivo_ingreso: { tipo: 'string', descripcion: 'Motivo de ingreso, texto libre sin < > hasta 300; vacío lo borra', ejemplo: 'Reunión de coordinación' },
     },
     respuestas: { 400: 'Placa fuera del formato ANT, tipo u observación inválidos o falta el motivo de la excepción', 403: 'Sin permiso para excepciones', 404: 'Detección no encontrada' },
   },
@@ -528,8 +544,21 @@ export const RUTAS: RutaDoc[] = [
       motivo: { tipo: 'string', requerido: true, descripcion: 'Texto libre sin < >, 5 a 300 caracteres', ejemplo: 'Cámara fuera de servicio' },
       camara_id: { tipo: 'integer', ejemplo: 1 },
       tipo_vehiculo: { tipo: 'string', ejemplo: 'Camioneta' },
+      persona_ingreso: { tipo: 'string', descripcion: 'Nombres y apellidos de quien ingresa (solo ingresos)', ejemplo: 'Ana Pérez' },
+      motivo_ingreso: { tipo: 'string', descripcion: 'Motivo de ingreso (solo ingresos)', ejemplo: 'Reunión de coordinación' },
     },
     respuestas: { 201: 'Ingreso registrado', 400: 'Placa fuera del formato ANT, motivo, tipo o cámara inválidos' },
+  },
+  {
+    metodo: 'patch', ruta: '/api/detecciones/:id(\\d+)/ingreso', etiqueta: 'Detecciones', acceso: 'detecciones:validar',
+    resumen: 'Registra quién ingresa y el motivo de ingreso',
+    descripcion: 'Columnas «Nombres y apellidos» y «Observaciones» del reporte de control vehicular. Un campo ausente no cambia; '
+      + 'vacío, lo borra. Solo en ingresos; queda en la auditoría.',
+    cuerpo: {
+      persona_ingreso: { tipo: 'string', descripcion: 'Letras, espacios y . \' - &, hasta 150 caracteres', ejemplo: 'Sbte. María Cevallos' },
+      motivo_ingreso: { tipo: 'string', descripcion: 'Texto libre sin < >, hasta 300 caracteres', ejemplo: 'Compras públicas' },
+    },
+    respuestas: { 400: 'Sin datos, nombre o motivo inválidos, o el paso es una salida', 404: 'Detección no encontrada' },
   },
   {
     metodo: 'delete', ruta: '/api/detecciones/:id(\\d+)', etiqueta: 'Detecciones', acceso: 'detecciones:eliminar',
@@ -601,6 +630,22 @@ export const RUTAS: RutaDoc[] = [
       camara: { tipo: 'integer', descripcion: 'ID de la cámara', ejemplo: 1 },
     },
     respuestas: { 400: 'Fecha o cámara inválida, período invertido o mayor a un año' },
+  },
+  {
+    metodo: 'get', ruta: '/api/reportes/control-vehicular', etiqueta: 'Reportes', acceso: 'reportes:ver',
+    resumen: 'Reporte de control vehicular de la garita (PDF o Excel)',
+    descripcion: 'Hoja con el logo del ECU 911: fecha, nombres y apellidos, tipo, marca, placa, hora de ingreso, hora de salida '
+      + '(la siguiente salida de la misma placa) y observaciones (motivo de ingreso), con la línea del turno y la firma del '
+      + 'agente entrante. Por omisión, hoy completo en PDF. La descarga queda en la auditoría.',
+    consulta: {
+      desde: { tipo: 'string', formato: 'date-time', ejemplo: '2026-10-19T00:00:00' },
+      hasta: { tipo: 'string', formato: 'date-time', ejemplo: '2026-10-19T23:59:59' },
+      camara: { tipo: 'integer', descripcion: 'ID de la cámara de ingreso', ejemplo: 1 },
+      turno: { tipo: 'string', descripcion: 'completo, diurno (07:00–19:00) o nocturno (19:00–07:00 del día siguiente)', ejemplo: 'nocturno' },
+      formato: { tipo: 'string', descripcion: 'pdf o xlsx', ejemplo: 'pdf' },
+    },
+    archivo: 'application/pdf',
+    respuestas: { 400: 'Fecha, cámara, turno o formato inválidos' },
   },
 
   // ─── Configuración ──────────────────────────────────────────────────────────

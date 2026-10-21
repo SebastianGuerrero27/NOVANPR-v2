@@ -5,9 +5,9 @@ import {
   type Decision, decidirAcceso, type EstadoValidacion, MOTIVO_RESTRICCION, type PoliticaAutorizacion,
 } from '../dominio/decisionAcceso';
 import {
-  csvDetecciones, ETIQUETA_ESTADO, type FilaExportacion, type FiltrosDetecciones, fechaHoraLocal, leerDatosValidacion, leerFiltros,
-  leerLimite, leerPaginacion, leerPlacaConsulta, leerRegistroManual, lecturaUtilizable, normalizarFuente, REGLA_MOTIVO_ELIMINACION,
-  REGLA_MOTIVO_ELIMINACION_MASIVA, serializarEvidencia, tieneFiltros,
+  csvDetecciones, type DatosIngreso, ETIQUETA_ESTADO, type FilaExportacion, type FiltrosDetecciones, fechaHoraLocal, hayDatosIngreso,
+  leerDatosIngreso, leerDatosValidacion, leerFiltros, leerLimite, leerPaginacion, leerPlacaConsulta, leerRegistroManual, lecturaUtilizable,
+  normalizarFuente, REGLA_MOTIVO_ELIMINACION, REGLA_MOTIVO_ELIMINACION_MASIVA, serializarEvidencia, tieneFiltros,
 } from '../dominio/detecciones';
 import { describirHorario, evaluarVigencia, type Vigencia } from '../dominio/horario';
 import { type Rol, tienePermiso } from '../dominio/permisos';
@@ -29,6 +29,12 @@ import { normalizarPlaca, validarPlaca, validarTexto } from '../dominio/validaci
  */
 
 export type Fila = Record<string, any>;
+
+/** « · ingresa: … · motivo: …» para la auditoría (un campo borrado se anota como tal). */
+function describirDatosIngreso(x: DatosIngreso): string {
+  const parte = (etiqueta: string, v: string | null | undefined) => (v === undefined ? '' : ` · ${etiqueta}: ${v ?? '(borrado)'}`);
+  return parte('ingresa', x.persona) + parte('motivo de ingreso', x.motivo);
+}
 
 /** Detección tal como la entrega la API y los eventos en tiempo real. */
 export type DeteccionDTO = Record<string, any> & { id: number; placa: string | null; estado_validacion: EstadoValidacion };
@@ -112,6 +118,8 @@ export interface RepositorioDetecciones {
   guardarValidacion(id: number, d: { placa: string; tipo: string | null; usuarioId: number }, cruce: Cruce, decision: Decision): Promise<void>;
   crearManual(d: { placa: string; camaraId: number | null; tipo: string | null; usuarioId: number }, cruce: Cruce, decision: Decision): Promise<number>;
   crearSalidaManual(d: { placa: string; camaraId: number; usuarioId: number }): Promise<number>;
+  /** Nombres y apellidos de quien ingresa y motivo de ingreso (solo los campos presentes) */
+  guardarDatosIngreso(id: number, d: DatosIngreso): Promise<void>;
   eliminar(id: number): Promise<void>;
   /** Elimina las que cumplen los filtros (todas si `f` es null) y devuelve sus rutas de evidencia */
   eliminarFiltradas(f: FiltrosDetecciones | null): Promise<{ id: number; ruta_imagen_ingreso: string | null; ruta_imagen_placa: string | null }[]>;
@@ -303,9 +311,11 @@ export function casosDetecciones(d: DependenciasDetecciones) {
         placaOriginal: placa, confianza, decision, lecturaVerificador: lectura_verificador, latenciaMs: latencia_ms,
       });
 
-      // Sin lectura utilizable: queda para validación del personal (no se elimina la evidencia)
+      // Sin lectura utilizable: queda para validación del personal (no se elimina la evidencia). Se
+      // guarda lo que el motor explicó (p. ej. un vehículo sin placa visible) para mostrar el motivo
       if (!lecturaUtilizable(estado_procesamiento, placa)) {
         await d.repositorio.marcarNoLegible(id, rutaPlaca);
+        if (evidencia) await d.repositorio.guardarVeredicto(id, validez, evidencia);
         await lecturaAutomatica('pendiente_revision');
         return { message: 'Ingreso pendiente de validación manual.', deteccion: await difundir(id, 'deteccion:actualizada') };
       }
@@ -338,11 +348,13 @@ export function casosDetecciones(d: DependenciasDetecciones) {
      * Fase 3 · reevaluación. El motor registra el paso en menos de 1 s con las evidencias que tiene;
      * cuando llegan el segundo OCR o los atributos del vehículo reenvía su veredicto y el paso se
      * decide de nuevo con las mismas reglas. Se conserva lo que decidió el personal, una alerta no
-     * se rebaja y solo se avisa si el estado cambia.
+     * se rebaja y solo se avisa si el estado cambia. También corrige el paso cuando otra pista del
+     * mismo vehículo leyó mejor la placa (con su foto: `ruta_imagen_placa`).
      */
     async reevaluar(entrada: unknown) {
       const { ingreso_id, placa_reconocida = null, confianza_ocr = null, lectura_verificador = null, lectura_valida = null,
-        evidencia_lectura = null, vehiculo = null } = cuerpo(entrada);
+        evidencia_lectura = null, vehiculo = null, ruta_imagen_placa = null } = cuerpo(entrada);
+      const rutaPlaca = typeof ruta_imagen_placa === 'string' && ruta_imagen_placa ? ruta_imagen_placa.substring(0, 255) : null;
       if (!Number.isInteger(ingreso_id)) throw errorValidacion('El ID de ingreso es obligatorio.');
       const id = ingreso_id as number;
       const actual = await d.repositorio.obtener(id);
@@ -367,7 +379,7 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       const confianza = typeof confianza_ocr === 'number' ? confianza_ocr : typeof actual.confianza_ocr === 'number' ? actual.confianza_ocr : null;
 
       const { dto, decision, permiso } = await decidirLectura(id, {
-        placa, confianza, rutaPlaca: null, validez, lecturaVerificador: lectura_verificador ?? actual.lectura_verificador ?? null,
+        placa, confianza, rutaPlaca, validez, lecturaVerificador: lectura_verificador ?? actual.lectura_verificador ?? null,
         latenciaMs: actual.latencia_ms ?? null,
       });
       const cambio = decision.estado !== actual.estado_validacion;
@@ -465,6 +477,8 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       const datos = leerDatosValidacion(b, excepcion);
       if (!datos.ok) throw errorValidacion(datos.error);
       const { tipoVehiculo, observacion } = datos.valor;
+      const ingreso = leerDatosIngreso(b);
+      if (!ingreso.ok) throw errorValidacion(ingreso.error);
       const actual = await d.repositorio.obtener(id);
       if (!actual) throw errorNoEncontrado('Detección no encontrada.');
       if (actual.tipo_movimiento === 'salida') {
@@ -480,10 +494,12 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       await d.repositorio.guardarValidacion(id, {
         placa: final, tipo: tipoVehiculo || cruce.permiso?.tipo_vehiculo || null, usuarioId: actor.id,
       }, cruce, decision);
+      if (hayDatosIngreso(ingreso.valor)) await d.repositorio.guardarDatosIngreso(id, ingreso.valor);
 
       const antes = actual.placa_validada || actual.placa_reconocida || 'sin lectura';
       await d.auditoria.operacion(actor, decision.regla === 'R2-excepcion' ? 'EXCEPCION_ACCESO' : 'VALIDACION', 'deteccion', id,
-        `${antes} → ${final} (${ETIQUETA_ESTADO[decision.estado]}${decision.restriccion ? ` · ${MOTIVO_RESTRICCION[decision.restriccion]}` : ''})${observacion ? ` · ${observacion}` : ''}`);
+        `${antes} → ${final} (${ETIQUETA_ESTADO[decision.estado]}${decision.restriccion ? ` · ${MOTIVO_RESTRICCION[decision.restriccion]}` : ''})${observacion ? ` · ${observacion}` : ''}`
+        + describirDatosIngreso(ingreso.valor));
       // La persona atendió el paso: sus alarmas se resuelven
       await d.avisos.resolverPorDeteccion(id);
       const dto = await difundir(id, 'deteccion:actualizada');
@@ -500,6 +516,8 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       const r = leerRegistroManual(cuerpo(entrada));
       if (!r.ok) throw errorValidacion(r.error);
       const { placa, motivo, camaraId, tipoVehiculo } = r.valor;
+      const ingreso = leerDatosIngreso(cuerpo(entrada));
+      if (!ingreso.ok) throw errorValidacion(ingreso.error);
       const direccion = camaraId === null ? 'ingreso' : await d.repositorio.direccionCamara(camaraId);
       if (direccion === null) throw errorValidacion('La cámara seleccionada no existe o no tiene una dirección válida.');
       if (direccion === 'salida') {
@@ -513,10 +531,29 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       const id = await d.repositorio.crearManual({
         placa, camaraId, tipo: tipoVehiculo || cruce.permiso?.tipo_vehiculo || null, usuarioId: actor.id,
       }, cruce, decision);
-      await d.auditoria.operacion(actor, 'REGISTRO_MANUAL', 'deteccion', id, `${placa} (${ETIQUETA_ESTADO[decision.estado]}) · ${motivo}`);
+      if (hayDatosIngreso(ingreso.valor)) await d.repositorio.guardarDatosIngreso(id, ingreso.valor);
+      await d.auditoria.operacion(actor, 'REGISTRO_MANUAL', 'deteccion', id,
+        `${placa} (${ETIQUETA_ESTADO[decision.estado]}) · ${motivo}${describirDatosIngreso(ingreso.valor)}`);
       const dto = await difundir(id, 'deteccion:nueva');
       avisarSiCorresponde(dto, decision, cruce.permiso);
       return { message: 'Ingreso registrado manualmente.', deteccion: dto };
+    },
+
+    /**
+     * Nombres y apellidos de quien ingresa y motivo de ingreso (hoja de control vehicular de la
+     * garita), después de registrado el paso. Solo en ingresos; el cambio queda en la auditoría.
+     */
+    async editarIngreso(id: number, entrada: unknown, actor: Actor) {
+      const datos = leerDatosIngreso(cuerpo(entrada));
+      if (!datos.ok) throw errorValidacion(datos.error);
+      if (!hayDatosIngreso(datos.valor)) throw errorValidacion('Indique los nombres y apellidos o el motivo de ingreso.');
+      const actual = await d.repositorio.obtener(id);
+      if (!actual) throw errorNoEncontrado('Detección no encontrada.');
+      if (actual.tipo_movimiento === 'salida') throw errorValidacion('Los nombres y el motivo se registran en el ingreso, no en la salida.');
+      await d.repositorio.guardarDatosIngreso(id, datos.valor);
+      await d.auditoria.operacion(actor, 'INGRESO_DATOS', 'deteccion', id,
+        `${actual.placa_validada || actual.placa_reconocida || 'sin placa'}${describirDatosIngreso(datos.valor)}`);
+      return { message: 'Datos del ingreso guardados.', deteccion: await difundir(id, 'deteccion:actualizada') };
     },
 
     /** Elimina una detección y su evidencia fotográfica, con motivo auditado. */

@@ -2,6 +2,15 @@
 GUIA: ENTRENAR Y AFINAR EL DETECTOR DE PLACAS, LOCALMENTE O CON DOCKER
 ==============================================================================
 
+RESULTADO DE LA CORRIDA DEL 19/10/2026 (ESCENAS COMPUESTAS + REPASO):
+   services/anpr/scripts/componer_placas_ecuatorianas.py pego los recortes sobre
+   placas reales de Open Images (8.080 imagenes, 10 epocas, 4 h 53 min, Docker).
+   Candidato: yolo26n_ecuador_mixto_s0_20261019_152110_candidato.pt (y .onnx).
+   NO ACTIVAR: mejora la prueba compuesta ecuatoriana (recall 80,1% -> 84,5%)
+   pero pierde en fotos reales: Open Images 83,8% -> 81,7% (p < 0,001) y fotos
+   del piloto 86 -> 81 de 101 placas. Se conserva produccion.
+   Informe: docs/resultados/afinamiento_ecuador_mixto_2026-10-19.md.
+
 RESULTADO DE LA CORRIDA REALIZADA EL 18/10/2026 (VERIFICADA EL 19/10/2026):
    Entrenamiento Docker completo: 10 epocas, 7.200 train y 800 val, 68 minutos.
    PT y ONNX: services/anpr/models/

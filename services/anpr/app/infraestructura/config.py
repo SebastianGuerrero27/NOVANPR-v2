@@ -29,6 +29,13 @@ YOLO_CONFIDENCE_THRESHOLD: float = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", 
 PLATE_CONFIDENCE_THRESHOLD: float = float(os.getenv("PLATE_CONFIDENCE_THRESHOLD", "0.22"))
 # No se procesa OCR ni se registra un paso con una detección de placa inferior al 23 %.
 PLATE_REGISTRATION_MIN_CONFIDENCE: float = 0.23
+# Vehículos sin placa visible (app/aplicacion/paso_sin_placa.py): con movimiento en la zona de
+# interés y sin paso registrado por el flujo de placas, un detector de vehículos confirma el paso y se
+# registra con su foto. La fracción mínima de la zona en movimiento se calibró con el video de la
+# garita (autos 0,64–0,91, moto 0,25, persona lejos ≤ 0,07).
+SIN_PLACA_HABILITADO: bool = os.getenv("SIN_PLACA_HABILITADO", "true").lower() in ("true", "1", "yes")
+SIN_PLACA_FRACCION_VEHICULO: float = float(os.getenv("SIN_PLACA_FRACCION_VEHICULO", "0.15"))
+SIN_PLACA_ESPERA_S: float = float(os.getenv("SIN_PLACA_ESPERA_S", "5"))
 
 # =============================================================================
 # Proporción de la placa (ANT Ecuador)

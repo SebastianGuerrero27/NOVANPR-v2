@@ -130,7 +130,7 @@ describe('API · solicitudes de acceso (edición)', () => {
   });
 
   it.each([
-    [{ placa: 'ABC12' }, 'Placa inválida. Formato: ABC-1234 (automóvil) o AB-123C (motocicleta).'],
+    [{ placa: 'ABC12' }, 'Placa inválida. Formato: ABC-1234 o ABC-123 (automóvil) o AB-123C (motocicleta).'],
     [{ propietario: 'Ana 2' }, "Propietario o responsable: solo letras, espacios y . ' - &."],
     [{ motivo: '<b>Visita</b>' }, 'Motivo del ingreso: sin los caracteres < > ni caracteres de control.'],
     [{ motivo: '' }, 'El campo «Motivo del ingreso» es obligatorio.'],

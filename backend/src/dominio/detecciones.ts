@@ -69,8 +69,16 @@ export function tipoPorFormato(placa: string): string | null {
 export interface EvidenciaLectura {
   valido?: boolean;
   motivos?: string[];
+  /** 'vehiculo_sin_placa': el motor vio un vehículo en la zona de interés sin placa que leer */
+  motivo?: string;
   [campo: string]: unknown;
 }
+
+/** Motivo que envía el motor cuando registra un vehículo sin placa visible (solo su foto como evidencia). */
+export const MOTIVO_SIN_PLACA = 'vehiculo_sin_placa';
+
+/** El paso es un vehículo sin placa visible registrado por el motor (evidencia: la foto). */
+export const esSinPlaca = (p: { evidencia_lectura?: string | null }) => evidenciaDe(p)?.motivo === MOTIVO_SIN_PLACA;
 
 /** Campos del paso guardado que explican su estado (columnas de DeteccionVehiculo y del permiso). */
 export interface PasoGuardado {
@@ -137,6 +145,11 @@ export function motivoRestriccion(p: PasoGuardado): string | null {
  */
 export function motivoRevision(p: PasoGuardado, politica: PoliticaAutorizacion): string | null {
   if (p.estado_validacion === 'no_reconocido' && !p.validado_manualmente) return motivoRestriccion(p);
+  if (p.estado_procesamiento === 'no_legible' && p.estado_validacion === 'pendiente_revision' && !p.validado_manualmente) {
+    return esSinPlaca(p)
+      ? 'Vehículo sin placa visible: verifique el ingreso con la foto del vehículo y registre la placa si la tiene.'
+      : 'La placa no se pudo leer: verifique el ingreso con la foto.';
+  }
   if (p.estado_validacion !== 'pendiente_revision' || p.validado_manualmente || p.estado_procesamiento !== 'procesado') return null;
   const enPadron = Boolean(p.vehiculo_autorizado_id);
   const ev = evidenciaDe(p);
@@ -191,6 +204,35 @@ export function leerDatosValidacion(entrada: Entrada, excepcion: boolean): Valid
   if (!observacion.ok) return observacion;
   return { ok: true, valor: { tipoVehiculo: tipo.valor, observacion: observacion.valor } };
 }
+
+/** Nombres y apellidos de quien ingresa: columna de la hoja «Reporte de control vehicular» de la garita. */
+export const REGLA_PERSONA_INGRESO: ReglaTexto = { etiqueta: 'Nombres y apellidos', tipo: 'nombre', max: 150 };
+/** Motivo del ingreso (reunión, recorrido, mantenimiento…): la columna «Observaciones» de esa hoja. */
+export const REGLA_MOTIVO_INGRESO: ReglaTexto = { etiqueta: 'Motivo de ingreso', tipo: 'libre', max: 300 };
+
+/** Quién ingresa y por qué. Un campo ausente (undefined) no cambia lo guardado; null lo borra. */
+export interface DatosIngreso {
+  persona?: string | null;
+  motivo?: string | null;
+}
+
+export function leerDatosIngreso(entrada: Entrada): Validado<DatosIngreso> {
+  const valor: DatosIngreso = {};
+  if (entrada.persona_ingreso !== undefined) {
+    const persona = validarTexto(entrada.persona_ingreso, REGLA_PERSONA_INGRESO);
+    if (!persona.ok) return persona;
+    valor.persona = persona.valor;
+  }
+  if (entrada.motivo_ingreso !== undefined) {
+    const motivo = validarTexto(entrada.motivo_ingreso, REGLA_MOTIVO_INGRESO);
+    if (!motivo.ok) return motivo;
+    valor.motivo = motivo.valor;
+  }
+  return { ok: true, valor };
+}
+
+/** Hay algo que guardar de quien ingresa. */
+export const hayDatosIngreso = (d: DatosIngreso) => d.persona !== undefined || d.motivo !== undefined;
 
 export interface RegistroManual {
   placa: string;
@@ -307,11 +349,13 @@ export interface FilaExportacion {
   nivel_alerta: string | null;
   confianza_deteccion: number | null;
   confianza_ocr: number | null;
+  persona_ingreso?: string | null;
+  motivo_ingreso?: string | null;
 }
 
 const CABECERA_CSV = ['ID', 'Fecha y hora', 'Movimiento', 'Placa', 'Lectura OCR', 'Estado', 'Validado por operador', 'Validador', 'Cámara', 'Ubicación',
   'Tipo de vehículo', 'Marca observada', 'Color observado', 'Verificación del vehículo', 'Propietario (padrón)', 'Departamento',
-  'Motivo de alerta', 'Nivel de alerta', 'Confianza detección (%)', 'Confianza OCR (%)'];
+  'Motivo de alerta', 'Nivel de alerta', 'Confianza detección (%)', 'Confianza OCR (%)', 'Nombres y apellidos', 'Motivo de ingreso'];
 
 /** Marca de orden de bytes: Excel abre el UTF-8 con tildes correctas. */
 const BOM_UTF8 = String.fromCharCode(0xfeff);
@@ -329,6 +373,7 @@ export function csvDetecciones(filas: FilaExportacion[]): string {
     d.camara_nombre || '', d.camara_ubicacion || '', d.tipo_vehiculo || d.vehiculo_tipo || '', d.vehiculo_marca || '',
     d.vehiculo_color || '', d.verificacion_vehiculo || '', d.propietario || '', d.departamento || '',
     d.alerta_motivo || '', d.nivel_alerta || '', porcentaje(d.confianza_deteccion), porcentaje(d.confianza_ocr),
+    d.persona_ingreso || '', d.motivo_ingreso || '',
   ].map(celdaCsv).join(','));
   return BOM_UTF8 + [CABECERA_CSV.map(celdaCsv).join(','), ...lineas].join('\n');
 }

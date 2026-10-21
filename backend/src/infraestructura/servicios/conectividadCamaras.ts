@@ -3,7 +3,9 @@ import crypto from 'crypto';
 import net from 'net';
 import sql from '../postgres';
 import { getDB } from '../db';
+import { esUrlVideo } from '../../dominio/camaras';
 import { revelar } from './custodiaCredenciales';
+import { rutaCamara, urlLecturaMotor } from './medios';
 import { verificarRed } from './redCamaras';
 import { emitEvent } from './socket';
 import { notificar } from './notificaciones';
@@ -221,6 +223,11 @@ export function iniciarMonitorCamaras(): void {
       // Cada cámara por separado: una credencial ilegible no impide verificar las demás
       await Promise.all(r.recordset.map(async c => {
         try {
+          // Una cámara de video de prueba no tiene equipo: se comprueba su ruta en el servidor de medios
+          if (esUrlVideo(c.rtsp_url)) {
+            await registrarConexion(c.id, await probarConexion(urlLecturaMotor(rutaCamara(c.id)), null));
+            return;
+          }
           const url = revelar(c.rtsp_url);
           const motivo = await verificarRed(url, c.ip);
           await registrarConexion(c.id, motivo

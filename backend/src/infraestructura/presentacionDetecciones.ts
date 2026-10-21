@@ -1,6 +1,6 @@
 import type { DeteccionDTO, Fila } from '../aplicacion/detecciones';
 import type { EstadoValidacion, RestriccionAcceso } from '../dominio/decisionAcceso';
-import { evidenciaDe, motivoRevision, normalizarFuente, type PasoGuardado } from '../dominio/detecciones';
+import { esSinPlaca, evidenciaDe, motivoRevision, normalizarFuente, type PasoGuardado } from '../dominio/detecciones';
 import { politicaAutorizacion } from './servicios/configuracion';
 import { urlMedia } from './servicios/media';
 
@@ -36,9 +36,13 @@ export function presentarDeteccion(d: Fila, detalle = false): DeteccionDTO {
     autorizado: d.vehiculo_autorizado_id
       ? { id: d.vehiculo_autorizado_id, propietario: d.propietario, departamento: d.departamento, categoria: d.autorizado_categoria ?? null } : null,
     restriccion_acceso: (d.restriccion_acceso ?? null) as RestriccionAcceso | null,
+    // Hoja de control vehicular de la garita: quién ingresa y por qué
+    persona_ingreso: d.persona_ingreso ?? null,
+    motivo_ingreso: d.motivo_ingreso ?? null,
     validado_manualmente: Boolean(d.validado_manualmente),
     lectura_valida: d.lectura_valida === null || d.lectura_valida === undefined ? null : Boolean(d.lectura_valida),
     motivo_revision: motivoRevision(d as PasoGuardado, politicaAutorizacion()),
+    sin_placa: esSinPlaca(d),
     validacion: d.validado_manualmente
       ? { usuario: d.validador_nombre ? { id: d.usuario_validador_id, nombre: d.validador_nombre, email: d.validador_email } : null, fecha: d.fecha_validacion }
       : null,

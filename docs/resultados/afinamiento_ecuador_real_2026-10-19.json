@@ -1,0 +1,191 @@
+{
+ "fecha": "2026-10-19",
+ "dataset": "Prueba real ecuatoriana: 105 fotos del piloto y dataset/raw (2 placas, 1 habitación)",
+ "split": "test",
+ "imgsz": 512,
+ "iou": 0.5,
+ "imagenes": 105,
+ "placas": 101,
+ "protocolo": "Asignación voraz por confianza (scripts/evaluate_detectors.py); VP+FN = placas etiquetadas; VN no aplica en detección de objetos.",
+ "torch_threads": 4,
+ "modelos": {
+  "produccion": {
+   "ruta": "models/license_plate_detector.pt",
+   "sha256": "3667d8168e8a5a62fddf0992546efa0dc60f37578c9e95e8c0cbc92d4ed74c5c",
+   "ap50": 0.8834410759700834,
+   "ms_por_imagen": 254.35258216194123,
+   "umbrales": {
+    "0.22": {
+     "vp": 86,
+     "fn": 15,
+     "fp": 9,
+     "precision": 0.9052631578947369,
+     "recall": 0.8514851485148515,
+     "f1": 0.8775510204081632,
+     "iou_medio": 0.7389912949178182,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "16-32": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "32-64": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "64-128": {
+       "placas": 26,
+       "vp": 19,
+       "recall": 0.7307692307692307
+      },
+      "128-inf": {
+       "placas": 75,
+       "vp": 67,
+       "recall": 0.8933333333333333
+      }
+     }
+    },
+    "0.35": {
+     "vp": 81,
+     "fn": 20,
+     "fp": 6,
+     "precision": 0.9310344827586207,
+     "recall": 0.801980198019802,
+     "f1": 0.8617021276595743,
+     "iou_medio": 0.7439565698582978,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "16-32": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "32-64": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "64-128": {
+       "placas": 26,
+       "vp": 17,
+       "recall": 0.6538461538461539
+      },
+      "128-inf": {
+       "placas": 75,
+       "vp": 64,
+       "recall": 0.8533333333333334
+      }
+     }
+    }
+   }
+  },
+  "ecuador_mixto": {
+   "ruta": "models/yolo26n_ecuador_mixto_s0_20261019_152110_candidato.pt",
+   "sha256": "9d690f2ed8e4efb727b63a626ff5e8b950df78430ec384fa7365246a8608a0c2",
+   "ap50": 0.7861777713065156,
+   "ms_por_imagen": 683.2029738188708,
+   "umbrales": {
+    "0.22": {
+     "vp": 81,
+     "fn": 20,
+     "fp": 11,
+     "precision": 0.8804347826086957,
+     "recall": 0.801980198019802,
+     "f1": 0.839378238341969,
+     "iou_medio": 0.727650111423036,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "16-32": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "32-64": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "64-128": {
+       "placas": 26,
+       "vp": 17,
+       "recall": 0.6538461538461539
+      },
+      "128-inf": {
+       "placas": 75,
+       "vp": 64,
+       "recall": 0.8533333333333334
+      }
+     }
+    },
+    "0.35": {
+     "vp": 79,
+     "fn": 22,
+     "fp": 7,
+     "precision": 0.9186046511627907,
+     "recall": 0.7821782178217822,
+     "f1": 0.8449197860962566,
+     "iou_medio": 0.7306132890892482,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "16-32": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "32-64": {
+       "placas": 0,
+       "vp": 0,
+       "recall": null
+      },
+      "64-128": {
+       "placas": 26,
+       "vp": 15,
+       "recall": 0.5769230769230769
+      },
+      "128-inf": {
+       "placas": 75,
+       "vp": 64,
+       "recall": 0.8533333333333334
+      }
+     }
+    }
+   },
+   "mcnemar_vs_produccion": {
+    "0.22": {
+     "solo_referencia": 6,
+     "solo_modelo": 1,
+     "ambos": 80,
+     "ninguno": 14,
+     "chi2": 2.29,
+     "p": 0.13057001811573618
+    },
+    "0.35": {
+     "solo_referencia": 5,
+     "solo_modelo": 3,
+     "ambos": 76,
+     "ninguno": 17,
+     "chi2": 0.12,
+     "p": 0.7236736098317631
+    }
+   }
+  }
+ }
+}

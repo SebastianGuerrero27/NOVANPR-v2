@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Camera, GripVertical, X } from 'lucide-react';
+import { Camera, GripVertical, WifiOff, X } from 'lucide-react';
 import api from '../../infraestructura/api';
+import { useEvento } from '../../aplicacion/tiempoReal';
 import type { Camara } from '../../dominio/tipos';
 import { Aviso } from './ui';
 import { ReproductorWebRTC, VisorEnVivo } from './envivo';
@@ -32,6 +33,11 @@ export const VistaCuadricula: React.FC<{ camaras: Camara[]; motorId: number | nu
   const [slots, setSlots] = useState<(number | null)[]>(leerSlots);
   const [cantidad, setCantidad] = useState<CantidadCeldas>(leerCantidad);
   const [errorVideo, setErrorVideo] = useState<string | null>(null);
+  // Conexión de cada cámara: la de la lista y luego la de cada verificación periódica del backend
+  // (evento camara:estado). Sin conexión, el reproductor giraba sin fin con un error genérico
+  const [conexion, setConexion] = useState<Record<number, { estado: Camara['estado']; mensaje: string | null }>>({});
+  useEvento<{ id: number; estado: Camara['estado']; mensaje_ping?: string | null }>('camara:estado',
+    e => setConexion(c => ({ ...c, [e.id]: { estado: e.estado, mensaje: e.mensaje_ping ?? null } })));
 
   const guardarSlots = (siguiente: (number | null)[]) => {
     setSlots(siguiente);
@@ -70,6 +76,7 @@ export const VistaCuadricula: React.FC<{ camaras: Camara[]; motorId: number | nu
       <div className={`nvr-grid nvr-grid-${cantidad}`} aria-label={`Vista cuadrícula de ${cantidad} cámaras`}>
         {slots.slice(0, cantidad).map((id, indice) => {
           const camara = camaras.find(c => c.id === id);
+          const enlace = camara ? conexion[camara.id] ?? { estado: camara.estado, mensaje: camara.mensaje_ping } : null;
           return (
             <section key={indice} className="nvr-celda" onDragOver={e => e.preventDefault()} onDrop={e => alSoltar(e, indice)}
               aria-label={`Cámara ${indice + 1}${camara ? `: ${camara.nombre}` : ', vacía'}`}>
@@ -83,7 +90,15 @@ export const VistaCuadricula: React.FC<{ camaras: Camara[]; motorId: number | nu
                   onClick={() => guardarSlots(slots.map((s, i) => i === indice ? null : s))}><X size={14} /></button>}
               </header>
               <div className="nvr-video">
-                {camara?.activa
+                {camara?.activa && enlace?.estado === 'SIN_CONEXION'
+                  ? (
+                    <div className="nvr-vacio nvr-sin-conexion" role="status">
+                      <WifiOff size={22} />
+                      <strong>Sin conexión con la cámara</strong>
+                      <span>{camara.ip} · {enlace.mensaje ?? 'no responde'}. Este equipo debe estar en la red de la cámara; el video se abre solo cuando vuelva a responder.</span>
+                    </div>
+                  )
+                  : camara?.activa
                   ? camara.id === motorId
                     ? <VisorEnVivo camaraId={camara.id} vista={Boolean(camara.rtsp_url_vista)} pausado={false}
                       onFallo={m => setErrorVideo(`${camara.nombre}: ${m}`)} />

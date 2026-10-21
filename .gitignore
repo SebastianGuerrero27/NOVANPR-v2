@@ -52,6 +52,8 @@ services/anpr/media/*.jpg
 services/anpr/media/*.png
 services/anpr/media/*.jpeg
 !services/anpr/media/.gitkeep
+# Videos de las cámaras de prueba (Cámaras › Cargar video): grabaciones con placas, nunca en git
+services/anpr/media/videos_prueba/
 services/anpr/*.jpg
 services/anpr/*.png
 services/anpr/*.jpeg
@@ -112,3 +114,6 @@ dataset/runs/
 dataset/detector_ecuador_mixto/
 dataset/openimages_test_ecuador_compuesto/
 dataset/prueba_ecuador_real/
+# Videos reales de la garita (placas: datos personales, LOPDP) y lo que se extrae de ellos
+dataset/videos_garita/
+dataset/garita/

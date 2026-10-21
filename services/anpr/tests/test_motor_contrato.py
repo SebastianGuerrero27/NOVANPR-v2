@@ -171,6 +171,7 @@ class Servicio:
         monkeypatch.setattr(motor, "_dir_media", str(tmp_path))
         monkeypatch.setattr(motor._dep, "verificador", lambda: None)
         monkeypatch.setattr(motor._dep, "reconocedor_vehiculo", lambda: None)
+        monkeypatch.setattr(motor._dep, "detector_vehiculos", lambda: None)
         for nombre, valor in {"_pipeline": None, "_selector": None, "_trabajador_ocr": None, "_fuente": None,
                               "_activo": False, "_fps_captura": 0.0, "camara_id": 1,
                               "fuente_camara": "rtsp://anpr:clave-secreta@mediamtx:8554/cam_1"}.items():
@@ -181,6 +182,11 @@ class Servicio:
         for registro in ("_pistas_resueltas", "_placa_de_pista", "_crudos_rapidos"):
             monkeypatch.setattr(motor, registro, {})
         monkeypatch.setattr(motor, "_pistas_activas", set())
+        # Un vehículo, un paso y pasos sin placa: cada prueba empieza sin pasos registrados
+        monkeypatch.setattr(motor, "_vistas", {})
+        monkeypatch.setattr(motor, "_pasos_recientes", [])
+        monkeypatch.setattr(motor, "_correcciones_en_espera", {})
+        monkeypatch.setattr(motor, "_ultimo_ingreso", 0.0)
         # Sin esperas reales entre reintentos de envío
         from app.aplicacion import motor as modulo_motor
         monkeypatch.setattr(modulo_motor, "_ESPERAS_REINTENTO_S", (0.0, 0.0, 0.0))
@@ -1141,3 +1147,174 @@ def test_error_del_ocr_asincrono_se_cuenta(servicio):
     servicio.fijar(pipeline=Pipeline(), trabajador_ocr=types.SimpleNamespace(_agent=AgenteFallido()))
     servicio.encolar_ocr(8, np.zeros((50, 100, 3), np.uint8), [10, 10, 60, 30])
     assert _valor("anpr_ocr_errors_total", error_type="ocr_asincrono") - antes == 1
+
+
+# ─── Video de la garita (19-10-2026): lecturas inventadas, formato y un vehículo, un paso ─────
+
+def test_una_lectura_inventada_por_el_formato_no_se_registra(servicio, monkeypatch):
+    """El marco «ambacar» de un concesionario se leyó 017G060: el formato infirió O, I, T y 6 para
+    obtener OIT-6060. Sin confirmación del segundo OCR no es una placa: se audita, no se registra."""
+    _con_fila_de_caracteres(monkeypatch)
+    servicio.fijar(pipeline=Pipeline(conteo={"OIT6060": 1}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="OIT-6060", texto_crudo="017G060")))
+    servicio.disparar_captura(candidato())
+    assert "detecciones/ingreso" not in servicio.http.rutas()
+    descarte = [c for r, c in servicio.http.envios if r == "detecciones/descarte"]
+    assert descarte and descarte[0]["motivo"] == "lectura_inferida"
+
+
+def test_dos_caracteres_inferidos_sin_confirmacion_tampoco_se_registran(servicio, monkeypatch):
+    """Tercera pasada del video (20-10-2026): el mismo marco se leyó 01W6000 → OIW-6000, con la O y la I
+    inferidas por el formato."""
+    _con_fila_de_caracteres(monkeypatch)
+    servicio.fijar(pipeline=Pipeline(conteo={"OIW6000": 1}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="OIW-6000", texto_crudo="01W6000")))
+    servicio.disparar_captura(candidato())
+    assert "detecciones/ingreso" not in servicio.http.rutas()
+    descarte = [c for r, c in servicio.http.envios if r == "detecciones/descarte"]
+    assert descarte and descarte[0]["motivo"] == "lectura_inferida"
+
+
+def test_el_verificador_con_formato_de_moto_no_reemplaza_la_placa_de_un_auto(servicio, monkeypatch):
+    """El segundo OCR leyó P00418 (PO-0418, formato de moto) en la placa de un auto donde el OCR leyó
+    PDO-418: se registra PDO-418."""
+    _con_fila_de_caracteres(monkeypatch)
+    monkeypatch.setattr(servicio.motor._dep, "verificador", lambda: VerificadorFijo("PO0418", crudo="P00418"))
+    servicio.fijar(pipeline=Pipeline(conteo={"PDO418": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="PDO-418", texto_crudo="PDO418")))
+    servicio.disparar_captura(candidato())
+    ingreso, ocr = servicio.http.envios[0][1], servicio.http.envios[1][1]
+    assert ingreso["placa"].replace("-", "") == "PDO418"
+    assert ocr["placa_reconocida"].replace("-", "") == "PDO418"
+
+
+def test_otra_pista_del_mismo_vehiculo_corrige_el_registro_en_lugar_de_duplicarlo(servicio, monkeypatch):
+    """PER-6147 y PFR-6147: la segunda pista (placa más grande, más cerca) corrige el paso registrado."""
+    _con_fila_de_caracteres(monkeypatch)
+    servicio.fijar(pipeline=Pipeline(conteo={"PER6147": 1}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="PER-6147", texto_crudo="PER6147")))
+    servicio.disparar_captura(candidato(tid=5, ancho=120, alto=30))
+    assert servicio.http.rutas().count("detecciones/ingreso") == 1
+    servicio.fijar(pipeline=Pipeline(conteo={"PFR6147": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="PFR-6147", texto_crudo="PFR6147")))
+    servicio.disparar_captura(candidato(tid=6, ancho=200, alto=50))
+    assert servicio.http.rutas().count("detecciones/ingreso") == 1
+    correccion = [c for r, c in servicio.http.envios if r == "detecciones/reevaluar"]
+    assert len(correccion) == 1 and correccion[0]["ingreso_id"] == 77
+    assert correccion[0]["placa_reconocida"].replace("-", "") == "PFR6147" and correccion[0]["ruta_imagen_placa"].startswith("/media/placa_")
+
+
+def test_la_pista_que_llega_mientras_se_registra_el_paso_lo_corrige_al_terminar(servicio, monkeypatch):
+    """Video de la garita (20-10-2026): TEN-394 (placa lejana) seguía registrándose cuando la pista
+    siguiente leyó TBN-3950 más cerca, y quedaron dos registros. El paso se reserva al decidir
+    registrarlo; la corrección se envía cuando el backend completa ese registro."""
+    _con_fila_de_caracteres(monkeypatch)
+    http = servicio.http
+    original = http.post
+    llegada = []
+
+    def post(url, json=None, timeout=None):
+        if url.endswith("/detecciones/ingreso") and not llegada:
+            llegada.append(True)  # la pista siguiente llega con el registro en curso
+            servicio.fijar(pipeline=Pipeline(conteo={"TBN3950": 2}),
+                           trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="TBN-3950", texto_crudo="TBN3950")))
+            servicio.disparar_captura(candidato(tid=6, ancho=200, alto=50))
+        return original(url, json, timeout)
+
+    monkeypatch.setattr(http, "post", post)
+    # La pista #6 aparece 0,3 s después de perderse la #5 y junto a donde se perdió
+    from app.aplicacion.consolidacion import Vista
+    servicio.motor._vistas.update({5: Vista(10.0, [200, 300, 300, 340], 11.0, [200, 300, 300, 340]),
+                                   6: Vista(11.3, [210, 300, 410, 350], 11.6, [210, 300, 410, 350])})
+    servicio.fijar(pipeline=Pipeline(conteo={"TEN394": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="TEN-394", texto_crudo="TEN394")))
+    servicio.disparar_captura(candidato(tid=5, ancho=100, alto=40))
+    rutas = http.rutas()
+    assert rutas.count("detecciones/ingreso") == 1
+    assert rutas.index("detecciones/completar-ocr") < rutas.index("detecciones/reevaluar")
+    correccion = [c for r, c in http.envios if r == "detecciones/reevaluar"]
+    assert len(correccion) == 1 and correccion[0]["ingreso_id"] == 77
+    assert correccion[0]["placa_reconocida"].replace("-", "") == "TBN3950"
+
+
+def test_una_lectura_poco_legible_no_corrige_el_paso(servicio, monkeypatch):
+    """El adoquinado del piso, más cerca de la cámara, se leyó SVT-584 con 2 caracteres en la fila:
+    se une al paso, pero no reemplaza su lectura."""
+    from app.aplicacion import motor as modulo_motor
+    from app.aplicacion.verificacion_placa import AnalisisCaracteres
+
+    _con_fila_de_caracteres(monkeypatch)
+    servicio.fijar(pipeline=Pipeline(conteo={"SVU584": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="SVU-584", texto_crudo="SVU584")))
+    servicio.disparar_captura(candidato(tid=5, ancho=120, alto=40))
+    pobre = AnalisisCaracteres(caracteres=2, altura=20.0, banda=[10, 10, 150, 30], puntaje=0.9, valida=False)
+    monkeypatch.setattr(modulo_motor, "analizar_caracteres", lambda recorte, min_caracteres=5: pobre)
+    servicio.fijar(pipeline=Pipeline(conteo={"SVU583": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="SVU-583", texto_crudo="SVU583")))
+    servicio.disparar_captura(candidato(tid=6, ancho=200, alto=50))
+    assert servicio.http.rutas().count("detecciones/ingreso") == 1
+    assert "detecciones/reevaluar" not in servicio.http.rutas()
+
+
+def test_un_recuadro_casi_cuadrado_se_registra_solo_si_el_verificador_lee_la_placa(servicio, monkeypatch):
+    """El adoquinado del piso (92 × 98 px) se leyó SVT-584 sin que el verificador leyera nada: no es
+    una placa. LBK-747 de cerca y en ángulo midió 1,09:1 y el verificador la leyó: sí lo es."""
+    _con_fila_de_caracteres(monkeypatch)
+    servicio.fijar(pipeline=Pipeline(conteo={"SVT584": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="SVT-584", texto_crudo="SVT584")))
+    servicio.disparar_captura(candidato(tid=5, ancho=92, alto=98))
+    assert "detecciones/ingreso" not in servicio.http.rutas()
+    monkeypatch.setattr(servicio.motor._dep, "verificador", lambda: VerificadorFijo("LBK747"))
+    servicio.fijar(pipeline=Pipeline(conteo={"LBK747": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="LBK-747", texto_crudo="LBK747")))
+    servicio.disparar_captura(candidato(tid=6, ancho=60, alto=55))
+    assert servicio.http.rutas().count("detecciones/ingreso") == 1
+
+
+def _detector_vehiculos(monkeypatch, servicio, tipo):
+    """El detector de vehículos ve un `tipo` cuya caja contiene la placa de `candidato`."""
+    monkeypatch.setattr(servicio.motor._dep, "detector_vehiculos",
+                        lambda: (lambda cuadro: [(tipo, 0.9, [100.0, 200.0, 500.0, 470.0])]))
+
+
+def test_una_placa_de_moto_solo_se_registra_sobre_una_moto(servicio, monkeypatch):
+    """Video de la garita (20-10-2026): el emblema «T5 EVO» de un auto se leyó TS-2117. Sobre un auto
+    no se registra; sobre una moto, sí."""
+    _con_fila_de_caracteres(monkeypatch)
+    _detector_vehiculos(monkeypatch, servicio, "automóvil")
+    servicio.fijar(pipeline=Pipeline(conteo={"TS2117": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="TS-2117", texto_crudo="TS2117")))
+    servicio.disparar_captura(candidato(tid=5, ancho=60, alto=50))
+    assert "detecciones/ingreso" not in servicio.http.rutas()
+    descarte = [c for r, c in servicio.http.envios if r == "detecciones/descarte"]
+    assert descarte and descarte[0]["motivo"] == "placa_de_moto_sin_moto"
+    _detector_vehiculos(monkeypatch, servicio, "motocicleta")
+    servicio.fijar(pipeline=Pipeline(conteo={"IB123C": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="IB-123C", texto_crudo="IB123C")))
+    servicio.disparar_captura(candidato(tid=6, ancho=60, alto=50))
+    assert servicio.http.rutas().count("detecciones/ingreso") == 1
+
+
+def test_la_correccion_conserva_el_formato_de_la_placa(servicio, monkeypatch):
+    """De cerca y en ángulo, la placa PDO-418 de un auto se leyó PD-0418E (formato de moto): no la corrige."""
+    _con_fila_de_caracteres(monkeypatch)
+    servicio.fijar(pipeline=Pipeline(conteo={"PDO418": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="PDO-418", texto_crudo="PDO418")))
+    servicio.disparar_captura(candidato(tid=5, ancho=100, alto=40))
+    servicio.fijar(pipeline=Pipeline(conteo={"PD0418E": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="PD-0418E", texto_crudo="PD0418E")))
+    servicio.disparar_captura(candidato(tid=6, ancho=140, alto=130))   # más cerca: sin la regla, la corregiría
+    rutas = servicio.http.rutas()
+    assert rutas.count("detecciones/ingreso") == 1 and "detecciones/reevaluar" not in rutas
+
+
+def test_las_cajas_predichas_no_cuentan_como_vistas_de_la_placa(servicio):
+    """Con las cajas de Kalman la pista vieja seguía «viva» 1,0 s después de perderse y se solapaba con
+    la que la continuaba (paso 1 del video, 20-10-2026): solo cuentan las detecciones."""
+    vista = lambda caja, predicha: types.SimpleNamespace(tracking_id=9, plate_bbox=caja, predicha=predicha)
+    servicio.motor._registrar_vistas([vista([10, 10, 50, 30], False)], 100.0)
+    servicio.motor._registrar_vistas([vista([12, 12, 52, 32], False)], 100.3)
+    servicio.motor._registrar_vistas([vista([14, 14, 54, 34], True)], 100.6)
+    registrada = servicio.motor._vistas[9]
+    assert (registrada.primera, registrada.ultima) == (100.0, 100.3)
+    assert list(registrada.caja_ultima) == [12.0, 12.0, 52.0, 32.0]

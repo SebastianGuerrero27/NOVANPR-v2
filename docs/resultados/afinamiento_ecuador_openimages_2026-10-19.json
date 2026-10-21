@@ -1,0 +1,289 @@
+{
+ "fecha": "2026-10-19",
+ "dataset": "Open Images V7, partición test oficial, Vehicle registration plate (sin IsGroupOf/IsDepiction)",
+ "split": "test",
+ "imgsz": 512,
+ "iou": 0.5,
+ "imagenes": 2048,
+ "placas": 2816,
+ "protocolo": "Asignación voraz por confianza (scripts/evaluate_detectors.py); VP+FN = placas etiquetadas; VN no aplica en detección de objetos.",
+ "torch_threads": 4,
+ "modelos": {
+  "produccion": {
+   "ruta": "models/license_plate_detector.pt",
+   "sha256": "3667d8168e8a5a62fddf0992546efa0dc60f37578c9e95e8c0cbc92d4ed74c5c",
+   "ap50": 0.8630348764763672,
+   "ms_por_imagen": 189.7718250932776,
+   "umbrales": {
+    "0.22": {
+     "vp": 2361,
+     "fn": 455,
+     "fp": 338,
+     "precision": 0.8747684327528714,
+     "recall": 0.8384232954545454,
+     "f1": 0.8562103354487761,
+     "iou_medio": 0.8212929265312273,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 454,
+       "vp": 129,
+       "recall": 0.2841409691629956
+      },
+      "16-32": {
+       "placas": 399,
+       "vp": 332,
+       "recall": 0.8320802005012531
+      },
+      "32-64": {
+       "placas": 638,
+       "vp": 615,
+       "recall": 0.9639498432601881
+      },
+      "64-128": {
+       "placas": 925,
+       "vp": 903,
+       "recall": 0.9762162162162162
+      },
+      "128-inf": {
+       "placas": 400,
+       "vp": 382,
+       "recall": 0.955
+      }
+     }
+    },
+    "0.35": {
+     "vp": 2298,
+     "fn": 518,
+     "fp": 149,
+     "precision": 0.9391091131998366,
+     "recall": 0.8160511363636364,
+     "f1": 0.8732661979859395,
+     "iou_medio": 0.8243412588791866,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 454,
+       "vp": 95,
+       "recall": 0.2092511013215859
+      },
+      "16-32": {
+       "placas": 399,
+       "vp": 317,
+       "recall": 0.7944862155388471
+      },
+      "32-64": {
+       "placas": 638,
+       "vp": 610,
+       "recall": 0.9561128526645768
+      },
+      "64-128": {
+       "placas": 925,
+       "vp": 899,
+       "recall": 0.9718918918918918
+      },
+      "128-inf": {
+       "placas": 400,
+       "vp": 377,
+       "recall": 0.9425
+      }
+     }
+    }
+   }
+  },
+  "ecuador_mixto": {
+   "ruta": "models/yolo26n_ecuador_mixto_s0_20261019_152110_candidato.pt",
+   "sha256": "9d690f2ed8e4efb727b63a626ff5e8b950df78430ec384fa7365246a8608a0c2",
+   "ap50": 0.8554827441512012,
+   "ms_por_imagen": 411.3737957387631,
+   "umbrales": {
+    "0.22": {
+     "vp": 2302,
+     "fn": 514,
+     "fp": 264,
+     "precision": 0.897116134060795,
+     "recall": 0.8174715909090909,
+     "f1": 0.8554440728353772,
+     "iou_medio": 0.82789857028826,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 454,
+       "vp": 125,
+       "recall": 0.2753303964757709
+      },
+      "16-32": {
+       "placas": 399,
+       "vp": 320,
+       "recall": 0.8020050125313283
+      },
+      "32-64": {
+       "placas": 638,
+       "vp": 601,
+       "recall": 0.9420062695924765
+      },
+      "64-128": {
+       "placas": 925,
+       "vp": 886,
+       "recall": 0.9578378378378378
+      },
+      "128-inf": {
+       "placas": 400,
+       "vp": 370,
+       "recall": 0.925
+      }
+     }
+    },
+    "0.35": {
+     "vp": 2187,
+     "fn": 629,
+     "fp": 109,
+     "precision": 0.9525261324041812,
+     "recall": 0.7766335227272727,
+     "f1": 0.8556338028169015,
+     "iou_medio": 0.8329598440432888,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 454,
+       "vp": 82,
+       "recall": 0.18061674008810572
+      },
+      "16-32": {
+       "placas": 399,
+       "vp": 297,
+       "recall": 0.7443609022556391
+      },
+      "32-64": {
+       "placas": 638,
+       "vp": 583,
+       "recall": 0.9137931034482759
+      },
+      "64-128": {
+       "placas": 925,
+       "vp": 865,
+       "recall": 0.9351351351351351
+      },
+      "128-inf": {
+       "placas": 400,
+       "vp": 360,
+       "recall": 0.9
+      }
+     }
+    }
+   },
+   "mcnemar_vs_produccion": {
+    "0.22": {
+     "solo_referencia": 88,
+     "solo_modelo": 29,
+     "ambos": 2273,
+     "ninguno": 426,
+     "chi2": 28.75,
+     "p": 8.225911295819114e-08
+    },
+    "0.35": {
+     "solo_referencia": 131,
+     "solo_modelo": 20,
+     "ambos": 2167,
+     "ninguno": 498,
+     "chi2": 80.13,
+     "p": 3.5013469982738163e-19
+    }
+   }
+  },
+  "ecuatorianas_sintetico": {
+   "ruta": "models/yolo26n_ecuatorianas_inicial_s0_20261018_225206_candidato.pt",
+   "sha256": "4a6d97fe9c19990ae84bbd886487464acc131752877112bf320ec2cb73dffc47",
+   "ap50": 0.24255815062562497,
+   "ms_por_imagen": 163.53137574708933,
+   "umbrales": {
+    "0.22": {
+     "vp": 1421,
+     "fn": 1395,
+     "fp": 9134,
+     "precision": 0.13462813832306963,
+     "recall": 0.5046164772727273,
+     "f1": 0.21254954752823274,
+     "iou_medio": 0.767640623071518,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 454,
+       "vp": 15,
+       "recall": 0.03303964757709251
+      },
+      "16-32": {
+       "placas": 399,
+       "vp": 76,
+       "recall": 0.19047619047619047
+      },
+      "32-64": {
+       "placas": 638,
+       "vp": 325,
+       "recall": 0.5094043887147336
+      },
+      "64-128": {
+       "placas": 925,
+       "vp": 679,
+       "recall": 0.7340540540540541
+      },
+      "128-inf": {
+       "placas": 400,
+       "vp": 326,
+       "recall": 0.815
+      }
+     }
+    },
+    "0.35": {
+     "vp": 1279,
+     "fn": 1537,
+     "fp": 5394,
+     "precision": 0.19166791548029372,
+     "recall": 0.4541903409090909,
+     "f1": 0.26957529771314154,
+     "iou_medio": 0.7754998691908024,
+     "recall_por_ancho_px": {
+      "0-16": {
+       "placas": 454,
+       "vp": 11,
+       "recall": 0.024229074889867842
+      },
+      "16-32": {
+       "placas": 399,
+       "vp": 60,
+       "recall": 0.15037593984962405
+      },
+      "32-64": {
+       "placas": 638,
+       "vp": 274,
+       "recall": 0.42946708463949845
+      },
+      "64-128": {
+       "placas": 925,
+       "vp": 622,
+       "recall": 0.6724324324324324
+      },
+      "128-inf": {
+       "placas": 400,
+       "vp": 312,
+       "recall": 0.78
+      }
+     }
+    }
+   },
+   "mcnemar_vs_produccion": {
+    "0.22": {
+     "solo_referencia": 955,
+     "solo_modelo": 15,
+     "ambos": 1406,
+     "ninguno": 440,
+     "chi2": 908.99,
+     "p": 1.089824607891207e-199
+    },
+    "0.35": {
+     "solo_referencia": 1037,
+     "solo_modelo": 18,
+     "ambos": 1261,
+     "ninguno": 500,
+     "chi2": 982.3,
+     "p": 1.265194490323032e-215
+    }
+   }
+  }
+ }
+}

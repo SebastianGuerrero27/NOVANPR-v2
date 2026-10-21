@@ -16,6 +16,8 @@ jest.mock('../../infraestructura/db', () => ({
 
 interface MediamtxSimulado {
   rutas: Map<string, string>;
+  /** Orden runOnInit de las rutas que publica FFmpeg (cámaras de video) */
+  ordenes: Map<string, string>;
   /** Rutas cuya alta o cambio falla («*» = todas) */
   fallar: Set<string>;
   solicitudes: string[];
@@ -24,6 +26,7 @@ interface MediamtxSimulado {
 
 /** Reglas del lector de URL de MediaMTX (Go, net/url) que importan aquí. */
 const fuenteAceptada = (f: string) => {
+  if (f === 'publisher') return true;
   if (!/^rtsps?:\/\//.test(f) || /%(?![0-9a-fA-F]{2})/.test(f)) return false;
   const autoridad = f.replace(/^rtsps?:\/\//, '').split(/[/?#]/)[0];
   const arroba = autoridad.lastIndexOf('@');
@@ -32,6 +35,7 @@ const fuenteAceptada = (f: string) => {
 
 function mediamtx(iniciales: Record<string, string> = {}): Promise<MediamtxSimulado> {
   const rutas = new Map(Object.entries(iniciales));
+  const ordenes = new Map<string, string>();
   const fallar = new Set<string>();
   const solicitudes: string[] = [];
   const srv = http.createServer((req, res) => {
@@ -45,25 +49,28 @@ function mediamtx(iniciales: Record<string, string> = {}): Promise<MediamtxSimul
       const url = req.url ?? '';
       solicitudes.push(`${req.method} ${url.split('?')[0]}`);
       if (req.method === 'GET' && url.startsWith('/v3/config/paths/list')) {
-        return responder(200, { items: [...rutas].map(([name, source]) => ({ name, source })) });
+        return responder(200, { items: [...rutas].map(([name, source]) => ({ name, source, runOnInit: ordenes.get(name) ?? '' })) });
       }
-      const m = url.match(/^\/v3\/config\/paths\/(add|patch|delete)\/(.+)$/);
+      const m = url.match(/^\/v3\/config\/paths\/(add|patch|replace|delete)\/(.+)$/);
       if (!m) return responder(404, { status: 'error', error: 'not found' });
       const [, accion, nombre] = m;
       if (accion === 'delete') {
         rutas.delete(nombre);
         return responder(200, {});
       }
-      const fuente = String(JSON.parse(cuerpo || '{}').source);
+      const config = JSON.parse(cuerpo || '{}');
+      const fuente = String(config.source);
       if (fallar.has(nombre) || fallar.has('*')) return responder(500, { status: 'error', error: `unable to apply '${fuente}'` });
       if (!fuenteAceptada(fuente)) return responder(400, { status: 'error', error: `invalid source: '${fuente}'` });
       rutas.set(nombre, fuente);
+      if (config.runOnInit) ordenes.set(nombre, String(config.runOnInit));
+      else ordenes.delete(nombre);
       return responder(200, {});
     });
   });
   return new Promise(listo => srv.listen(0, '127.0.0.1', () => {
     process.env.MEDIAMTX_API_URL = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
-    listo({ rutas, fallar, solicitudes, cerrar: () => new Promise(fin => srv.close(() => fin())) });
+    listo({ rutas, ordenes, fallar, solicitudes, cerrar: () => new Promise(fin => srv.close(() => fin())) });
   }));
 }
 
@@ -101,6 +108,23 @@ describe('MediaMTX · publicación de las cámaras', () => {
       cam_1_vista: 'rtsp://admin:mi%20clave@10.0.0.5:554/Streaming/Channels/102',
       cam_2: 'rtsp://admin:50%25off@10.0.0.6/canal',
     });
+    expect(avisos).toEqual([]);
+  });
+
+  it('cámara de video: la publica FFmpeg dentro de MediaMTX con el usuario del motor, sin fuente externa', async () => {
+    process.env.ANPR_SERVICE_TOKEN = 'token+de/servicio=';
+    const mtx = await mediamtx({ cam_4: 'rtsp://10.0.0.4/vieja' });
+    const archivo = `${'b'.repeat(32)}.mp4`;
+    mockCamaras.splice(0, mockCamaras.length, { id: 4, rtsp_url: `video://${archivo}`, rtsp_url_vista: null });
+    await sincronizarRutas();
+    mtx.solicitudes.length = 0;
+    await sincronizarRutas();
+    await mtx.cerrar();
+    expect(mtx.rutas.get('cam_4')).toBe('publisher');
+    expect(mtx.ordenes.get('cam_4')).toBe(`ffmpeg -hide_banner -loglevel error -re -stream_loop -1 -i /videos/${archivo} -c copy -f rtsp `
+      + '-rtsp_transport tcp rtsp://anpr:token%2Bde%2Fservicio%3D@127.0.0.1:8554/cam_4');
+    // Ya publicada: la siguiente sincronización solo consulta
+    expect(mtx.solicitudes).toEqual(['GET /v3/config/paths/list']);
     expect(avisos).toEqual([]);
   });
 

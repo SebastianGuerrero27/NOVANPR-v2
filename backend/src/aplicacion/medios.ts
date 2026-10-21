@@ -8,7 +8,9 @@ import { RE_RUTA_PRUEBA } from '../dominio/camaras';
  *   - Navegador (WebRTC): ticket de 60 s con alcance de video, emitido a un usuario con sesión.
  *   - Motor ANPR (RTSP): usuario "anpr" y el token de servicio.
  *   - La ruta debe ser cam_<id> de una cámara habilitada o una ruta de prueba.
- *   - Publicar o reproducir grabaciones: denegado (las cámaras se leen como fuente).
+ *   - Publicar: solo FFmpeg dentro de MediaMTX (usuario "anpr" y el token, por RTSP) en la ruta
+ *     cam_<id> de una cámara de video de prueba habilitada; las cámaras reales se leen como fuente.
+ *   - Reproducir grabaciones u otras acciones: denegado.
  */
 
 /** Lo que MediaMTX envía en cada consulta (textos; un campo ausente llega vacío). */
@@ -22,13 +24,16 @@ export interface SolicitudLectura {
 }
 
 export interface DependenciasMedios {
-  video: Pick<PuertoServidorVideo, 'camaraDeRuta'>;
+  video: Pick<PuertoServidorVideo, 'camaraDeRuta' | 'camaraVideoDeRuta'>;
   tickets: Pick<PuertoTickets, 'valido' | 'esMotor'>;
 }
 
 export function casosMedios(d: DependenciasMedios) {
   return {
     async autorizarLectura(s: SolicitudLectura): Promise<boolean> {
+      if (s.action === 'publish') {
+        return s.protocol === 'rtsp' && d.tickets.esMotor(s.user, s.password) && (await d.video.camaraVideoDeRuta(s.path)) !== null;
+      }
       if (s.action !== 'read') return false;
       const rutaValida = RE_RUTA_PRUEBA.test(s.path) || (await d.video.camaraDeRuta(s.path)) !== null;
       if (!rutaValida) return false;

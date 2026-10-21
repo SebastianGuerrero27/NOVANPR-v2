@@ -1,6 +1,6 @@
 import {
   casosCamaras, type DiagnosticoCamara, type PuertoConectividad, type PuertoCustodiaCredenciales, type PuertoMotorAnpr,
-  type PuertoServidorVideo, type PuertoTickets, type RepositorioCamaras, type ResultadoRtsp,
+  type PuertoServidorVideo, type PuertoTickets, type PuertoVideosPrueba, type RepositorioCamaras, type ResultadoRtsp,
 } from '../../aplicacion/camaras';
 import { ErrorAplicacion, type Actor } from '../../aplicacion/comun';
 import type { AlcanceTicket, CamaraGuardada } from '../../dominio/camaras';
@@ -75,6 +75,12 @@ function preparar(camara: CamaraGuardada | null = guardada(), custodia = custodi
     eliminarRutaPrueba: jest.fn().mockResolvedValue(undefined),
     estadoRuta: jest.fn().mockResolvedValue(null),
     camaraDeRuta: jest.fn().mockResolvedValue(null),
+    camaraVideoDeRuta: jest.fn().mockResolvedValue(null),
+  };
+  const videos: jest.Mocked<PuertoVideosPrueba> = {
+    maximoBytes: jest.fn(() => 2048 * 1048576),
+    guardar: jest.fn().mockResolvedValue({ ok: true, valor: { archivo: `${'a'.repeat(32)}.mp4`, bytes: 755766149 } }),
+    eliminar: jest.fn().mockResolvedValue(undefined),
   };
   const tickets: jest.Mocked<PuertoTickets> = {
     emitir: jest.fn((usuarioId: number, alcance: AlcanceTicket) => `ticket-${usuarioId}-${alcance}`),
@@ -93,8 +99,8 @@ function preparar(camara: CamaraGuardada | null = guardada(), custodia = custodi
   };
   const auditoria = { operacion: jest.fn().mockResolvedValue(undefined) };
   const eventos = { emitir: jest.fn() };
-  const casos = casosCamaras({ repositorio, custodia, conectividad, video, tickets, motor, auditoria, eventos });
-  return { casos, repositorio, custodia, conectividad, video, tickets, motor, auditoria, eventos };
+  const casos = casosCamaras({ repositorio, custodia, conectividad, video, tickets, motor, auditoria, eventos, videos });
+  return { casos, repositorio, custodia, conectividad, video, tickets, motor, auditoria, eventos, videos };
 }
 
 /** Tipo y mensaje del ErrorAplicacion que lanza la promesa (cualquier otro error hace fallar la prueba). */
@@ -576,5 +582,59 @@ describe('Casos de uso · cámaras · redes permitidas (protección contra SSRF)
     expect(r).toEqual({ ping: null, rtsp: expect.objectContaining({ en_linea: false, diagnostico: 'red_no_permitida', mensaje: FUERA }) });
     expect(conectividad.diagnosticar).not.toHaveBeenCalled();
     expect(conectividad.registrar).toHaveBeenCalledWith(3, r.rtsp, true);
+  });
+});
+
+describe('Casos de uso · cámara de prueba con un video cargado', () => {
+  const ARCHIVO = `${'a'.repeat(32)}.mp4`;
+  const DATOS = { nombre: 'Garita video 19-10', ubicacion: 'Entrada ECU 911 Ambato', direccion: 'ingreso' };
+  const contenido = (async function* () { yield new Uint8Array([0, 0, 0, 24]); })();
+  const camaraVideo = () => guardada({ id: 7, nombre: DATOS.nombre, ip: 'localhost', rtsp_url: `video://${ARCHIVO}` });
+
+  it('crea la cámara con el archivo guardado (sin equipo), audita y sincroniza el servidor de medios', async () => {
+    const { casos, repositorio, videos, auditoria, video } = preparar(camaraVideo());
+    const camara = await casos.cargarVideo(contenido, DATOS, 755766149, ADMIN);
+    expect(videos.guardar).toHaveBeenCalledWith(contenido, 2048 * 1048576);
+    expect(repositorio.crear).toHaveBeenCalledWith(
+      { nombre: DATOS.nombre, ubicacion: DATOS.ubicacion, ip: 'localhost', rtsp: `video://${ARCHIVO}`, rtspVista: null, direccion: 'ingreso' }, ADMIN.id);
+    expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'CAMARA_ALTA', 'camara', 7, expect.stringContaining('video de prueba (720.8 MB)'));
+    expect(camara).toMatchObject({ id: 7, es_video: true, rtsp_url: `video://${ARCHIVO}`, tiene_credenciales: false });
+    await new Promise(r => setImmediate(r));
+    expect(video.sincronizarRutas).toHaveBeenCalled();
+  });
+
+  it('rechaza sin leer el archivo: función deshabilitada, tamaño excesivo o datos inválidos', async () => {
+    const deshabilitada = preparar();
+    deshabilitada.videos.maximoBytes.mockReturnValue(null);
+    expect((await fallo(deshabilitada.casos.cargarVideo(contenido, DATOS, 1000, ADMIN)))?.tipo).toBe('conflicto');
+    for (const [datos, bytes] of [[DATOS, 3000 * 1048576], [DATOS, null], [{ ...DATOS, nombre: 'x' }, 1000], [{ ...DATOS, direccion: 'norte' }, 1000]] as const) {
+      const { casos, videos, repositorio } = preparar();
+      expect((await fallo(casos.cargarVideo(contenido, datos, bytes, ADMIN)))?.tipo).toBe('validacion');
+      expect(videos.guardar).not.toHaveBeenCalled();
+      expect(repositorio.crear).not.toHaveBeenCalled();
+    }
+  });
+
+  it('un archivo que no es video no crea la cámara', async () => {
+    const { casos, videos, repositorio } = preparar();
+    videos.guardar.mockResolvedValue({ ok: false, error: 'El archivo no es un video MP4, MKV o MOV.' });
+    expect(await fallo(casos.cargarVideo(contenido, DATOS, 1000, ADMIN))).toEqual({ tipo: 'validacion', mensaje: 'El archivo no es un video MP4, MKV o MOV.' });
+    expect(repositorio.crear).not.toHaveBeenCalled();
+  });
+
+  it('no se edita; al eliminarla se borra su archivo', async () => {
+    const { casos, videos, repositorio } = preparar(camaraVideo());
+    expect((await fallo(casos.editar(7, VALIDA, ADMIN)))?.tipo).toBe('conflicto');
+    expect(repositorio.actualizar).not.toHaveBeenCalled();
+    await casos.eliminar(7, ADMIN);
+    await new Promise(r => setImmediate(r));
+    expect(videos.eliminar).toHaveBeenCalledWith(ARCHIVO);
+  });
+
+  it('el diagnóstico comprueba su ruta en el servidor de medios, sin control de red ni IP de equipo', async () => {
+    const { casos, conectividad } = preparar(camaraVideo());
+    await casos.diagnosticar(7);
+    expect(conectividad.verificarRed).not.toHaveBeenCalled();
+    expect(conectividad.diagnosticar).toHaveBeenCalledWith('rtsp://anpr:token@mediamtx:8554/cam_7', null);
   });
 });
