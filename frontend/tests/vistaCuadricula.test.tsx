@@ -53,4 +53,14 @@ describe('Vista cuadrícula de Monitoreo', () => {
     expect(within(container.querySelector('[aria-label="Cámara 1: Cámara 1"]')!).getByText('INGRESO')).toBeInTheDocument();
     expect(container.querySelector('[aria-label="Cámara 2: Cámara 2"]')).not.toBeNull();
   });
+
+  it('una cámara sin conexión muestra el motivo en lugar de un reproductor que no abre', () => {
+    // La cámara física de la garita vista desde otra red: no responde al ping ni al puerto RTSP
+    const sinRed = camaras.map(c => c.id === 2 ? { ...c, estado: 'SIN_CONEXION' as const, mensaje_ping: 'Sin respuesta (tiempo de espera agotado)' } : c);
+    const { container } = render(<VistaCuadricula camaras={sinRed} motorId={1} />);
+    const celda = within(container.querySelector('[aria-label="Cámara 2: Cámara 2"]') as HTMLElement);
+    expect(celda.getByText('Sin conexión con la cámara')).toBeInTheDocument();
+    expect(celda.getByText(/192\.0\.2\.2 · Sin respuesta \(tiempo de espera agotado\)/)).toBeInTheDocument();
+    expect(screen.getByTestId('video-1')).toBeInTheDocument();
+  });
 });

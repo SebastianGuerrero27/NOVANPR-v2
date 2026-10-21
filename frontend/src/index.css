@@ -587,6 +587,9 @@ a.kpi:hover, button.kpi:hover { border-color: var(--kpi-color, var(--border-stro
 .confianza-baja { color: var(--alerta); background: var(--alerta-bg); border-color: var(--alerta-border); }
 .confianza-sin-dato { color: var(--text-3); background: var(--surface-3); border-color: var(--border); }
 .nvr-vacio { display: flex; aspect-ratio: 16 / 9; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: #94a3b8; font-size: 11px; }
+.nvr-sin-conexion { padding: 16px; text-align: center; }
+.nvr-sin-conexion strong { color: #e2e8f0; font-size: 13px; }
+.nvr-sin-conexion span { max-width: 380px; font-size: 12px; line-height: 1.5; }
 .nvr-grid-1 { grid-template-columns: minmax(0, 1fr); }
 .nvr-grid-1 .nvr-celda { width: min(100%, 900px); }
 .nvr-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
