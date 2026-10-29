@@ -21,6 +21,9 @@ export const REGLA_OBSERVACIONES: ReglaTexto = { etiqueta: 'Observaciones', tipo
 
 /** Lista blanca (dominio/listas.ts → LISTA_BLANCA). */
 export const REGLAS_LISTA_BLANCA = {
+  cedula: { etiqueta: 'Cédula', tipo: 'libre', max: 10 },
+  institucion: { etiqueta: 'Institución', tipo: 'alfanumerico', max: 150 },
+  cargo: { etiqueta: 'Cargo', tipo: 'alfanumerico', max: 150 },
   propietario: { etiqueta: 'Propietario o responsable', tipo: 'nombre', max: 150, min: 3, requerido: true },
   departamento: { etiqueta: 'Departamento o unidad', tipo: 'alfanumerico', max: 100 },
 } satisfies Reglas;
@@ -28,12 +31,13 @@ export const REGLAS_LISTA_BLANCA = {
 /** Lista negra (dominio/listas.ts → LISTA_NEGRA). */
 export const REGLAS_LISTA_NEGRA = {
   motivo: { etiqueta: 'Motivo', tipo: 'libre', max: 255, min: 5, requerido: true },
+  tipo_vehiculo: { etiqueta: 'Tipo de vehículo', tipo: 'alfanumerico', max: 50 },
 } satisfies Reglas;
 
 /** Solicitud de acceso (mismo cuerpo para crear y editar). */
 export const REGLAS_SOLICITUD = {
-  propietario: { etiqueta: 'Conductor o responsable', tipo: 'nombre', max: 150, min: 3, requerido: true },
-  departamento: { etiqueta: 'Unidad que visita', tipo: 'alfanumerico', max: 100 },
+  ...REGLAS_LISTA_BLANCA,
+  observaciones: REGLA_OBSERVACIONES,
   motivo: { etiqueta: 'Motivo del ingreso', tipo: 'libre', max: 300, min: 5, requerido: true },
 } satisfies Reglas;
 
@@ -67,7 +71,7 @@ export const REGLA_PERSONA_INGRESO: ReglaTexto = { etiqueta: 'Nombres y apellido
 export const REGLA_MOTIVO_INGRESO: ReglaTexto = { etiqueta: 'Motivo de ingreso', tipo: 'libre', max: 300 };
 /** Motivos frecuentes de la hoja de la garita, para elegirlos con un toque */
 export const MOTIVOS_INGRESO_FRECUENTES = [
-  'Reunión', 'Recorrido del ECU 911', 'Mantenimiento', 'Revisión de cámaras', 'Entrega de botellones de agua', 'Compras públicas', 'Visita',
+  'Jornada laboral', 'Reunión', 'Recorrido del ECU 911', 'Mantenimiento', 'Revisión de cámaras', 'Entrega de botellones de agua', 'Compras públicas', 'Visita',
 ];
 
 /** Motivo que se pide al confirmar una acción y queda en la auditoría (retiros, bloqueos, bajas, rechazos). */

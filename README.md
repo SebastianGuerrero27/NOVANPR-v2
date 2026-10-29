@@ -4,8 +4,8 @@ Proyecto ANPR para ECU 911 Coordinación Zonal 3 (Ambato). Titular: SelfSteer Pu
 
 Reconocimiento automático de placas (ANPR) con aprendizaje profundo para el control de ingreso
 vehicular: detección y lectura de placas en tiempo real, permisos de placa con vigencia y horario,
-lista de alertas, solicitudes de acceso, centro de alarmas con notificaciones en tiempo real y Web
-Push, y evaluación científica del reconocimiento y de las alarmas.
+lista de alertas, solicitudes de acceso y centro de alarmas con notificaciones en tiempo real y Web
+Push.
 
 Estado actual (octubre de 2026): el paso se registra en menos de 1 s desde la foto (lo que el
 verificador o el análisis del vehículo aporten después llega como reevaluación), solo se registran
@@ -31,7 +31,7 @@ frontend 46, todas en verde.
 |---|---|
 | Guardia | Punto de control: monitoreo, validación de lecturas, registro manual, solicitudes de acceso; recibe cada permiso otorgado con enlace a la lista blanca |
 | **Gestor de permisos** | Una sola vista: otorga permisos de placa (categoría, vigencia, franjas horarias) y resuelve solicitudes; sin monitoreo, solo se le notifica la llegada de los vehículos a los que dio permiso |
-| Administrador | Todo: usuarios, cámaras, configuración, auditoría, lista de alertas, excepciones, reportes y evaluación |
+| Administrador | Todo: usuarios, cámaras, configuración, auditoría, lista de alertas, excepciones, reportes y estado del sistema |
 
 La API se documenta con **Swagger UI** en `http://localhost:5000/api/docs` (especificación OpenAPI en `/api/docs.json`).
 
@@ -58,6 +58,12 @@ docker compose up --build
   MediaMTX (8554) quedan solo en `127.0.0.1` del equipo anfitrión.
 - Cada servicio tiene healthcheck (`docker compose ps` muestra *healthy*): el backend responde
   `/health/ready` cuando PostgreSQL está disponible y el motor arranca después de él.
+- La API se ejecuta con `backend/scripts/supervisar.cjs`: verifica `/health` cada 10 segundos y
+  reinicia el árbol de procesos tras tres fallos consecutivos. Respeta 180 segundos de arranque.
+  En desarrollo usa el modo watch nativo de Node en lugar de ts-node-dev; en producción supervisa
+  `dist/index.js`. Prueba del supervisor: `cd backend` y `node --test scripts/supervisar.test.cjs`.
+  El navegador conserva la sesión ante fallos de red y reintenta las lecturas; las escrituras
+  no se repiten automáticamente para evitar registros duplicados.
 - **No hay cámaras predefinidas:** se registran en *Operación › Registro de cámaras* (URL RTSP con
   la contraseña cifrada en la base). Solo se aceptan direcciones dentro de
   `CAMARAS_REDES_PERMITIDAS` (por omisión, redes privadas); en producción, defina la VLAN de cámaras.

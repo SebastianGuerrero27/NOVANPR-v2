@@ -1,0 +1,12 @@
+# Las acciones del CI están fijadas por commit (SHA), no por etiqueta: una etiqueta se puede
+# reescribir, como pasó con trivy-action el 19-03-2026 (CVE-2026-33634). Dependabot propone cada
+# semana el commit de la versión nueva y mantiene el comentario con la versión.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      acciones:
+        patterns: ["*"]

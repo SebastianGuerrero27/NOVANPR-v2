@@ -6,14 +6,16 @@ import { tipificarPlaca } from '../../dominio/tipificacion';
  *  - zona de movimiento MOG2 (verde translúcido) cuando el motor confirma un vehículo en ella;
  *  - región de interés (fuera de ella, oscurecido) y zonas de exclusión (rojo translúcido): ahí el
  *    motor no cuenta el movimiento ni busca placas;
- *  - caja de cada placa en seguimiento desde el primer cuadro, con el cuadrilátero de 4 vértices
- *    ajustado a la inclinación de la placa;
+ *  - caja fina de cada placa (1 px sobre un contorno oscuro, sin resplandor), con el
+ *    cuadrilátero ajustado a la inclinación de la placa;
  *  - insignia con la lectura: "◌ ESCANEANDO OCR" o el texto parcial mientras el OCR lee, la placa
  *    por consenso al leerla y el estado decidido por el backend; barra de escaneo mientras lee.
  *
- * Dibuja con requestAnimationFrame: entre dos envíos del motor extrapola la caja con la velocidad
- * del filtro de Kalman (máx. 80 ms) y desvanece las pistas que dejan de llegar. Sin pistas ni
- * movimiento no vuelve a dibujar hasta el próximo envío.
+ * Dibuja con requestAnimationFrame. El motor mueve la caja en cada cuadro con flujo óptico y la
+ * envía con su edad (cuánto hace que se midió); el navegador la adelanta con su velocidad hasta el
+ * instante en que dibuja (edad + tiempo desde que llegó, máx. 250 ms) para que no quede detrás de
+ * la placa, y desvanece las pistas que dejan de llegar. Sin pistas ni movimiento no vuelve a
+ * dibujar hasta el próximo envío.
  *
  * Coordenadas normalizadas 0–1 respecto del cuadro de la fuente.
  */
@@ -27,6 +29,8 @@ export interface PistaHud {
   puntos: Punto[] | null;
   /** Fracción del cuadro por segundo */
   velocidad: [number, number];
+  /** Segundos desde el cuadro en que vale la caja hasta que el motor la envió */
+  edad: number;
   /** Confianza del detector (0–1) */
   confianza: number;
   /** Placa por consenso (formato ANT), o null mientras se lee */
@@ -66,11 +70,25 @@ const TEXTO_ESTADO: Record<string, string> = {
   autorizado: 'AUTORIZADO', pendiente_revision: 'POR CONFIRMAR', no_reconocido: 'NO REGISTRADO', alerta: 'ALERTA',
 };
 const COLOR_ESCANEANDO = '#f59e0b';
-const COLOR_LEIDA = '#22c55e';
+const COLOR_LEIDA = '#16a34a';
 
-const DESVANECER_PISTA_MS = 400;
+// Caja y etiqueta (ver dibujarPista)
+const GROSOR_CAJA = 1;
+const CONTORNO = 'rgba(0, 0, 0, 0.55)';
+const SEPARADOR = '  •  ';
+const ALTO_ETIQUETA = 20;
+const BARRA_ETIQUETA = 3;
+const FONDO_ETIQUETA = 'rgba(9, 13, 22, 0.86)';
+const TEXTO_DETALLE = 'rgba(203, 213, 225, 0.92)';
+const FUENTE_PLACA = '600 12px ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace';
+const FUENTE_DETALLE = '500 11px Inter, system-ui, sans-serif';
+
+const DESVANECER_PISTA_MS = 300;
 const VIDA_MOVIMIENTO_MS = 600;
-const ANTICIPACION_MAX_S = 0.08;
+const ANTICIPACION_MAX_S = 0.25;
+// El video del navegador va detrás del motor (búfer de reproducción y red): la caja se lleva hacia
+// atrás con su velocidad hasta el cuadro que se está mostrando, como máximo este tiempo
+const RETRASO_MAX_S = 0.6;
 
 function conAlfa(hex: string, alfa: number): string {
   const n = parseInt(hex.slice(1), 16);
@@ -156,91 +174,96 @@ function dibujarMovimiento(ctx: CanvasRenderingContext2D, a: AreaDibujo, m: Movi
   ctx.restore();
 }
 
+/**
+ * Caja de la placa al estilo de los sistemas ANPR profesionales (OpenALPR, Rekor Scout): línea
+ * continua fina (1 px, redondeada a píxeles físicos) en el color del estado, sobre un contorno oscuro que la hace legible
+ * en cualquier fondo, sin resplandor ni relleno. La etiqueta va pegada a la esquina superior
+ * izquierda de la caja (debajo si no cabe arriba): barra del color del estado, la placa en
+ * monoespaciada y, más tenue, la tipificación y el estado.
+ */
 function dibujarPista(ctx: CanvasRenderingContext2D, a: AreaDibujo, p: PistaHud, dx: number, dy: number, opacidad: number, ahora: number) {
   // Desplazamiento (dx, dy) estimado por la velocidad de la pista entre envíos del motor
   const X = (x: number) => aPantalla(a, x + dx, 0)[0];
   const Y = (y: number) => aPantalla(a, 0, y + dy)[1];
   const color = colorPista(p);
+  const dpr = window.devicePixelRatio || 1;
+  const fisicos = Math.max(1, Math.round(GROSOR_CAJA * dpr));
+  // Las líneas de ancho impar en píxeles físicos van al centro del píxel para que no se vean borrosas
+  const ajustar = (v: number) => (Math.round(v * dpr) + (fisicos % 2 ? 0.5 : 0)) / dpr;
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, opacidad));
-  ctx.shadowColor = conAlfa(color, 0.45);
-  ctx.shadowBlur = 4;
-  ctx.strokeStyle = color;
-  // Contorno fino y estable al escalar el video, legible sobre fondos claros y oscuros.
-  ctx.lineWidth = 1.8;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
+  ctx.lineJoin = 'miter';
 
-  let ancla: [number, number];
+  let izquierda: number, arriba: number, abajo: number;
+  ctx.beginPath();
   if (p.puntos && p.puntos.length === 4) {
-    // Cuadrilátero de 4 vértices ajustado a la inclinación de la placa
+    // Cuadrilátero ajustado a la inclinación de la placa
     const pts = p.puntos.map(([x, y]) => [X(x), Y(y)] as Punto);
-    ctx.beginPath();
     pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     ctx.closePath();
-    ctx.stroke();
-    ctx.fillStyle = conAlfa(color, 0.12);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = color;
-    pts.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); });
-    ancla = [pts.reduce((s, q) => s + q[0], 0) / 4, Math.min(...pts.map(q => q[1]))];
+    izquierda = Math.min(...pts.map(q => q[0]));
+    arriba = Math.min(...pts.map(q => q[1]));
+    abajo = Math.max(...pts.map(q => q[1]));
   } else {
-    // Caja ortogonal con esquinas tácticas
-    const x1 = X(p.caja[0]), y1 = Y(p.caja[1]);
-    const x2 = Math.max(x1 + 16, X(p.caja[2])), y2 = Math.max(y1 + 10, Y(p.caja[3]));
-    ctx.beginPath();
-    ctx.roundRect(x1, y1, x2 - x1, y2 - y1, 4);
-    ctx.stroke();
-    const l = Math.min(12, (x2 - x1) * 0.22, (y2 - y1) * 0.22);
-    ctx.lineWidth = 2.2;
-    for (const [cx, cy, sx, sy] of [[x1, y1, 1, 1], [x2, y1, -1, 1], [x1, y2, 1, -1], [x2, y2, -1, -1]]) {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + sy * l);
-      ctx.lineTo(cx, cy);
-      ctx.lineTo(cx + sx * l, cy);
-      ctx.stroke();
-    }
-    ancla = [(x1 + x2) / 2, y1];
+    const x1 = ajustar(X(p.caja[0])), y1 = ajustar(Y(p.caja[1]));
+    const x2 = ajustar(Math.max(X(p.caja[0]) + 16, X(p.caja[2]))), y2 = ajustar(Math.max(Y(p.caja[1]) + 8, Y(p.caja[3])));
+    ctx.rect(x1, y1, x2 - x1, y2 - y1);
+    [izquierda, arriba, abajo] = [x1, y1, y2];
+  }
+  ctx.strokeStyle = CONTORNO;
+  ctx.lineWidth = (fisicos + 2) / dpr;
+  ctx.stroke();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = fisicos / dpr;
+  ctx.stroke();
+
+  // Etiqueta: placa y, separado, el resto de la lectura (tipificación, estado o confianza)
+  const [placa, ...resto] = textoInsignia(p).split(SEPARADOR);
+  const detalle = resto.join(' · ');
+  ctx.font = FUENTE_PLACA;
+  const anchoPlaca = ctx.measureText(placa).width;
+  ctx.font = FUENTE_DETALLE;
+  const anchoDetalle = detalle ? ctx.measureText(detalle).width : 0;
+  const ancho = Math.ceil(BARRA_ETIQUETA + 7 + anchoPlaca + (detalle ? 8 + anchoDetalle : 0) + 7);
+  const ex = Math.round(Math.max(a.x + 2, Math.min(a.x + a.w - ancho - 2, izquierda)));
+  const ey = Math.round(arriba - ALTO_ETIQUETA - 2 >= a.y + 2 ? arriba - ALTO_ETIQUETA - 2 : abajo + 2);
+  ctx.fillStyle = FONDO_ETIQUETA;
+  ctx.fillRect(ex, ey, ancho, ALTO_ETIQUETA);
+  ctx.fillStyle = color;
+  ctx.fillRect(ex, ey, BARRA_ETIQUETA, ALTO_ETIQUETA);
+  ctx.textBaseline = 'middle';
+  ctx.font = FUENTE_PLACA;
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillText(placa, ex + BARRA_ETIQUETA + 7, ey + ALTO_ETIQUETA / 2 + 0.5);
+  if (detalle) {
+    ctx.font = FUENTE_DETALLE;
+    ctx.fillStyle = TEXTO_DETALLE;
+    ctx.fillText(detalle, ex + BARRA_ETIQUETA + 7 + anchoPlaca + 8, ey + ALTO_ETIQUETA / 2 + 0.5);
   }
 
-  // Insignia con la lectura del OCR encima de la placa
-  const texto = textoInsignia(p);
-  ctx.font = 'bold 13px Inter, system-ui, monospace';
-  const bw = ctx.measureText(texto).width + 24;
-  const bh = 22;
-  const bx = Math.max(a.x + 4, Math.min(a.x + a.w - bw - 4, ancla[0] - bw / 2));
-  const by = Math.max(a.y + 4, ancla[1] - 28);
-  ctx.shadowBlur = 6;
-  ctx.shadowColor = 'rgba(0,0,0,0.6)';
-  ctx.fillStyle = 'rgba(11, 19, 43, 0.92)';
-  ctx.beginPath();
-  ctx.roundRect(bx, by, bw, bh, 4);
-  ctx.fill();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.2;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(bx + 10, by + bh / 2, 3.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(texto, bx + 18, by + 15);
-
-  // Barra de escaneo pulsante mientras el OCR todavía no tiene la placa
+  // Mientras el OCR todavía no tiene la placa: una línea fina de progreso bajo la etiqueta
   if (!p.placa) {
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(bx, by + bh + 2, bw, 3);
-    ctx.fillStyle = `rgba(245, 158, 11, ${0.5 + 0.5 * Math.sin(ahora / 200)})`;
-    ctx.fillRect(bx, by + bh + 2, bw * ((ahora / 800) % 1), 3);
+    ctx.fillStyle = conAlfa(COLOR_ESCANEANDO, 0.9);
+    ctx.fillRect(ex, ey + ALTO_ETIQUETA, ancho * ((ahora / 800) % 1), 1.5);
   }
   ctx.restore();
+}
+
+/**
+ * Segundos que hay que mover la caja con su velocidad para dibujarla en el cuadro que muestra el
+ * video: desde que el motor la midió (edad al enviarla + tiempo desde que llegó) hasta ahora menos
+ * el retardo del video. Positivo la adelanta; negativo la lleva hacia atrás, cuando el video va más
+ * atrasado que la medición. Así no queda ni detrás de la placa ni por delante de ella.
+ */
+export function anticipoCaja(edad: number, desdeRecibida: number, retardoVideo: number): number {
+  return Math.max(-RETRASO_MAX_S, Math.min(ANTICIPACION_MAX_S, edad + desdeRecibida - retardoVideo));
 }
 
 export interface Hud {
   /** Pistas y zona de movimiento del último envío del motor (y la región de interés y las zonas de exclusión, si se conocen). */
   actualizar: (pistas: PistaHud[], movimiento: MovimientoHud | null, roi?: Punto[] | null, exclusiones?: Punto[][]) => void;
+  /** Retardo del video del navegador respecto del motor (segundos, de las estadísticas WebRTC) */
+  fijarRetardoVideo: (segundos: number | null) => void;
   limpiar: () => void;
   detener: () => void;
 }
@@ -250,6 +273,7 @@ export function crearHud(lienzo: HTMLCanvasElement, area: () => AreaDibujo | nul
   let movimiento: { m: MovimientoHud; recibido: number } | null = null;
   let roi: Punto[] | null = null;
   let exclusiones: Punto[][] = [];
+  let retardoVideo = 0;
   let pendiente = true;
   let ultimaArea = '';
   let previo = performance.now();
@@ -286,11 +310,10 @@ export function crearHud(lienzo: HTMLCanvasElement, area: () => AreaDibujo | nul
     }
     for (const [id, t] of pistas) {
       if (ahora - t.recibida > DESVANECER_PISTA_MS) {
-        t.opacidad -= dt * 3.5;
+        t.opacidad -= dt * 5;
         if (t.opacidad <= 0) { pistas.delete(id); continue; }
       }
-      // Extrapolación con la velocidad de Kalman para que la caja no se quede atrás del video
-      const anticipo = Math.min(ANTICIPACION_MAX_S, (ahora - t.recibida) / 1000);
+      const anticipo = anticipoCaja(t.p.edad || 0, (ahora - t.recibida) / 1000, retardoVideo);
       dibujarPista(ctx, a, t.p, t.p.velocidad[0] * anticipo, t.p.velocidad[1] * anticipo, t.opacidad, ahora);
     }
   };
@@ -304,6 +327,9 @@ export function crearHud(lienzo: HTMLCanvasElement, area: () => AreaDibujo | nul
       if (nuevoRoi !== undefined) roi = nuevoRoi;
       if (nuevasExclusiones !== undefined) exclusiones = nuevasExclusiones;
       pendiente = true;
+    },
+    fijarRetardoVideo(segundos) {
+      retardoVideo = segundos !== null && Number.isFinite(segundos) ? Math.max(0, Math.min(RETRASO_MAX_S, segundos)) : 0;
     },
     limpiar() {
       pistas.clear();

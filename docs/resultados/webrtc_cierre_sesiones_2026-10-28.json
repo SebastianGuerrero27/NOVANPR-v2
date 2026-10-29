@@ -1,0 +1,36 @@
+{
+  "fecha_local": "2026-10-28",
+  "entorno": "Microsoft Edge headless, servicio local de MediaMTX y cámara 2 activa",
+  "alcance": "Cliente webrtc.ts transpilado desde fuentes; todavía no es validación del nuevo bundle desplegado.",
+  "metodo": "Tres ciclos de negociación WHEP, recepción de al menos cinco cuadros y cierre. En el cliente corregido se invocó cerrar dos veces por ciclo para verificar idempotencia.",
+  "antes": {
+    "ciclos": [
+      { "conexion": "connected", "cuadros_decodificados": 9, "ancho": 1920, "alto": 1080 },
+      { "conexion": "connected", "cuadros_decodificados": 16, "ancho": 1920, "alto": 1080 },
+      { "conexion": "connected", "cuadros_decodificados": 12, "ancho": 1920, "alto": 1080 }
+    ],
+    "respuestas": [
+      { "metodo": "POST", "estado": 201 }, { "metodo": "DELETE", "estado": 404 },
+      { "metodo": "POST", "estado": 201 }, { "metodo": "DELETE", "estado": 404 },
+      { "metodo": "POST", "estado": 201 }, { "metodo": "DELETE", "estado": 404 }
+    ]
+  },
+  "despues": {
+    "ciclos": [
+      { "conexion": "connected", "cuadros_decodificados": 6, "ancho": 1920, "alto": 1080 },
+      { "conexion": "connected", "cuadros_decodificados": 13, "ancho": 1920, "alto": 1080 },
+      { "conexion": "connected", "cuadros_decodificados": 5, "ancho": 1920, "alto": 1080 }
+    ],
+    "respuestas": [
+      { "metodo": "POST", "estado": 201 }, { "metodo": "DELETE", "estado": 200 },
+      { "metodo": "POST", "estado": 201 }, { "metodo": "DELETE", "estado": 200 },
+      { "metodo": "POST", "estado": 201 }, { "metodo": "DELETE", "estado": 200 }
+    ]
+  },
+  "fuentes_sha256": {
+    "frontend/src/infraestructura/webrtc.ts": "1ac54f4e04fe8ca00fdad4f975f5289d04ca0955b3f1ed1955c643027703284b",
+    "frontend/src/interfaz/componentes/envivo.tsx": "86755d1342310873de6bc4469ffc822a3cad78f82dd732b38e6fdebc4c14ccee"
+  },
+  "credenciales_omitidas": true,
+  "limitacion": "Comprueba este flujo local y su ciclo de cierre. No mide disponibilidad prolongada, otras cámaras ni redes externas."
+}

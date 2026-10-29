@@ -38,7 +38,7 @@ const OlvidePasswordModal: React.FC<{ emailInicial?: string; dominios?: string[]
       <div className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="olvide-titulo">
         <div className="auth-logo" style={{ marginBottom: 12 }}><img src={logoEcu911} alt="ECU 911" style={{ height: 48 }} /></div>
         <h3 id="olvide-titulo">Recuperar contraseña</h3>
-        <p className="desc">Ingrese su correo institucional. Si pertenece a una cuenta activa, recibirá un enlace válido por 30 minutos.</p>
+        <p className="desc">Ingrese el correo asociado a su cuenta. Si pertenece a una cuenta activa, recibirá un enlace válido por 30 minutos.</p>
 
         {resultado ? (
           <>
@@ -49,7 +49,7 @@ const OlvidePasswordModal: React.FC<{ emailInicial?: string; dominios?: string[]
           </>
         ) : (
           <form onSubmit={enviar} noValidate>
-            <Campo id="olvide-email" etiqueta="Correo institucional*" type="email" value={email} maxLength={150}
+            <Campo id="olvide-email" etiqueta="Correo electrónico*" type="email" value={email} maxLength={150}
               onChange={e => setEmail(e.target.value)} disabled={enviando} autoFocus autoCapitalize="none" autoCorrect="off"
               spellCheck={false} autoComplete="username" icono={<Mail size={20} />} error={errorCorreo} />
             <div className="auth-modal-acciones">

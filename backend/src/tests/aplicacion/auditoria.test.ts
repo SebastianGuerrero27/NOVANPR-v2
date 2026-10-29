@@ -44,6 +44,8 @@ describe('Casos de uso · auditoría', () => {
       fuente: 'operaciones', q: null, desde: null, hasta: new Date('2026-10-04T23:59:59'), exito: null,
     });
     expect(leerFiltrosAuditoria({ q: 'x'.repeat(150) }).q).toHaveLength(100);
+    expect(leerFiltrosAuditoria({ fuente: 'descartes', resultado: 'fallo' })).toMatchObject({ fuente: 'descartes', exito: null });
+    expect(leerFiltrosAuditoria({ fuente: 'propietario' }).fuente).toBe('propietario');
   });
 
   it('CSV: comillas, comas y saltos de línea quedan dentro de la celda (RFC 4180)', () => {

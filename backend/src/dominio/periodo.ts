@@ -1,7 +1,7 @@
 import { type Validado, validarEntero, validarFecha } from './validacion';
 
 /**
- * Períodos de consulta del reporte consolidado y de la evaluación del sistema (dominio puro).
+ * Períodos de consulta del reporte consolidado (dominio puro).
  *
  * Las fechas llegan como texto en la consulta (?desde=…&hasta=…) y se validan antes de tocar la
  * base: una fecha inválida se rechaza en lugar de reemplazarse en silencio por el período por
@@ -73,45 +73,4 @@ export function leerPeriodoReporte(
   const camara = validarEntero(consulta.camara, { etiqueta: 'Cámara', min: 1, max: ID_MAXIMO });
   if (!camara.ok) return camara;
   return { ok: true, valor: { desde: inicio, hasta: fin, camara: camara.valor } };
-}
-
-// ─── Evaluación del sistema ──────────────────────────────────────────────────
-
-export interface FiltroEvaluacion {
-  /** Días consultados (AAAA-MM-DD); null = sin límite */
-  desde: string | null;
-  hasta: string | null;
-  /** Instantes de la consulta: inicio del día `desde` y fin (23:59:59) del día `hasta` */
-  inicio: Date | null;
-  fin: Date | null;
-  camaraId: number | null;
-}
-
-/**
- * Filtro de la evaluación: días AAAA-MM-DD (ambos opcionales e inclusivos) y una cámara.
- * El día final se cuenta completo, hasta las 23:59:59.
- */
-export function leerFiltroEvaluacion(consulta: { desde?: unknown; hasta?: unknown; camara_id?: unknown }): Validado<FiltroEvaluacion> {
-  const desde = validarFecha(consulta.desde, { etiqueta: 'Fecha inicial' });
-  if (!desde.ok) return desde;
-  const hasta = validarFecha(consulta.hasta, { etiqueta: 'Fecha final' });
-  if (!hasta.ok) return hasta;
-  if (desde.valor && hasta.valor && desde.valor > hasta.valor) {
-    return { ok: false, error: 'La fecha inicial no puede ser posterior a la final.' };
-  }
-  const camara = validarEntero(consulta.camara_id, { etiqueta: 'Cámara', min: 1, max: ID_MAXIMO });
-  if (!camara.ok) return camara;
-  const dia = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
-  const diaFinal = dia(hasta.valor);
-  return {
-    ok: true,
-    valor: {
-      desde: dia(desde.valor),
-      hasta: diaFinal,
-      inicio: desde.valor,
-      // Sin zona: hora local del servidor, como se consultaba antes de la validación
-      fin: diaFinal ? new Date(`${diaFinal}T23:59:59`) : null,
-      camaraId: camara.valor,
-    },
-  };
 }

@@ -1,56 +1,37 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Bell, BellOff, Camera, ClipboardPlus, Cpu, Film, Gauge, Pause, Play, Plus, Search, ShieldAlert, ShieldCheck, Trash2, X, ZoomIn } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Bell, BellOff, Camera, ClipboardPlus, Cpu, Edit3, ExternalLink, Film, Gauge, History, LogOut, Pause, Play, Plus, ShieldAlert, ShieldCheck, Trash2, X } from 'lucide-react';
 import api, { mensajeError } from '../../infraestructura/api';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta, usePaginaVisible } from '../../aplicacion/hooks';
 import type { Camara, Deteccion, EstadoAnpr } from '../../dominio/tipos';
-import { codecVideo, ESTADOS, fecha, fechaHora, hora, numero, relativo } from '../../dominio/formato';
-import { formatearPlaca, normalizarPlaca } from '../../dominio/validacion';
-import { Aviso, Cargando, InsigniaEstado, InsigniaTipificacion, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
-import { filtrarEscrito } from '../componentes/campos';
-import { ConfianzaBadge, describirVehiculo, ImagenEvidencia, LineaIngreso, PlacaFoto, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
+import { codecVideo, ESTADOS, fecha, fechaHora, fechaIsoLocal, hora, limiteDia, numero, relativo } from '../../dominio/formato';
+import { formatearPlaca } from '../../dominio/validacion';
+import { ESTADOS_ACCESO, estadoAcceso, faltantesSalida, puedeRegistrarSalida } from '../../dominio/estadoAcceso';
+import { Aviso, Cargando, InsigniaEstado, InsigniaTipificacion, Paginacion, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
+import { ImagenEvidencia, PlacaFoto, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
 import { VisorZoom } from '../componentes/ZoomDual';
+import { type ResultadoBusqueda, SituacionPlaca } from '../componentes/SituacionPlaca';
 import { EliminarUno, EliminarVarios } from '../componentes/EliminarDetecciones';
 import { alCambiarSonido, fijarSonido, sonarAutorizado, sonarDenegado, sonidoActivo } from '../../infraestructura/avisos';
 import { PERFILES, PerfilVideo, VisorVideo } from '../componentes/video';
 import { VisorEnVivo } from '../componentes/envivo';
 import { useNotificar } from '../componentes/Notificaciones';
+import { RestringirVehiculoModal } from '../componentes/RestringirVehiculoModal';
 import { VistaCuadricula } from '../componentes/VistaCuadricula';
+import { actualizarCampoIngreso, CeldaIngreso, type CampoIngreso } from '../componentes/CeldaIngreso';
+import { ConfianzaRegistro } from '../componentes/ConfianzaRegistro';
 
 const MAX_FEED = 30;
 const CLAVE_PERFIL = 'anpr_perfil_video';
 const CLAVE_MODO = 'anpr_modo_video';
-const CLAVE_VISTA = 'anpr_vista_monitoreo';
+const CLAVE_VISTA = 'anpr_vista_monitoreo_v2';
 
 const leer = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 const guardar = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
 /** Milisegundos → segundos con un decimal (latencia del motor) */
 const segundos = (ms: number) => (ms / 1000).toLocaleString('es-EC', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-
-/** Respuesta de /detecciones/buscar-placa/:placa. */
-type ResultadoBusqueda = { placa: string; ultimos_ingresos: Deteccion[] } & (
-  | { estado: 'alerta'; alerta: { motivo: string; nivel_alerta: string; coincidencia?: string; placa: string } }
-  | { estado: 'autorizado'; autorizado: { propietario: string; departamento?: string | null } }
-  | { estado: 'restringido'; motivo: string | null }
-  | { estado: 'no_registrado' }
-);
-
-/** Situación de la placa consultada en las listas de control. */
-const ResultadoConsulta: React.FC<{ r: ResultadoBusqueda }> = ({ r }) => {
-  const placa = formatearPlaca(r.placa);
-  if (r.estado === 'alerta') {
-    return <Aviso tipo="error"><b>{placa} está en la lista negra</b> · {r.alerta.motivo} (nivel {r.alerta.nivel_alerta}{r.alerta.coincidencia === 'aproximada' ? `, coincidencia aproximada con ${formatearPlaca(r.alerta.placa)}` : ''})</Aviso>;
-  }
-  if (r.estado === 'autorizado') {
-    return <Aviso tipo="exito"><b>{placa} está autorizada</b> · {r.autorizado.propietario}{r.autorizado.departamento ? ` · ${r.autorizado.departamento}` : ''}</Aviso>;
-  }
-  if (r.estado === 'restringido') {
-    return <Aviso tipo="advertencia"><b>{placa}</b> tiene un permiso que ahora no la habilita{r.motivo ? `: ${r.motivo.toLowerCase()}` : ''}.</Aviso>;
-  }
-  return <Aviso tipo="advertencia"><b>{placa}</b> no consta en la lista blanca ni en la lista negra.</Aviso>;
-};
 
 const Monitoreo: React.FC = () => {
   const { user, puede } = useAuth();
@@ -62,7 +43,7 @@ const Monitoreo: React.FC = () => {
   // WebRTC (MediaMTX, sin re-codificar, ~0,2–0,5 s) o compatibilidad (JPEG por WebSocket desde el motor)
   const [modo, setModo] = useState<'webrtc' | 'compat'>(() => (leer(CLAVE_MODO, 'webrtc') === 'compat' ? 'compat' : 'webrtc'));
   const cambiarModo = (m: 'webrtc' | 'compat') => { setModo(m); guardar(CLAVE_MODO, m); };
-  const [vista, setVista] = useState<'anpr' | 'cuadricula'>(() => leer(CLAVE_VISTA, 'cuadricula') === 'anpr' ? 'anpr' : 'cuadricula');
+  const [vista, setVista] = useState<'anpr' | 'cuadricula'>(() => leer(CLAVE_VISTA, 'anpr') === 'cuadricula' ? 'cuadricula' : 'anpr');
   const cambiarVista = (v: 'anpr' | 'cuadricula') => { setVista(v); guardar(CLAVE_VISTA, v); };
   const [sonido, setSonido] = useState(sonidoActivo);
   useEffect(() => alCambiarSonido(setSonido), []);
@@ -70,6 +51,7 @@ const Monitoreo: React.FC = () => {
   const [cargandoFeed, setCargandoFeed] = useState(true);
   const [resaltada, setResaltada] = useState<number | null>(null);
   const [validando, setValidando] = useState<Deteccion | null>(null);
+  const [restringiendo, setRestringiendo] = useState<Deteccion | null>(null);
   const [manual, setManual] = useState(false);
   const [cambiando, setCambiando] = useState(false);
   const [reinicioVideo, setReinicioVideo] = useState(0);
@@ -108,7 +90,10 @@ const Monitoreo: React.FC = () => {
     setResaltada(d.id);
     window.setTimeout(() => setResaltada(r => (r === d.id ? null : r)), 3000);
   });
-  useEvento<{ id: number }>('deteccion:eliminada', ({ id }) => setFeed(f => f.filter(x => x.id !== id)));
+  useEvento<{ id: number }>('deteccion:eliminada', ({ id }) => {
+    setFeed(f => f.filter(x => x.id !== id));
+    setSeleccion(s => (s?.id === id ? null : s));
+  });
   useEvento('deteccion:eliminadas', () => cargarFeed());
   useReconexion(() => { cargarFeed(); estadoMotor.recargar(true); recargarCamaras(true); });
   useEvento<{ camara_id: number; nombre: string; por: string }>('monitoreo:camara', e => {
@@ -135,12 +120,43 @@ const Monitoreo: React.FC = () => {
   const hayCamaras = Boolean(camaras?.some(c => c.activa));
   const pendientes = feed.filter(d => d.estado_validacion === 'pendiente_revision' && !d.validado_manualmente && d.estado_procesamiento !== 'pendiente_ocr');
   const ultima = feed.find(d => d.estado_procesamiento !== 'pendiente_ocr') ?? null;
-  // La consulta de placa vive en la tarjeta de movimientos recientes (antes era un modal)
-  const consultaPlaca = useRef<HTMLInputElement>(null);
-  const irAConsulta = () => {
-    consultaPlaca.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    consultaPlaca.current?.focus({ preventScroll: true });
+  // Movimiento elegido en la tabla: se ve en «Visualización de accesos» sin salir de Monitoreo. Se
+  // guarda el registro (puede venir de una búsqueda) y se refresca con el feed si cambia
+  const [seleccion, setSeleccion] = useState<Deteccion | null>(null);
+  const enVista = seleccion ? (feed.find(d => d.id === seleccion.id) ?? seleccion) : ultima;
+  const panelAccesos = useRef<HTMLDivElement>(null);
+  const seleccionar = (d: Deteccion) => {
+    setSeleccion(d);
+    const caja = panelAccesos.current?.getBoundingClientRect();
+    if (caja && caja.top < 0) panelAccesos.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+  const [registrandoSalida, setRegistrandoSalida] = useState<number | null>(null);
+  /** Hora de salida del ingreso, con un toque; devuelve el registro actualizado (o null si falló). */
+  const registrarSalida = async (d: Deteccion): Promise<Deteccion | null> => {
+    if (!puedeRegistrarSalida(d)) {
+      const faltantes = faltantesSalida(d);
+      notificar(
+        'advertencia',
+        'No se puede registrar la salida todavía',
+        `Complete estos campos del registro: ${faltantes.join(', ')}.`,
+      );
+      return null;
+    }
+    setRegistrandoSalida(d.id);
+    try {
+      const actualizada = (await api.post<{ deteccion: Deteccion }>(`/detecciones/${d.id}/salida`)).data.deteccion;
+      setFeed(f => f.map(x => (x.id === actualizada.id ? actualizada : x)));
+      setSeleccion(s => (s?.id === actualizada.id ? actualizada : s));
+      notificar('exito', 'Salida registrada', `${d.placa ? formatearPlaca(d.placa) : 'El vehículo'} salió a las ${hora(actualizada.fecha_hora_salida ?? new Date().toISOString())}.`);
+      return actualizada;
+    } catch (err) {
+      notificar('error', 'No se pudo registrar la salida', mensajeError(err));
+      return null;
+    } finally {
+      setRegistrandoSalida(null);
+    }
+  };
+  // La consulta de placa vive en la tarjeta de movimientos recientes (antes era un modal)
 
   return (
     <div className="pagina ancha">
@@ -251,7 +267,7 @@ const Monitoreo: React.FC = () => {
             <div className="pila columna-feed-contenido">
               {pendientes.length > 0 && (
                 <Aviso tipo="info">
-                  <b>{pendientes.length} {pendientes.length === 1 ? 'paso requiere' : 'pasos requieren'} validación</b> en el feed. Use “Validar” en cada tarjeta.
+                  <b>{pendientes.length} {pendientes.length === 1 ? 'paso requiere' : 'pasos requieren'} autorización</b> en el feed. Use “Autorizar” en cada tarjeta.
                 </Aviso>
               )}
               <Tarjeta titulo="Detecciones en tiempo real" subtitulo="Actualización instantánea, sin recargar" sinPadding className="tarjeta-feed"
@@ -259,7 +275,7 @@ const Monitoreo: React.FC = () => {
                 <div className="pila" style={{ gap: 8, padding: 12 }}>
                   {cargandoFeed ? <Cargando /> : feed.length === 0
                     ? <Vacio titulo="Sin detecciones" texto="Cuando el motor registre un vehículo aparecerá aquí de inmediato." />
-                    : feed.map(d => <TarjetaDeteccion key={d.id} d={d} onValidar={setValidando} onEliminar={esAdmin ? setEliminando : undefined} resaltada={resaltada === d.id} />)}
+                    : feed.map(d => <TarjetaDeteccion key={d.id} d={d} onValidar={setValidando} onRestringir={puede('alertas:restringir') ? setRestringiendo : undefined} onEliminar={esAdmin ? setEliminando : undefined} resaltada={resaltada === d.id} />)}
                 </div>
               </Tarjeta>
             </div>
@@ -268,11 +284,14 @@ const Monitoreo: React.FC = () => {
 
         {/* A todo el ancho, debajo del video y del feed: antes iban en la columna del video y bajo el feed
             quedaba un hueco; la tabla, además, no cabía */}
-        {/* Último paso: tamaño destacado para la garita */}
-        <Tarjeta titulo="Último movimiento registrado" acciones={
+        {/* Visualización de accesos: el último paso o el elegido en la tabla, con su evidencia, sin
+            salir de Monitoreo (antes cada fila llevaba al detalle y había que volver) */}
+        <div ref={panelAccesos}>
+        <Tarjeta titulo="Visualización de accesos"
+          subtitulo={seleccion ? 'Movimiento elegido en la tabla' : 'Último movimiento registrado'} acciones={
           <div className="fila">
-            <button className="btn btn-secondary btn-sm" onClick={irAConsulta}><Search size={14} /> Consultar placa</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setManual(true)}><ClipboardPlus size={14} /> Movimiento manual</button>
+            {seleccion && <button className="btn btn-secondary btn-sm" onClick={() => setSeleccion(null)}><History size={14} /> Volver al último</button>}
+            {enVista && <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/detecciones/${enVista.id}`)}><ExternalLink size={14} /> Ver detalle</button>}
             <button className={`btn btn-sm ${sonido ? 'btn-secondary' : 'btn-ghost'}`} title={sonido ? 'Silenciar alertas' : 'Activar sonido de alertas'}
               onClick={() => fijarSonido(!sonido)}>
               {sonido ? <Bell size={14} /> : <BellOff size={14} />} {sonido ? 'Sonido activo' : 'Silenciado'}
@@ -282,35 +301,49 @@ const Monitoreo: React.FC = () => {
             <button className="btn btn-ghost btn-sm" title="Probar el sonido de acceso no autorizado" disabled={!sonido} onClick={sonarDenegado}>
               <ShieldAlert size={14} color="var(--alerta)" /> Probar alerta</button>
           </div>}>
-          {!ultima ? <Vacio titulo="Aún no hay pasos registrados" texto="Las detecciones aparecerán aquí en cuanto el motor ANPR registre un vehículo." /> : (
+          {!enVista ? <Vacio titulo="Aún no hay pasos registrados" texto="Las detecciones aparecerán aquí en cuanto el motor ANPR registre un vehículo." /> : (
             <div className="fila" style={{ alignItems: 'stretch', gap: 16, flexWrap: 'wrap' }}>
               <div className="pila" style={{ gap: 10, minWidth: 220 }}>
-                <Placa valor={ultima.placa} grande sinPlaca={ultima.sin_placa} />
-                <InsigniaTipificacion placa={ultima.placa} provincia />
-                <InsigniaEstado estado={ultima.estado_validacion} />
-                <span className="texto-secundario">{ultima.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {fechaHora(ultima.fecha_hora_ingreso)} · {relativo(ultima.fecha_hora_ingreso)}</span>
+                <Placa valor={enVista.placa} grande sinPlaca={enVista.sin_placa} />
+                <InsigniaTipificacion placa={enVista.placa} provincia />
+                <div className="fila" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  <InsigniaEstado estado={enVista.estado_validacion} />
+                  {estadoAcceso(enVista) !== 'registrado' && <span className={`insignia acceso ${estadoAcceso(enVista)}`}>{ESTADOS_ACCESO[estadoAcceso(enVista)].etiqueta}</span>}
+                </div>
+                <span className="texto-secundario">{enVista.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {fechaHora(enVista.fecha_hora_ingreso)} · {relativo(enVista.fecha_hora_ingreso)}</span>
+                {enVista.fecha_hora_salida && <span className="texto-secundario">Salida · {fechaHora(enVista.fecha_hora_salida)}</span>}
                 <span style={{ fontSize: 13 }}>
-                  {ultima.alerta ? <b style={{ color: 'var(--alerta)' }}>{ultima.alerta.motivo}</b>
-                    : ultima.autorizado ? <>{ultima.autorizado.propietario}{ultima.autorizado.departamento ? ` · ${ultima.autorizado.departamento}` : ''}</>
-                      : ESTADOS[ultima.estado_validacion].etiqueta}
+                  {enVista.alerta ? <b style={{ color: 'var(--alerta)' }}>{enVista.alerta.motivo}</b>
+                    : enVista.autorizado ? <>{enVista.autorizado.propietario}{enVista.autorizado.departamento ? ` · ${enVista.autorizado.departamento}` : ''}</>
+                      : ESTADOS[enVista.estado_validacion].etiqueta}
                 </span>
-                {ultima.estado_validacion === 'pendiente_revision' && !ultima.validado_manualmente && (
-                  <button className="btn btn-navy btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setValidando(ultima)}>Validar ahora</button>
-                )}
+                <div className="acciones-visualizacion" aria-label="Acciones del acceso">
+                  {enVista.estado_validacion !== 'autorizado' && enVista.tipo_movimiento !== 'salida' && (
+                    <button className="btn btn-navy btn-sm" onClick={() => setValidando(enVista)}>Validar ahora</button>
+                  )}
+                  {puede('alertas:restringir') && enVista.estado_validacion !== 'autorizado' && enVista.estado_validacion !== 'alerta' && enVista.tipo_movimiento !== 'salida' && <button className="btn btn-danger btn-sm" onClick={() => setRestringiendo(enVista)}>Restringir</button>}
+                </div>
               </div>
               <div style={{ flex: 1, minWidth: 240 }} className="grid-2">
-                <TarjetaImagen d={ultima} ruta={ultima.imagen_placa} titulo="Placa" contain />
-                <TarjetaImagen d={ultima} ruta={ultima.imagen_vehiculo} titulo="Vehículo" />
+                <TarjetaImagen key={`placa-${enVista.id}`} d={enVista} ruta={enVista.imagen_placa} titulo="Placa" contain />
+                <TarjetaImagen key={`vehiculo-${enVista.id}`} d={enVista} ruta={enVista.imagen_vehiculo} titulo="Vehículo" />
               </div>
             </div>
           )}
         </Tarjeta>
+        </div>
 
-        <TablaIngresosRecientes items={feed.filter(d => d.estado_procesamiento !== 'pendiente_ocr')} refConsulta={consultaPlaca}
-          onValidar={setValidando} onEliminar={esAdmin ? setEliminando : undefined} />
+        <TablaIngresosRecientes items={feed}
+          onRestringir={puede('alertas:restringir') ? setRestringiendo : undefined}
+          onValidar={setValidando} onEliminar={esAdmin ? setEliminando : undefined}
+          onRegistrar={() => setManual(true)}
+          puedeEditarCampos={puede('detecciones:validar')}
+          seleccionada={enVista?.id ?? null} onSeleccionar={seleccionar}
+          registrandoSalida={registrandoSalida} onRegistrarSalida={registrarSalida} />
       </div>
 
       {validando && <ValidarModal d={validando} onCerrar={() => setValidando(null)} />}
+      {restringiendo && <RestringirVehiculoModal d={restringiendo} onCerrar={() => setRestringiendo(null)} />}
       {manual && <RegistroManualModal onCerrar={() => setManual(false)} />}
       {eliminando && <EliminarUno d={eliminando} onCerrar={() => setEliminando(null)} onEliminada={id => setFeed(f => f.filter(x => x.id !== id))} />}
       {eliminarTodos && <TotalRegistros>{total => (
@@ -319,6 +352,15 @@ const Monitoreo: React.FC = () => {
     </div>
   );
 };
+
+/** «Registrar salida»: acción textual; un toque registra la hora de salida del ingreso. */
+const BotonSalida: React.FC<{ ocupado: boolean; deshabilitado: boolean; onRegistrar: () => void }> = ({ ocupado, deshabilitado, onRegistrar }) => (<div className="pila" style={{ gap: 4, maxWidth: 210, whiteSpace: 'normal' }}>
+  <button type="button" className="btn-salida" disabled={deshabilitado} title="Registrar salida" onClick={onRegistrar} aria-label="Registrar salida">
+    <LogOut size={13} aria-hidden />
+    <span>{ocupado ? 'Registrando…' : 'Registrar salida'}</span>
+  </button>
+  </div>
+);
 
 const TarjetaImagen: React.FC<{ d: Deteccion; ruta: string | null; titulo: string; contain?: boolean }> = ({ d, ruta, titulo, contain }) => {
   const [zoom, setZoom] = useState(false);
@@ -334,94 +376,183 @@ const TarjetaImagen: React.FC<{ d: Deteccion; ruta: string | null; titulo: strin
 };
 
 /**
- * Movimientos recientes: filas verdes para autorizados, rojas para alertas, con la marca OK / ALERTA
- * junto a la placa. Usa los mismos datos del feed en tiempo real. La consulta de placa está en la
- * misma tarjeta: lo que se escribe filtra los ingresos recientes y «Consultar» agrega la situación de
- * la placa en las listas; si no está entre los recientes, se muestra su historial.
+ * Movimientos recientes, con el color del estado del acceso (dominio/estadoAcceso.ts): rojo solo para
+ * las alertas de lista negra y los pasos sin lectura de placa; todo lo demás, en blanco.
+ * Tocar una fila la muestra en «Visualización de accesos». Permite buscar los ingresos por placa o por
+ * titular/persona y consultar las listas cuando se introduce una placa.
  */
-const TablaIngresosRecientes: React.FC<{
+export const TablaIngresosRecientes: React.FC<{
   items: Deteccion[]; onValidar: (d: Deteccion) => void; onEliminar?: (d: Deteccion) => void; refConsulta?: React.Ref<HTMLInputElement>;
-}> = ({ items, onValidar, onEliminar, refConsulta }) => {
-  const navigate = useNavigate();
+  onRestringir?: (d: Deteccion) => void;
+  onRegistrar?: () => void;
+  puedeEditarCampos: boolean;
+  seleccionada: number | null; onSeleccionar: (d: Deteccion) => void;
+  registrandoSalida: number | null; onRegistrarSalida: (d: Deteccion) => Promise<Deteccion | null>;
+}> = ({ items, onValidar, onEliminar, refConsulta, onRegistrar = () => undefined, puedeEditarCampos, seleccionada, onSeleccionar, registrandoSalida, onRegistrarSalida }) => {
+  const [params, setParams] = useSearchParams();
   const [zoom, setZoom] = useState<Deteccion | null>(null);
   const [texto, setTexto] = useState('');
   const [resultado, setResultado] = useState<ResultadoBusqueda | null>(null);
+  const [pagina, setPagina] = useState(1);
+  const [ediciones, setEdiciones] = useState<Record<number, Deteccion>>({});
+  const [busquedaAplicada, setBusquedaAplicada] = useState('');
   const [consultando, setConsultando] = useState(false);
+  const consultaBusqueda = useRef(0);
+  const estadoFiltro = params.get('estado') ?? '';
+  const soloDentro = estadoFiltro === 'dentro';
+  const soloHoy = params.get('hoy') === '1';
+  const listado = useConsulta<{ items: Deteccion[]; total: number; pagina: number; tamano: number }>(
+    () => api.get('/detecciones', { params: { pagina, tamano: 30, buscar: busquedaAplicada || undefined,
+      ...(estadoFiltro && !soloDentro ? { estado: estadoFiltro } : {}),
+      ...(soloDentro ? { estado: 'autorizado', cerrados: 'no' } : {}),
+      ...(params.get('validado') ? { validado: params.get('validado') } : {}),
+      ...(soloHoy ? { desde: limiteDia(fechaIsoLocal()), hasta: limiteDia(fechaIsoLocal(), true) } : {}) } }).then(r => r.data),
+    [pagina, busquedaAplicada, estadoFiltro, soloDentro, soloHoy, params]);
+  useEffect(() => { void listado.recargar(true); }, [items]);
+  useEffect(() => { if (listado.datos && pagina > 1 && !listado.datos.items.length) setPagina(pagina - 1); }, [listado.datos, pagina]);
   const [error, setError] = useState<string | null>(null);
-  const consultar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (texto.length < 3) return;
-    setConsultando(true); setError(null);
-    try { setResultado((await api.get(`/detecciones/buscar-placa/${texto}`)).data); } catch (err) { setResultado(null); setError(mensajeError(err)); } finally { setConsultando(false); }
+  useEffect(() => {
+    const termino = texto.trim();
+    const id = ++consultaBusqueda.current;
+    const temporizador = window.setTimeout(async () => {
+      setPagina(1);
+      setBusquedaAplicada(termino);
+      setError(null);
+      if (termino.length < 2) {
+        setResultado(null);
+        setConsultando(false);
+        return;
+      }
+      const esPlaca = /^[A-Za-z0-9-]{3,10}$/.test(termino);
+      if (!esPlaca) {
+        setResultado(null);
+        setConsultando(false);
+        return;
+      }
+      setConsultando(true);
+      try {
+        const respuesta = await api.get(`/detecciones/buscar-placa/${encodeURIComponent(termino)}`);
+        if (consultaBusqueda.current === id) setResultado(respuesta.data);
+      } catch (err) {
+        if (consultaBusqueda.current === id) {
+          setResultado(null);
+          setError(mensajeError(err));
+        }
+      } finally {
+        if (consultaBusqueda.current === id) setConsultando(false);
+      }
+    }, 250);
+    return () => window.clearTimeout(temporizador);
+  }, [texto]);
+  const limpiar = () => { setTexto(''); setResultado(null); setPagina(1); setBusquedaAplicada(''); setError(null); };
+  const cambiarFiltro = (valor: string) => {
+    const siguiente = new URLSearchParams(params);
+    if (valor && valor !== 'todos') siguiente.set('estado', valor);
+    else siguiente.delete('estado');
+    if (valor === 'alerta') siguiente.set('hoy', '1');
+    else siguiente.delete('hoy');
+    if (valor === 'pendiente_revision') siguiente.set('validado', 'no');
+    else siguiente.delete('validado');
+    setParams(siguiente, { replace: true });
+    setPagina(1);
   };
-  const limpiar = () => { setTexto(''); setResultado(null); setError(null); };
+  const registrarSalida = async (d: Deteccion) => {
+    const actualizada = await onRegistrarSalida(d);
+    if (actualizada) {
+      setEdiciones(actuales => ({
+        ...actuales,
+        [actualizada.id]: { ...d, ...actualizada },
+      }));
+      void listado.recargar(true);
+    }
+  };
+  const alEditar = (d: Deteccion, campo?: CampoIngreso) => {
+    setEdiciones(actuales => {
+      const anterior = actuales[d.id] ?? listado.datos?.items.find(x => x.id === d.id);
+      if (!campo || !anterior) return { ...actuales, [d.id]: d };
+      return { ...actuales, [d.id]: actualizarCampoIngreso(anterior, d, campo) };
+    });
+    void listado.recargar(true);
+  };
   // El resultado vale mientras el texto sea el consultado
-  const vigente = resultado && resultado.placa.replace(/-/g, '') === texto ? resultado : null;
-  const recientes = texto ? items.filter(d => (d.placa ?? '').replace(/-/g, '').includes(texto)) : items;
-  const historial = vigente && recientes.length === 0 ? vigente.ultimos_ingresos : null;
-  const filas = (historial ?? recientes).slice(0, 12);
+  const vigente = resultado && resultado.placa.replace(/-/g, '') === texto.trim().toUpperCase().replace(/-/g, '') ? resultado : null;
+  const filas = (listado.datos?.items ?? []).map(d => ediciones[d.id] ?? d);
   return (
-    <Tarjeta titulo="Movimientos recientes" subtitulo="Últimos pasos procesados · verde: autorizado · rojo: alerta" sinPadding acciones={
-      <form className="fila" role="search" onSubmit={consultar} style={{ gap: 6 }}>
-        {/* Consulta (no registro): admite una placa parcial de al menos 3 caracteres, solo letras y números */}
-        <input ref={refConsulta} className="input placa-input" style={{ height: 32, width: 170 }} value={texto} maxLength={10} placeholder="Placa: ABC1234"
-          onChange={e => { setTexto(filtrarEscrito(e.target, normalizarPlaca)); setError(null); }}
-          aria-label="Placa a consultar o filtrar" autoComplete="off" spellCheck={false} />
-        <button className="btn btn-navy btn-sm" disabled={consultando || texto.length < 3}><Search size={14} /> {consultando ? 'Consultando…' : 'Consultar'}</button>
+    <Tarjeta titulo="Todos los accesos"
+      subtitulo={`${listado.datos?.total ?? 0} accesos${soloDentro ? ' autorizados sin salida · mismo criterio del dashboard' : soloHoy ? ' alertas de hoy' : ' en el historial · incluye autorizados, pendientes, denegados y salidas'}`}
+      sinPadding acciones={
+      <form className="fila" role="search" onSubmit={e => e.preventDefault()} style={{ gap: 6 }}>
+        <select className="input" aria-label="Filtrar accesos" style={{ width: 230 }} value={soloDentro ? 'dentro' : estadoFiltro || 'todos'} onChange={e => cambiarFiltro(e.target.value)}>
+          <option value="todos">Todos los accesos</option>
+          <option value="autorizado">Autorizados</option>
+          <option value="pendiente_revision">Por autorizar</option>
+          <option value="no_reconocido">No registrados</option>
+          <option value="alerta">Alertas hoy</option>
+          <option value="dentro">Autorizados sin salida</option>
+        </select>
+        <input ref={refConsulta} className="input" style={{ height: 32, width: 220 }} value={texto} maxLength={100} placeholder="Placa, vehículo o titular"
+          onChange={e => setTexto(e.target.value)}
+          aria-label="Buscar por placa, vehículo o titular" autoComplete="off" spellCheck={false} />
+        {consultando && <span className="texto-secundario" role="status">Buscando…</span>}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onRegistrar}><ClipboardPlus size={14} /> Registrar</button>
         {texto && <button type="button" className="btn btn-ghost btn-sm btn-icono" title="Quitar el filtro" aria-label="Quitar el filtro" onClick={limpiar}><X size={14} /></button>}
       </form>}>
-      {(error || vigente) && <div style={{ padding: '12px 16px 0' }}>{error ? <Aviso tipo="error">{error}</Aviso> : vigente && <ResultadoConsulta r={vigente} />}</div>}
-      {historial && historial.length > 0 && (
-        <p className="texto-secundario" style={{ padding: '10px 16px 0' }}>No está entre los ingresos recientes: estos son sus últimos movimientos registrados.</p>
-      )}
+      {(error || vigente) && <div style={{ padding: '12px 16px 0' }}>{error ? <Aviso tipo="error">{error}</Aviso> : vigente && <SituacionPlaca r={vigente} />}</div>}
+      {listado.error && <Aviso tipo="error">{listado.error}</Aviso>}
+      {listado.cargando && <Cargando />}
       {filas.length === 0 ? (
-        texto
-          ? <Vacio titulo="Sin coincidencias" texto={vigente ? 'La placa no tiene movimientos registrados.' : `Ningún ingreso reciente contiene «${texto}». Use Consultar para ver su situación y su historial.`} />
-          : <Vacio titulo="Sin ingresos procesados" texto="Los ingresos aparecerán aquí en cuanto el motor termine de leer cada placa." />
+        busquedaAplicada
+          ? <Vacio titulo="Sin coincidencias" texto={vigente ? 'La placa no tiene movimientos registrados.' : `Ningún registro coincide con «${texto}».`} />
+          : <Vacio titulo="Sin accesos" texto="No hay accesos que coincidan con los filtros seleccionados." />
       ) : (
-        <div className="tabla-contenedor">
-          <table className="tabla compacta">
+        <div className="tabla-contenedor" role="region" aria-label="Tabla de accesos" tabIndex={0}>
+          <table className="tabla compacta tabla-registros">
             <thead><tr>
-              <th>Placa</th><th>Tipificación</th><th>Fecha y hora</th><th>Estado</th><th>Cámara</th>
-              <th className="ocultar-movil">Vehículo / titular</th><th className="num ocultar-movil">Confianza OCR</th><th className="columna-fija">Validación</th>
+              <th className="num" scope="col" title="Número de fila">N.º</th>
+              <th>Cédula</th><th>Titular</th><th>Placa</th><th>Motivo</th><th>Fecha</th><th>Hora de entrada</th><th>Hora de salida</th>
+              <th>Vehículo</th><th>Marca</th><th>Modelo</th><th>Cámara</th>
+              <th>Estado</th><th>Confianza</th><th>Registro de salida</th><th className="columna-acciones">Acciones</th>
             </tr></thead>
             <tbody>
-              {filas.map(d => {
+              {filas.map((d, i) => {
                 const aut = d.estado_validacion === 'autorizado';
                 const ale = d.estado_validacion === 'alerta';
+                const elegida = d.id === seleccionada;
                 return (
-                  <tr key={d.id} className={`clic${aut ? ' fila-autorizado' : ale ? ' fila-alerta' : ''}`} onClick={() => navigate(`/detecciones/${d.id}`)}>
+                  <tr key={d.id} className={`clic ${ESTADOS_ACCESO[estadoAcceso(d)].clase}${elegida ? ' fila-elegida' : ''}`}
+                    onClick={() => onSeleccionar(d)} tabIndex={0} aria-selected={elegida}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSeleccionar(d); } }}>
+                    <td className="num texto-secundario">{(pagina - 1) * 30 + i + 1}</td>
+                    <CeldaIngreso d={d} campo="cedula" editable={puedeEditarCampos} onActualizada={alEditar} />
+                    <CeldaIngreso d={d} campo="persona_ingreso" editable={puedeEditarCampos} onActualizada={alEditar} />
                     <td className="nowrap">
-                      {/* La foto real del recorte de la placa junto a la lectura, como en el Dashboard */}
-                      <PlacaFoto d={d} alto={30} />
+                      <PlacaFoto d={d} alto={36} onClick={() => setZoom(d)} />
                       {aut && <span className="marca-estado ok">OK</span>}
                       {ale && <span className="marca-estado alerta">ALERTA</span>}
                     </td>
-                    {/* Derivada de la placa: también para los vehículos que no están autorizados */}
-                    <td><InsigniaTipificacion placa={d.placa} provincia /></td>
-                    <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 700 }}>{hora(d.fecha_hora_ingreso)}</strong><span className="secundario">{fecha(d.fecha_hora_ingreso)}</span></td>
-                    <td className="nowrap"><InsigniaEstado estado={d.estado_validacion} /></td>
-                    {/* En una línea: el nombre largo de la cámara partía la columna en varias líneas por fila */}
-                    <td style={{ maxWidth: 190 }} title={d.camara ? `${d.camara.nombre} · ${d.camara.ubicacion}` : undefined}>
-                      {d.camara ? <><span className="truncar" style={{ display: 'block' }}>{d.camara.nombre}</span>
-                        <span className="secundario truncar">{d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {d.camara.ubicacion}</span></>
-                        : <span className="texto-secundario nowrap">{d.fuente === 'manual' ? 'Registro manual' : d.tipo_movimiento === 'salida' ? 'Salida' : '—'}</span>}
+                    <CeldaIngreso d={d} campo="motivo_ingreso" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
+                    <td className="nowrap">{fecha(d.fecha_hora_ingreso)}</td>
+                    <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 700 }}>{hora(d.fecha_hora_ingreso)}</strong></td>
+                    <td className={`nowrap${d.fecha_hora_salida ? ' hora-salida-registrada' : ' texto-secundario'}`}>{d.fecha_hora_salida ? hora(d.fecha_hora_salida) : '—'}</td>
+                    <CeldaIngreso d={d} campo="tipo_vehiculo" editable={puedeEditarCampos} onActualizada={alEditar} />
+                    <CeldaIngreso d={d} campo="marca" editable={puedeEditarCampos} onActualizada={alEditar} />
+                    <CeldaIngreso d={d} campo="modelo" editable={puedeEditarCampos} onActualizada={alEditar} />
+                    <td title={d.camara ? `${d.camara.nombre} · ${d.camara.ubicacion}` : undefined}>
+                      {d.camara ? <><span className="truncar" style={{ display: 'block' }}>{d.camara.nombre}</span><span className="secundario truncar">{d.camara.ubicacion}</span></>
+                        : <span className="texto-secundario nowrap">{d.fuente === 'manual' ? 'Registro manual' : '—'}</span>}
                     </td>
-                    <td className="ocultar-movil" style={{ maxWidth: 220 }}>
-                      <span className="truncar" style={{ display: 'block', color: aut ? 'var(--autorizado)' : ale ? 'var(--alerta)' : undefined, fontWeight: aut || ale ? 600 : undefined }}>
-                        {aut ? `✓ ${d.autorizado?.propietario ?? 'Lista blanca'}` : ale ? `⚠ ${d.alerta?.motivo ?? 'Lista negra'}` : describirVehiculo(d)}
-                      </span>
-                      {aut && d.autorizado?.departamento && <span className="secundario truncar">{d.autorizado.departamento}</span>}
-                      <LineaIngreso d={d} />
+                    <td className="nowrap"><InsigniaEstado estado={d.estado_validacion} corta /></td>
+                    <td className="nowrap"><ConfianzaRegistro valor={d.confianza_ocr} /></td>
+                    <td className="nowrap" onClick={e => e.stopPropagation()}>
+                      {d.tipo_movimiento !== 'salida' && !d.fecha_hora_salida
+                        ? <BotonSalida ocupado={registrandoSalida === d.id} deshabilitado={registrandoSalida !== null} onRegistrar={() => void registrarSalida(d)} />
+                        : <span className="texto-secundario">{d.fecha_hora_salida ? 'Registrada' : '—'}</span>}
                     </td>
-                    <td className="num ocultar-movil"><ConfianzaBadge valor={d.confianza_ocr} /></td>
-                    <td className="acciones-celda columna-fija" onClick={e => e.stopPropagation()}>
-                      {d.estado_validacion === 'pendiente_revision' && !d.validado_manualmente
-                        ? <button className="btn btn-navy btn-sm" onClick={() => onValidar(d)}>Validar</button>
-                        : <button className="btn btn-ghost btn-sm" onClick={() => onValidar(d)}>{d.validado_manualmente ? 'Validado' : 'Corregir'}</button>}
-                      <button className="btn btn-ghost btn-sm btn-icono miniatura-zoom" title="Ampliar evidencia" aria-label="Ampliar evidencia"
-                        disabled={!d.imagen_placa && !d.imagen_vehiculo} onClick={() => setZoom(d)}><ZoomIn size={14} /></button>
+                    <td className="acciones-celda" onClick={e => e.stopPropagation()}>
+                      <div className="acciones-registro">
+                      <button className="btn btn-ghost btn-sm btn-icono" title="Editar registro" aria-label="Editar registro" onClick={() => onValidar(d)}><Edit3 size={14} /></button>
                       {onEliminar && <button className="btn btn-ghost btn-sm btn-icono" title="Eliminar registro" aria-label="Eliminar registro" onClick={() => onEliminar(d)}><Trash2 size={14} color="var(--alerta)" /></button>}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -430,6 +561,7 @@ const TablaIngresosRecientes: React.FC<{
           </table>
         </div>
       )}
+      {listado.datos && <Paginacion pagina={pagina} tamano={30} total={listado.datos.total} onCambiar={setPagina} />}
       {zoom && <VisorZoom d={zoom} onCerrar={() => setZoom(null)} />}
     </Tarjeta>
   );

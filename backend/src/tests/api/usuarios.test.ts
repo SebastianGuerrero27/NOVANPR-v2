@@ -59,6 +59,16 @@ jest.mock('../../infraestructura/db', () => {
         if (/SELECT COUNT\(\*\) AS n FROM Usuarios u JOIN Roles r[\s\S]*u\.bloqueado = 0/.test(texto)) {
           return { recordset: [{ n: [...mockUsuarios.values()].filter(u => u.rol_codigo === 'ADMIN' && u.estado === 'activo' && !u.bloqueado).length }] };
         }
+        if (/UPDATE RestablecimientoPassword SET usado = 1/.test(texto) && /UPDATE Usuarios SET password_hash = @hash/.test(texto)) {
+          mockEscrituras.push({ texto, entradas: { ...entradas } });
+          if (porId()) {
+            porId()!.password_hash = entradas.hash;
+            porId()!.intentos_fallidos = 0;
+            porId()!.bloqueado_hasta = null;
+            if (porId()!.estado === 'pendiente') porId()!.estado = 'activo';
+          }
+          return { recordset: [], rowsAffected: [1] };
+        }
         if (/SET estado = 'inactivo'/.test(texto)) {
           mockEscrituras.push({ texto, entradas: { ...entradas } });
           if (porId()) porId()!.estado = 'inactivo';
@@ -136,6 +146,22 @@ describe('API · usuarios (detalle y baja lógica)', () => {
     expect(roles.body[0].permisos).toContain('usuarios:gestionar');
     const auditoria = await request(app).get('/api/usuarios/auditoria').set('Authorization', ADMIN).expect(200);
     expect(Object.keys(auditoria.body)).toEqual(['acciones', 'accesos']);
+  });
+
+  it('POST /:id/password cambia la clave, invalida sesiones y no permite clave débil ni auto-cambio', async () => {
+    const nueva = 'NuevaClave#2026';
+    const respuesta = await request(app).post('/api/usuarios/7/password').set('Authorization', ADMIN).send({ password: nueva }).expect(200);
+    expect(respuesta.body.message).toContain('Contraseña cambiada');
+    expect(bcrypt.compareSync(nueva, mockUsuarios.get(7)!.password_hash as string)).toBe(true);
+    expect(mockUsuarios.get(7)!.intentos_fallidos).toBe(0);
+    expect(invalidadas).toEqual([7]);
+    expect(mockEscrituras.some(e => e.entradas.accion === 'PASSWORD_ADMIN_CAMBIADO')).toBe(true);
+    expect(JSON.stringify(mockEscrituras)).not.toContain(nueva);
+    expect((await request(app).post('/api/usuarios/7/password').set('Authorization', ADMIN).send({ password: 'debil' }).expect(400)).body.error)
+      .toContain('al menos 10 caracteres');
+    expect((await request(app).post('/api/usuarios/1/password').set('Authorization', ADMIN).send({ password: nueva }).expect(400)).body.error)
+      .toContain('Mi perfil');
+    await request(app).post('/api/usuarios/7/password').set('Authorization', GUARDIA).send({ password: nueva }).expect(403);
   });
 
   it('DELETE /:id: baja lógica con motivo, cierra las sesiones de la cuenta y la audita', async () => {

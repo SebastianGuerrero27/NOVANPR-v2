@@ -7,6 +7,8 @@ import {
 } from './validacion';
 import { validarFechaHora } from './periodo';
 import { celdaCsv } from './auditoria';
+import { datosRegistro } from './registroCompleto';
+import { leerRegistroLista, LISTA_BLANCA } from './listas';
 
 /**
  * Detecciones vehiculares (dominio puro): cada registro es un paso por un acceso.
@@ -212,33 +214,71 @@ export const REGLA_MOTIVO_INGRESO: ReglaTexto = { etiqueta: 'Motivo de ingreso',
 
 /** Quién ingresa y por qué. Un campo ausente (undefined) no cambia lo guardado; null lo borra. */
 export interface DatosIngreso {
+  datosPermiso?: Record<string, unknown>;
+  cedula?: string | null;
   persona?: string | null;
   motivo?: string | null;
+  tipo?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  color?: string | null;
 }
 
-export function leerDatosIngreso(entrada: Entrada): Validado<DatosIngreso> {
+export function leerDatosIngreso(entrada: Entrada, vehiculoObligatorio = false): Validado<DatosIngreso> {
   const valor: DatosIngreso = {};
+  if (entrada.datos_permiso !== undefined) {
+    if (!entrada.datos_permiso || typeof entrada.datos_permiso !== 'object' || Array.isArray(entrada.datos_permiso)) return { ok: false, error: 'Datos del permiso inválidos.' };
+    const r = leerRegistroLista(LISTA_BLANCA, entrada.datos_permiso as Record<string, unknown>);
+    if (!r.ok) return r;
+    valor.datosPermiso = { ...r.valor.datos, placa: r.valor.placa,
+      fecha_inicio: r.valor.inicio?.toISOString().slice(0, 10) ?? '', fecha_fin: r.valor.vence?.toISOString().slice(0, 10) ?? '',
+      horario: r.valor.horario ? JSON.parse(r.valor.horario) : null };
+  }
   if (entrada.persona_ingreso !== undefined) {
     const persona = validarTexto(entrada.persona_ingreso, REGLA_PERSONA_INGRESO);
     if (!persona.ok) return persona;
     valor.persona = persona.valor;
+  }
+  if (entrada.cedula !== undefined) {
+    const cedula = validarTexto(entrada.cedula, { etiqueta: 'Cédula', tipo: 'libre', max: 10 });
+    if (!cedula.ok) return cedula;
+    if (cedula.valor !== null && !/^\d{10}$/.test(cedula.valor)) {
+      return { ok: false, error: 'Cédula: ingrese 10 dígitos, conservando los ceros iniciales.' };
+    }
+    valor.cedula = cedula.valor;
   }
   if (entrada.motivo_ingreso !== undefined) {
     const motivo = validarTexto(entrada.motivo_ingreso, REGLA_MOTIVO_INGRESO);
     if (!motivo.ok) return motivo;
     valor.motivo = motivo.valor;
   }
+  const reglasVehiculo: [Exclude<keyof DatosIngreso, 'datosPermiso'>, string, ReglaTexto][] = [
+    ['tipo', 'tipo_vehiculo', REGLA_TIPO_VEHICULO],
+    ['marca', 'marca', { etiqueta: 'Marca', tipo: 'alfanumerico', max: 50 }],
+    ['modelo', 'modelo', { etiqueta: 'Modelo', tipo: 'alfanumerico', max: 50 }],
+    ['color', 'color', { etiqueta: 'Color', tipo: 'letras', max: 30 }],
+  ];
+  for (const [campo, nombre, regla] of reglasVehiculo) {
+    if (vehiculoObligatorio || entrada[nombre] !== undefined) {
+      const validado = validarTexto(entrada[nombre], { ...regla, requerido: vehiculoObligatorio });
+      if (!validado.ok) return validado;
+      valor[campo] = validado.valor;
+    }
+  }
   return { ok: true, valor };
 }
 
 /** Hay algo que guardar de quien ingresa. */
-export const hayDatosIngreso = (d: DatosIngreso) => d.persona !== undefined || d.motivo !== undefined;
+export const hayDatosIngreso = (d: DatosIngreso) => Object.values(d).some(v => v !== undefined);
 
 export interface RegistroManual {
   placa: string;
   motivo: string;
   camaraId: number | null;
+  /** Hora (s desde 1970) del cuadro de los últimos 30 s de la cámara que el guardia eligió como foto */
+  cuadroT: number | null;
   tipoVehiculo: string | null;
+  marca: string | null;
 }
 
 /** Paso registrado a mano: placa con formato ANT, motivo y, opcionalmente, cámara y tipo de vehículo. */
@@ -249,9 +289,24 @@ export function leerRegistroManual(entrada: Entrada): Validado<RegistroManual> {
   if (!motivo.ok) return motivo;
   const tipo = validarTexto(entrada.tipo_vehiculo, REGLA_TIPO_VEHICULO);
   if (!tipo.ok) return tipo;
+  const marca = validarTexto(entrada.marca, { etiqueta: 'Marca', tipo: 'alfanumerico', max: 50 });
+  if (!marca.ok) return marca;
   const camara = validarEntero(entrada.camara_id, { etiqueta: 'Cámara', min: 1, max: MAX_ID });
   if (!camara.ok) return camara;
-  return { ok: true, valor: { placa: placa.valor.placa, motivo: motivo.valor as string, camaraId: camara.valor, tipoVehiculo: tipo.valor } };
+  const cuadro = entrada.cuadro_t;
+  const hayCuadro = cuadro !== undefined && cuadro !== null;
+  if (hayCuadro && (typeof cuadro !== 'number' || !Number.isFinite(cuadro) || cuadro <= 0)) {
+    return { ok: false, error: 'Foto de evidencia: indique la hora del cuadro elegido.' };
+  }
+  if (hayCuadro && camara.valor === null) return { ok: false, error: 'La foto de evidencia requiere la cámara asociada.' };
+  return {
+    ok: true,
+    valor: {
+      placa: placa.valor.placa, motivo: motivo.valor as string, camaraId: camara.valor, tipoVehiculo: tipo.valor,
+      marca: marca.valor,
+      cuadroT: hayCuadro ? cuadro as number : null,
+    },
+  };
 }
 
 /** Placa de la consulta de situación: al menos 3 letras o números, sin exigir el formato completo. */
@@ -270,21 +325,58 @@ export const leerFechaHora = (valor: unknown, etiqueta: string): Validado<Date |
 
 // ─── Filtros del historial ───────────────────────────────────────────────────
 
+/**
+ * Origen de un paso: la cámara en vivo (RTSP), una cámara de prueba alimentada por un video
+ * cargado o el registro manual del personal. Se guarda en DeteccionVehiculo.fuente ('rtsp',
+ * 'video', 'manual') para separar los datos reales de los de prueba.
+ */
+export const ORIGENES = ['camara', 'video', 'manual'] as const;
+export type OrigenPaso = typeof ORIGENES[number];
+/** Valor de la columna `fuente` de los pasos de una cámara de prueba con video cargado. */
+export const FUENTE_VIDEO_PRUEBA = 'video';
+
+export const ETIQUETA_ORIGEN: Record<OrigenPaso, string> = { camara: 'Cámara en vivo', video: 'Video de prueba', manual: 'Registro manual' };
+
+/** Origen del paso según su columna `fuente` (sin valor: la cámara RTSP, el valor por omisión). */
+export function origenDe(fuente: string | null | undefined): OrigenPaso {
+  return fuente === 'manual' ? 'manual' : fuente === FUENTE_VIDEO_PRUEBA ? 'video' : 'camara';
+}
+
 export interface FiltrosDetecciones {
+  cerrados?: boolean;
+  completos?: boolean;
   /** Parte de la placa, solo letras y números */
   placa: string | null;
+  /** La placa tolera las confusiones típicas del OCR (O/0, I/1, B/8, S/5…) */
+  aproximada?: boolean;
+  buscar?: string;
   estados: EstadoValidacion[];
   camara: number | null;
   /** Validado por el personal (null = indistinto) */
   validado: boolean | null;
   desde: Date | null;
   hasta: Date | null;
+  movimiento?: 'ingreso' | 'salida';
+  origen?: OrigenPaso;
+  /** Franja horaria local en minutos desde la medianoche; si desde > hasta cruza la medianoche */
+  horaDesde?: number;
+  horaHasta?: number;
+  orden?: 'reciente' | 'antiguo';
 }
 
 type Consulta = Record<string, unknown>;
 
 /** Claves de filtro del historial, la exportación y la eliminación masiva. */
-export const CLAVES_FILTRO = ['placa', 'estado', 'camara', 'validado', 'desde', 'hasta'] as const;
+export const CLAVES_FILTRO = ['placa', 'buscar', 'estado', 'camara', 'validado', 'desde', 'hasta', 'cerrados', 'completos',
+  'movimiento', 'origen', 'hora_desde', 'hora_hasta'] as const;
+
+/** Hora del día "HH:MM" (00:00 a 23:59) en minutos desde la medianoche; null si no se indicó. */
+export function leerHoraDelDia(valor: unknown, etiqueta: string): Validado<number | null> {
+  if (valor === undefined || valor === null || valor === '') return { ok: true, valor: null };
+  const m = typeof valor === 'string' ? /^(\d{1,2}):(\d{2})$/.exec(valor.trim()) : null;
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return { ok: false, error: `${etiqueta}: use el formato HH:MM (00:00 a 23:59).` };
+  return { ok: true, valor: Number(m[1]) * 60 + Number(m[2]) };
+}
 
 /** ¿La consulta trae algún filtro? Sin ninguno, la eliminación masiva alcanza a todo el historial. */
 export const tieneFiltros = (q: Consulta) => CLAVES_FILTRO.some(k => Boolean(q[k]));
@@ -294,6 +386,8 @@ export const tieneFiltros = (q: Consulta) => CLAVES_FILTRO.some(k => Boolean(q[k
  * "PBA12"); estado y validado provienen de listas cerradas y un valor desconocido se ignora.
  */
 export function leerFiltros(q: Consulta): Validado<FiltrosDetecciones> {
+  const buscar = validarTexto(q.buscar, { etiqueta: 'Búsqueda', tipo: 'libre', max: 100 });
+  if (!buscar.ok) return buscar;
   const placa = normalizarPlaca(q.placa);
   if (placa.length > MAX_PLACA_BUSQUEDA) return { ok: false, error: `Placa: máximo ${MAX_PLACA_BUSQUEDA} caracteres.` };
   const estados = String(q.estado ?? '').split(',')
@@ -305,7 +399,25 @@ export function leerFiltros(q: Consulta): Validado<FiltrosDetecciones> {
   const hasta = leerFechaHora(q.hasta, 'Fecha final');
   if (!hasta.ok) return hasta;
   const validado = q.validado === 'si' ? true : q.validado === 'no' ? false : null;
-  return { ok: true, valor: { placa: placa || null, estados, camara: camara.valor, validado, desde: desde.valor, hasta: hasta.valor } };
+  if (q.cerrados !== undefined && q.cerrados !== 'si' && q.cerrados !== 'no') return { ok: false, error: 'Cerrados: use si o no.' };
+  if (q.completos !== undefined && q.completos !== 'si' && q.completos !== 'no') return { ok: false, error: 'Completos: use si o no.' };
+  if (q.movimiento !== undefined && q.movimiento !== 'ingreso' && q.movimiento !== 'salida') return { ok: false, error: 'Movimiento: use ingreso o salida.' };
+  if (q.origen !== undefined && !(ORIGENES as readonly unknown[]).includes(q.origen)) return { ok: false, error: 'Origen: use camara, video o manual.' };
+  if (q.orden !== undefined && q.orden !== 'reciente' && q.orden !== 'antiguo') return { ok: false, error: 'Orden: use reciente o antiguo.' };
+  const horaDesde = leerHoraDelDia(q.hora_desde, 'Hora inicial');
+  if (!horaDesde.ok) return horaDesde;
+  const horaHasta = leerHoraDelDia(q.hora_hasta, 'Hora final');
+  if (!horaHasta.ok) return horaHasta;
+  return { ok: true, valor: { placa: placa || null, estados, camara: camara.valor, validado, desde: desde.valor, hasta: hasta.valor,
+    ...(buscar.valor ? { buscar: buscar.valor } : {}),
+    ...(placa && q.aproximada === 'si' ? { aproximada: true } : {}),
+    ...(q.cerrados === undefined ? {} : { cerrados: q.cerrados === 'si' }),
+    ...(q.completos === undefined ? {} : { completos: q.completos === 'si' }),
+    ...(q.movimiento === undefined ? {} : { movimiento: q.movimiento as 'ingreso' | 'salida' }),
+    ...(q.origen === undefined ? {} : { origen: q.origen as OrigenPaso }),
+    ...(horaDesde.valor === null ? {} : { horaDesde: horaDesde.valor }),
+    ...(horaHasta.valor === null ? {} : { horaHasta: horaHasta.valor }),
+    ...(q.orden === undefined ? {} : { orden: q.orden as 'reciente' | 'antiguo' }) } };
 }
 
 /** Página y tamaño del historial: enteros; sin valor o fuera de rango se ajustan (25 por página, de 5 a 100). */
@@ -351,11 +463,14 @@ export interface FilaExportacion {
   confianza_ocr: number | null;
   persona_ingreso?: string | null;
   motivo_ingreso?: string | null;
+  fecha_hora_salida?: Date | string | null;
+  fuente?: string | null;
 }
 
 const CABECERA_CSV = ['ID', 'Fecha y hora', 'Movimiento', 'Placa', 'Lectura OCR', 'Estado', 'Validado por operador', 'Validador', 'Cámara', 'Ubicación',
   'Tipo de vehículo', 'Marca observada', 'Color observado', 'Verificación del vehículo', 'Propietario (padrón)', 'Departamento',
-  'Motivo de alerta', 'Nivel de alerta', 'Confianza detección (%)', 'Confianza OCR (%)', 'Nombres y apellidos', 'Motivo de ingreso'];
+  'Motivo de alerta', 'Nivel de alerta', 'Confianza detección (%)', 'Confianza OCR (%)', 'Nombres y apellidos', 'Motivo de ingreso',
+  'Hora de salida', 'Origen'];
 
 /** Marca de orden de bytes: Excel abre el UTF-8 con tildes correctas. */
 const BOM_UTF8 = String.fromCharCode(0xfeff);
@@ -368,12 +483,13 @@ const porcentaje = (v: number | null) => (typeof v === 'number' ? (v * 100).toFi
 export function csvDetecciones(filas: FilaExportacion[]): string {
   const lineas = filas.map(d => [
     d.id, fechaHoraLocal(d.fecha_hora_ingreso), d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso',
-    d.placa_validada || d.placa_reconocida || '', d.placa_ocr_original || d.placa_reconocida || '',
+    datosRegistro(d).placa || '', d.placa_ocr_original || d.placa_reconocida || '',
     ETIQUETA_ESTADO[d.estado_validacion as EstadoValidacion] ?? d.estado_validacion, d.validado_manualmente ? 'Sí' : 'No', d.validador_email || '',
-    d.camara_nombre || '', d.camara_ubicacion || '', d.tipo_vehiculo || d.vehiculo_tipo || '', d.vehiculo_marca || '',
+    d.camara_nombre || '', d.camara_ubicacion || '', datosRegistro(d).tipo || '', datosRegistro(d).marca || '',
     d.vehiculo_color || '', d.verificacion_vehiculo || '', d.propietario || '', d.departamento || '',
     d.alerta_motivo || '', d.nivel_alerta || '', porcentaje(d.confianza_deteccion), porcentaje(d.confianza_ocr),
-    d.persona_ingreso || '', d.motivo_ingreso || '',
+    datosRegistro(d).nombre || '', datosRegistro(d).motivo || '',
+    d.fecha_hora_salida ? fechaHoraLocal(d.fecha_hora_salida) : '', ETIQUETA_ORIGEN[origenDe(d.fuente)],
   ].map(celdaCsv).join(','));
   return BOM_UTF8 + [CABECERA_CSV.map(celdaCsv).join(','), ...lineas].join('\n');
 }

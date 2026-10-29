@@ -10,6 +10,7 @@ reemplazan por dobles de prueba.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import time
@@ -283,6 +284,11 @@ def test_estado_del_servicio_sin_iniciar_y_sin_credenciales(servicio):
         "detector_arquitectura": None, "ocr_engine": None, "ocr_verifier": None,
         "latencia": {"edad_cuadro": None, "lectura_en_vivo": None, "registro": None, "cuadros_descartados_pct": None},
         "etapas_ms": {},
+        "seguidor": {
+            "anclas": 0, "analisis_fuera_de_lo_guardado": 0, "retraso_analisis_cuadros": {"p50": None, "p95": None},
+            "cuadros_con_flujo_pct": None, "correccion_al_anclar_anchos": {"p50": None, "p95": None},
+        },
+        "cpu": r["cpu"],
         "architecture": "Two-Phase: Fast Capture + Async OCR",
     }
     assert servicio.client.get("/").json() == {
@@ -335,6 +341,8 @@ def test_pistas_por_websocket_con_zona_de_movimiento(servicio, monkeypatch):
     with servicio.client.websocket_connect("/ws/pistas?ticket=t") as ws:
         datos = ws.receive_json()
         servicio.fijar(activo=False)
+    # Sin seguidor para la pista, la caja vale desde el último análisis (recién creado)
+    assert 0.0 <= datos["pistas"][0].pop("edad") < 0.5
     assert datos == {
         "pistas": [{
             "id": 7, "caja": [0.1, 0.2, 0.3, 0.3], "puntos": None, "velocidad": [0.1, -0.1], "confianza": 0.88,
@@ -345,6 +353,101 @@ def test_pistas_por_websocket_con_zona_de_movimiento(servicio, monkeypatch):
         "movimiento": {"caja": [0.1, 0.1, 0.5, 0.5], "porcentaje": 42},
         "aspecto": 1.3333,
     }
+
+
+def test_la_caja_del_hud_es_la_del_seguidor_con_su_edad(servicio, monkeypatch):
+    """El navegador recibe la caja que el seguidor llevó hasta el último cuadro de la fuente (no la
+    del último análisis), su velocidad medida por el flujo y cuántos segundos hace que vale."""
+    from app.aplicacion.detector import VisualOverlayBox
+    from app.aplicacion.seguidor_flujo import CajaSeguida
+    from app.interfaz import api
+
+    monkeypatch.setattr(api, "ticket_valido", lambda ticket, alcance: ticket == "t" and alcance == "stream")
+    pipeline = Pipeline()
+    pipeline.get_motion_info = lambda fuente="rtsp": (None, 0, False)
+    pipeline._current_overlays = [VisualOverlayBox(
+        x1=64, y1=96, x2=192, y2=144, tracking_id=7, label="PBA1234", color=(0, 0, 0), placa="PBA1234", velocidad=(640.0, 0.0),
+    )]
+    seguida = CajaSeguida((128.0, 192.0, 256.0, 240.0), None, (32.0, 0.0), 5, time.time() - 0.1)
+    monkeypatch.setattr(servicio.motor._seguidor, "pistas", lambda: {7: seguida})
+    monkeypatch.setitem(servicio.motor.tamano_fuente, "w", 640)
+    monkeypatch.setitem(servicio.motor.tamano_fuente, "h", 480)
+    servicio.fijar(pipeline=pipeline, activo=True)
+    with servicio.client.websocket_connect("/ws/pistas?ticket=t") as ws:
+        pista = ws.receive_json()["pistas"][0]
+        servicio.fijar(activo=False)
+    assert (pista["caja"], pista["velocidad"]) == ([0.2, 0.4, 0.4, 0.5], [0.05, 0.0])
+    assert 0.09 <= pista["edad"] < 0.6
+
+
+def test_una_placa_una_caja_aunque_el_seguimiento_la_parta_en_dos_pistas(servicio, monkeypatch):
+    """Si la placa avanzó tanto entre dos análisis que el seguimiento abrió otra pista, las dos cajas
+    caen sobre la misma placa: el navegador recibe solo la de la pista que el detector vio."""
+    from app.aplicacion.detector import VisualOverlayBox
+    from app.interfaz import api
+
+    monkeypatch.setattr(api, "ticket_valido", lambda ticket, alcance: ticket == "t" and alcance == "stream")
+    pipeline = Pipeline()
+    pipeline.get_motion_info = lambda fuente="rtsp": (None, 0, False)
+    pipeline._current_overlays = [
+        VisualOverlayBox(x1=300, y1=200, x2=360, y2=220, tracking_id=380, label="SB-1171", color=(0, 0, 0), placa="SB1171", predicha=True),
+        VisualOverlayBox(x1=305, y1=204, x2=368, y2=226, tracking_id=383, label="FVY-329", color=(0, 0, 0), placa="FVY329"),
+        VisualOverlayBox(x1=40, y1=300, x2=100, y2=320, tracking_id=390, label="PBA-1234", color=(0, 0, 0), placa="PBA1234"),
+    ]
+    monkeypatch.setattr(servicio.motor._seguidor, "pistas", lambda: {})
+    monkeypatch.setitem(servicio.motor.tamano_fuente, "w", 640)
+    monkeypatch.setitem(servicio.motor.tamano_fuente, "h", 480)
+    servicio.fijar(pipeline=pipeline, activo=True)
+    with servicio.client.websocket_connect("/ws/pistas?ticket=t") as ws:
+        ids = sorted(p["id"] for p in ws.receive_json()["pistas"])
+        servicio.fijar(activo=False)
+    assert ids == [383, 390]
+
+
+def test_historial_de_la_camara_para_la_evidencia_del_registro_manual(servicio, tmp_path, monkeypatch):
+    """El backend pide las miniaturas de los últimos 30 s y guarda como evidencia el cuadro que eligió
+    el guardia; sin el token de servicio no hay acceso."""
+    import base64
+    import os
+
+    from app.aplicacion.historial_cuadros import HistorialCuadros
+
+    historial = HistorialCuadros(en_hilo=False)
+    ahora = time.time()
+    for i in range(10):
+        historial.ofrecer(np.full((360, 640, 3), 50, np.uint8), ahora - 5 + i / 2)
+    monkeypatch.setattr(servicio.motor, "_historial", historial)
+    monkeypatch.setattr(servicio.motor, "_dir_media", str(tmp_path))
+    assert servicio.client.get("/api/historial").status_code == 401
+    datos = servicio.client.get("/api/historial", headers=SERVICIO).json()
+    assert datos["camara_id"] == 1 and len(datos["cuadros"]) == 10
+    assert base64.b64decode(datos["cuadros"][0]["miniatura"])[:2] == b"\xff\xd8"  # JPEG
+    t = datos["cuadros"][3]["t"]
+    r = servicio.client.post("/api/historial/guardar", json={"t": t}, headers=SERVICIO)
+    assert r.status_code == 200 and r.json()["ruta"].startswith("/media/manual_")
+    assert os.path.exists(os.path.join(str(tmp_path), r.json()["ruta"].rsplit("/", 1)[-1]))
+    assert servicio.client.post("/api/historial/guardar", json={"t": ahora - 120}, headers=SERVICIO).status_code == 404
+    assert servicio.client.post("/api/historial/guardar", json={}, headers=SERVICIO).status_code == 400
+    assert servicio.client.post("/api/historial/guardar", json={"t": t}).status_code == 401
+
+
+def test_el_estado_informa_la_cpu_del_contenedor_del_motor(servicio, monkeypatch):
+    """Estado del sistema muestra la CPU real sin Prometheus: el motor la mide de su contenedor."""
+    import os
+    from app.aplicacion import motor as modulo_motor
+    monkeypatch.setattr(modulo_motor, "cpu_acumulada_s", lambda: 100.5)
+    servicio.motor._muestra_cpu = (time.monotonic() - 2.0, 100.0, None)
+    cpu = servicio.client.get("/status").json()["cpu"]
+    assert cpu["nucleos"] == (os.cpu_count() or 1)
+    assert cpu["uso_pct"] == pytest.approx(0.5 / 2.0 / cpu["nucleos"] * 100, rel=0.2)
+
+
+def test_cpu_acumulada_del_cgroup_o_del_proceso(tmp_path):
+    from app.aplicacion.motor import cpu_acumulada_s
+    stat = tmp_path / "cpu.stat"
+    stat.write_text("usage_usec 2500000\nuser_usec 2000000\n", encoding="ascii")
+    assert cpu_acumulada_s(str(stat)) == 2.5
+    assert cpu_acumulada_s(str(tmp_path / "no_existe")) == pytest.approx(time.process_time(), abs=0.5)
 
 
 def test_metricas_prometheus(servicio):
@@ -509,9 +612,16 @@ def test_captura_valida_registra_ingreso_y_ocr_con_evidencias(servicio):
     assert "clave-secreta" not in json.dumps([cuerpo for _, cuerpo in servicio.http.envios])
 
 
+def con_analisis_de_vehiculo(servicio, monkeypatch):
+    """El análisis visual del vehículo está apagado por omisión (ConfigMotor.analizar_vehiculo)
+    mientras su precisión no esté validada; estas pruebas cubren su comportamiento al activarlo."""
+    monkeypatch.setattr(servicio.motor, "_config", dataclasses.replace(servicio.motor._config, analizar_vehiculo=True))
+
+
 def test_ocr_profundo_verificador_y_vehiculo_se_ejecutan_en_paralelo(servicio, monkeypatch):
     """Las tres etapas del registro parten de la misma foto: la latencia es la de la más lenta,
     no la suma. Se informan la duración de cada etapa y la latencia de punta a punta."""
+    con_analisis_de_vehiculo(servicio, monkeypatch)
     import time as reloj
 
     class AgenteLento(Agente):
@@ -550,6 +660,7 @@ def test_ocr_profundo_verificador_y_vehiculo_se_ejecutan_en_paralelo(servicio, m
 def test_el_vehiculo_se_analiza_por_adelantado_y_el_registro_reutiliza_el_resultado(servicio, monkeypatch):
     """El análisis del vehículo empieza cuando aparece una placa en movimiento completa, mientras el
     selector espera la mejor foto; el registro usa ese resultado sin repetir el análisis."""
+    con_analisis_de_vehiculo(servicio, monkeypatch)
     from app.aplicacion.detector import TrackedPlateROI
 
     analizados = []
@@ -785,6 +896,7 @@ def _liberar_al_registrar(servicio, monkeypatch, evento, demora=0.1):
 
 
 def test_el_paso_se_registra_sin_esperar_al_vehiculo_y_sus_atributos_llegan_despues(servicio, monkeypatch):
+    con_analisis_de_vehiculo(servicio, monkeypatch)
     _con_fila_de_caracteres(monkeypatch)
     liberar = threading.Event()
     monkeypatch.setattr(servicio.motor._dep, "reconocedor_vehiculo", lambda: ReconocedorLento(liberar))
@@ -844,6 +956,7 @@ def test_una_foto_dudosa_espera_al_verificador_como_antes(servicio, monkeypatch)
 
 
 def test_sin_presupuesto_el_registro_espera_al_vehiculo_como_antes(servicio, monkeypatch):
+    con_analisis_de_vehiculo(servicio, monkeypatch)
     _con_fila_de_caracteres(monkeypatch)
     _configurar(servicio, monkeypatch, presupuesto_registro_s=None)
     liberar = threading.Event()
@@ -1175,6 +1288,31 @@ def test_dos_caracteres_inferidos_sin_confirmacion_tampoco_se_registran(servicio
     assert descarte and descarte[0]["motivo"] == "lectura_inferida"
 
 
+def test_un_caracter_inferido_sin_ningun_respaldo_tampoco_se_registra(servicio, monkeypatch):
+    """21-10-2026: el marco «ambacar» se registró como OID-6000 con una sola lectura, la I inferida por
+    el formato y el segundo OCR sin leer nada en una foto nítida. Sin respaldo no es una placa: se
+    audita y el paso lo registra el vigilante de pasos sin placa, con su foto."""
+    _con_fila_de_caracteres(monkeypatch)
+    monkeypatch.setattr(servicio.motor._dep, "verificador", lambda: VerificadorFijo("", crudo=""))
+    # El cuadro elegido se leyó OMI-0000 y el consenso de la pista es OID-6000: una sola lectura
+    servicio.fijar(pipeline=Pipeline(conteo={"OID6000": 1}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="OMI-0000", texto_crudo="O1D6000")))
+    servicio.disparar_captura(candidato())
+    assert "detecciones/ingreso" not in servicio.http.rutas()
+    descarte = [c for r, c in servicio.http.envios if r == "detecciones/descarte"]
+    assert descarte and descarte[0]["motivo"] == "lectura_inferida"
+
+
+def test_con_dos_lecturas_un_caracter_inferido_si_se_registra(servicio, monkeypatch):
+    """La compuerta no toca a una placa real leída dos veces aunque un carácter salga del formato."""
+    _con_fila_de_caracteres(monkeypatch)
+    monkeypatch.setattr(servicio.motor._dep, "verificador", lambda: VerificadorFijo("", crudo=""))
+    servicio.fijar(pipeline=Pipeline(conteo={"PBA1234": 2}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="PBA-1234", texto_crudo="P8A1234")))
+    servicio.disparar_captura(candidato())
+    assert "detecciones/ingreso" in servicio.http.rutas()
+
+
 def test_el_verificador_con_formato_de_moto_no_reemplaza_la_placa_de_un_auto(servicio, monkeypatch):
     """El segundo OCR leyó P00418 (PO-0418, formato de moto) en la placa de un auto donde el OCR leyó
     PDO-418: se registra PDO-418."""
@@ -1318,3 +1456,105 @@ def test_las_cajas_predichas_no_cuentan_como_vistas_de_la_placa(servicio):
     registrada = servicio.motor._vistas[9]
     assert (registrada.primera, registrada.ultima) == (100.0, 100.3)
     assert list(registrada.caja_ultima) == [12.0, 12.0, 52.0, 32.0]
+
+
+class VerificadorTexto(VerificadorFijo):
+    """OCR general que conserva el texto que observa aunque no sea una matrícula."""
+
+    def __init__(self, texto="HAVAL / ambacar", confianza_texto=0.987, placa="", liberar=None):
+        super().__init__(placa, crudo=placa)
+        self.texto, self.confianza_texto, self.liberar = texto, confianza_texto, liberar
+
+    def read(self, recorte):
+        if self.liberar is not None:
+            self.liberar.wait(5)
+        lectura = super().read(recorte)
+        lectura.texto_observado = self.texto
+        lectura.confianza_texto = self.confianza_texto
+        return lectura
+
+
+def test_un_rotulo_se_registra_como_observacion_sin_matricula_aunque_el_ocr_repita_la_invencion(servicio, monkeypatch):
+    """La misma alucinación en tres cuadros no es evidencia independiente contra el OCR general."""
+    _con_fila_de_caracteres(monkeypatch)
+    _configurar(servicio, monkeypatch, presupuesto_registro_s=None)
+    monkeypatch.setattr(servicio.motor._dep, "verificador", lambda: VerificadorTexto())
+    servicio.fijar(pipeline=Pipeline(conteo={"QIH6060": 3}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="QIH-6060", texto_crudo="QIH6060")))
+    servicio.disparar_captura(candidato())
+
+    assert servicio.http.rutas() == ["detecciones/ingreso", "detecciones/completar-ocr"]
+    ingreso, ocr = servicio.http.envios[0][1], servicio.http.envios[1][1]
+    assert not ingreso["placa"] and not ocr["placa_reconocida"]
+    assert ingreso["ruta_imagen_ingreso"] and ocr["ruta_imagen_placa"]
+    assert ocr["estado_procesamiento"] == "no_legible"
+    assert ocr["lectura_valida"] is False and ocr["confianza_ocr"] == 0
+    evidencia = ocr["evidencia_lectura"]
+    assert evidencia["motivo"] == "texto_no_matricula"
+    assert evidencia["observacion_ocr"] == "HAVAL / ambacar"
+    assert evidencia["confianza_texto_ocr"] == 0.987
+    assert evidencia["candidata_descartada"].replace("-", "") == "QIH6060"
+
+
+def test_una_matricula_real_no_es_vetada_por_su_cabecera_alfabetica(servicio, monkeypatch):
+    _con_fila_de_caracteres(monkeypatch)
+    _configurar(servicio, monkeypatch, presupuesto_registro_s=None)
+    monkeypatch.setattr(servicio.motor._dep, "verificador", lambda: VerificadorTexto("ECUADOR / ANT", 0.99, "PBA1234"))
+    servicio.fijar(pipeline=Pipeline(conteo={"PBA1234": 3}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="PBA-1234", texto_crudo="PBA1234")))
+    servicio.disparar_captura(candidato())
+
+    assert servicio.http.rutas() == ["detecciones/ingreso", "detecciones/completar-ocr"]
+    ocr = servicio.http.envios[1][1]
+    assert ocr["placa_reconocida"].replace("-", "") == "PBA1234"
+    assert ocr["lectura_valida"] is True
+    assert ocr["confianza_ocr"] > 0
+    assert ocr["evidencia_lectura"].get("motivo") != "texto_no_matricula"
+
+
+def test_un_rotulo_tardio_retracta_la_matricula_y_conserva_la_observacion_del_mismo_acceso(servicio, monkeypatch):
+    _con_fila_de_caracteres(monkeypatch)
+    _configurar(servicio, monkeypatch, presupuesto_registro_s=0.3)
+    liberar = threading.Event()
+    monkeypatch.setattr(servicio.motor._dep, "verificador", lambda: VerificadorTexto(liberar=liberar))
+    servicio.fijar(pipeline=Pipeline(conteo={"QIH6060": 3}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="QIH-6060", texto_crudo="QIH6060")))
+    _liberar_al_registrar(servicio, monkeypatch, liberar)
+    servicio.disparar_captura(candidato())
+
+    assert servicio.http.rutas() == ["detecciones/ingreso", "detecciones/completar-ocr", "detecciones/reevaluar"]
+    registro, reevaluacion = servicio.http.envios[1][1], servicio.http.envios[2][1]
+    assert registro["placa_reconocida"].replace("-", "") == "QIH6060"
+    assert reevaluacion["ingreso_id"] == registro["ingreso_id"]
+    assert reevaluacion["placa_reconocida"] is None
+    assert reevaluacion["estado_procesamiento"] == "no_legible"
+    assert reevaluacion["lectura_valida"] is False and reevaluacion["confianza_ocr"] == 0
+    assert reevaluacion["evidencia_lectura"]["observacion_ocr"] == "HAVAL / ambacar"
+    assert reevaluacion["evidencia_lectura"]["confianza_texto_ocr"] == 0.987
+    assert reevaluacion["evidencia_lectura"]["motivo"] == "texto_no_matricula"
+
+
+@pytest.mark.parametrize("placa_previa", ["", "PBA1234"])
+@pytest.mark.parametrize("ingreso_previo", [0, 77])
+def test_el_rotulo_de_otra_pista_del_mismo_auto_no_crea_otro_acceso(servicio, monkeypatch, placa_previa, ingreso_previo):
+    from app.aplicacion.consolidacion import PasoReciente, Vista
+    _con_fila_de_caracteres(monkeypatch)
+    _configurar(servicio, monkeypatch, presupuesto_registro_s=None)
+    monkeypatch.setattr(servicio.motor._dep, "verificador", lambda: VerificadorTexto())
+    servicio.fijar(pipeline=Pipeline(conteo={"QIH6060": 3}),
+                   trabajador_ocr=types.SimpleNamespace(_agent=Agente(placa="QIH-6060", texto_crudo="QIH6060")))
+    ahora = time.time()
+    caja = candidato().plate_bbox
+    servicio.motor._vistas = {5: Vista(ahora - 2, caja, ahora - 1, caja),
+                              6: Vista(ahora - 0.5, caja, ahora, caja)}
+    previo = PasoReciente(5, ingreso_previo, 1, placa_previa, bool(placa_previa), 160.0, 0.9, ahora)
+    servicio.motor._pasos_recientes = [previo]
+    servicio.disparar_captura(candidato(tid=6))
+    assert "detecciones/ingreso" not in servicio.http.rutas()
+    if not ingreso_previo:
+        assert servicio.http.rutas() == []
+        servicio.motor._recordar_paso(5, 77, 1, placa_previa, bool(placa_previa), 160.0, 0.9)
+    assert servicio.http.rutas() == ["detecciones/reevaluar"]
+    assert servicio.http.envios[0][1] == {"ingreso_id": 77, "observacion_ocr": {"texto": "HAVAL / ambacar", "confianza": 0.987}}
+    assert previo.placa == placa_previa
+    assert len(servicio.motor._pasos_recientes) == 1

@@ -24,124 +24,9 @@ services:
         limits:
           memory: 768m
 
-  redis:
-    image: redis:7-alpine
-    container_name: anpr-redis
-    ports:
-      # Solo en el equipo anfitrión: Redis ahora requiere autenticación
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis_data:/data
-    command: >
-      sh -c 'redis-server
-      --appendonly yes
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
-      --requirepass ${REDIS_PASSWORD:-defaultredispassword}'
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-defaultredispassword}
-    restart: always
-    healthcheck:
-      test: ["CMD", "sh", "-c", "redis-cli -a $${REDIS_PASSWORD:-defaultredispassword} ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 384m
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: anpr-prometheus
-    ports:
-      # Prometheus no tiene autenticación: solo en el equipo anfitrión
-      - "127.0.0.1:9090:9090"
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./monitoring/prometheus/rules:/etc/prometheus/rules
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--storage.tsdb.retention.time=30d'
-    restart: always
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/healthy"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 512m
-    depends_on:
-      - backend
-      - anpr
-      - alertmanager
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: anpr-grafana
-    ports:
-      # Tableros de administración: solo en el equipo anfitrión (para otros equipos, publicarlo
-      # tras un proxy con HTTPS)
-      - "127.0.0.1:3001:3000"
-    volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
-      - grafana_data:/var/lib/grafana
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Defina GRAFANA_ADMIN_PASSWORD en .env}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:3001
-      - GF_INSTALL_PLUGINS=
-    restart: always
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 512m
-    depends_on:
-      - prometheus
-
-  alertmanager:
-    image: prom/alertmanager:latest
-    container_name: anpr-alertmanager
-    ports:
-      # Solo en el equipo anfitrión
-      - "127.0.0.1:9093:9093"
-    volumes:
-      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-    command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
-      - '--storage.path=/alertmanager'
-      - '--web.external-url=http://localhost:9093'
-    restart: always
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9093/-/healthy"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256m
-
   mediamtx:
     # Variante con FFmpeg: publica en bucle los videos de las cámaras de prueba (Cámaras › Cargar video)
-    image: bluenviron/mediamtx:1.21.1-ffmpeg
+    image: bluenviron/mediamtx:1.21.2-ffmpeg
     container_name: anpr-mediamtx
     environment:
       # IP del equipo (host) que el navegador usa para WebRTC; agregar la IP de la LAN para
@@ -191,6 +76,9 @@ services:
       # Proxy inverso delante del backend: número de saltos (p. ej. 1). Vacío = conexión directa
       - TRUST_PROXY=${TRUST_PROXY:-}
       - LIMITE_API_POR_MINUTO=${LIMITE_API_POR_MINUTO:-600}
+      - ECUADORAPI_KEY=${ECUADORAPI_KEY:-}
+      - CONSULTA_PERSONA_PROVEEDOR=${CONSULTA_PERSONA_PROVEEDOR:-ecuadorapi}
+      - SOCKET_STUDIO_TOKEN=${SOCKET_STUDIO_TOKEN:-}
       - LIMITE_ACCESO_POR_15_MIN=${LIMITE_ACCESO_POR_15_MIN:-20}
       - ANPR_SERVICE_TOKEN=${ANPR_SERVICE_TOKEN:?Defina ANPR_SERVICE_TOKEN en .env}
       - SMTP_HOST=${SMTP_HOST:-}
@@ -198,7 +86,7 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
-      - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-ecu911.gob.ec}
+      - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - MEDIA_DIR=/app/media
       # Cámaras de prueba con un video cargado (vacío = función deshabilitada, p. ej. en producción)
@@ -210,12 +98,7 @@ services:
       - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
       - WEBRTC_PUBLIC_URL=${WEBRTC_PUBLIC_URL:-http://localhost:8889}
       - DOCKER_CONTAINER=true
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      # La misma contraseña que exige el servicio redis (--requirepass)
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-defaultredispassword}
-      # Centro de notificaciones: Socket.IO con adaptador Redis (varias instancias) y Web Push
-      - SOCKET_REDIS_ADAPTER=true
+      # Centro de notificaciones: Socket.IO en memoria (una instancia del backend) y Web Push
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:anpr@ecu911.gob.ec}
@@ -228,11 +111,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     restart: always
     healthcheck:
-      # Listo = API arriba y PostgreSQL respondiendo (Redis se informa, pero no lo bloquea)
+      # Listo = API arriba y PostgreSQL respondiendo
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/health/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
@@ -248,7 +129,10 @@ services:
     build: ./frontend
     container_name: anpr-frontend
     ports:
-      - "3000:3000"
+      # Servidor de desarrollo de Vite solo en este equipo: Vite 5 tiene un aviso de lectura de
+      # archivos (GHSA-4w7w-66w2-5vf9) y en la Wi-Fi institucional cualquiera llegaría a él. Para
+      # abrir la interfaz desde otro equipo de la red, FRONTEND_HOST=0.0.0.0 en .env.
+      - "${FRONTEND_HOST:-127.0.0.1}:3000:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -281,6 +165,8 @@ services:
       - MEDIA_DIR=/app/media
       # Sin fuente inicial: el backend asigna la cámara registrada (su ruta en MediaMTX) al arrancar
       - RTSP_URL=
+      # Hilos del decodificador de video: 1 = sin cuadros retenidos (ver video_source.py)
+      - RTSP_HILOS_DECODIFICADOR=${RTSP_HILOS_DECODIFICADOR:-1}
       - RUNNING_IN_DOCKER=true
       - DEBUG_VISUAL=true
       - DEBUG_SHOW_WINDOW=false
@@ -314,6 +200,3 @@ services:
 volumes:
   anpr_model_cache:
   db_data:
-  redis_data:
-  prometheus_data:
-  grafana_data:

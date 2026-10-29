@@ -60,7 +60,9 @@ export function validarParametro(def: ReglaParametro, entrada: unknown): Validad
     }
     case 'lista': {
       const dominios = [...new Set(texto.split(',').map(x => x.trim().toLowerCase().replace(/^@/, '')).filter(Boolean))];
-      if (!dominios.length) return error(`${def.etiqueta}: indique al menos un dominio.`);
+      if (!dominios.length) {
+        return texto.length <= MAX_VALOR_PARAMETRO ? ok('') : error(`${def.etiqueta}: máximo ${MAX_VALOR_PARAMETRO} caracteres.`);
+      }
       const invalido = dominios.find(x => !esDominioCorreo(x));
       if (invalido !== undefined) return error(`${def.etiqueta}: dominio inválido (${invalido.substring(0, 60)}).`);
       const valor = dominios.join(',');

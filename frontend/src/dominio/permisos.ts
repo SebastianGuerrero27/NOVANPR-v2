@@ -12,10 +12,10 @@ export const ROLES_ORDEN: Rol[] = ['Guardia', 'GestorPermisos', 'Admin'];
 
 export type Permiso =
   | 'operacion:monitorear' | 'detecciones:validar' | 'detecciones:eliminar'
-  | 'listas:ver' | 'padron:gestionar' | 'alertas:gestionar' | 'accesos:excepcion'
+  | 'listas:ver' | 'padron:gestionar' | 'padron:supervisar' | 'alertas:restringir' | 'alertas:gestionar' | 'accesos:excepcion'
   | 'solicitudes:crear' | 'solicitudes:resolver'
   | 'avisos:garita' | 'avisos:acceso' | 'avisos:seguridad' | 'avisos:sistema' | 'avisos:padron' | 'alarmas:escalamiento'
-  | 'reportes:ver' | 'evaluacion:ver'
+  | 'reportes:ver'
   | 'camaras:operar' | 'camaras:gestionar' | 'usuarios:gestionar' | 'auditoria:ver' | 'configuracion:gestionar'
   | 'propietario:consultar';
 
@@ -28,11 +28,13 @@ export function esVistaGestionPermisos(puede: (p: Permiso) => boolean): boolean 
 }
 
 export const ETIQUETA_PERMISO: Record<Permiso, string> = {
-  'operacion:monitorear': 'Monitoreo en vivo, panel de inicio y registro de ingresos',
+  'operacion:monitorear': 'Gestión de Accesos, panel de inicio y registro de ingresos',
   'detecciones:validar': 'Confirmar o corregir lecturas y registrar ingresos manuales',
   'detecciones:eliminar': 'Eliminar ingresos y su evidencia',
   'listas:ver': 'Consultar la lista blanca y la lista negra',
   'padron:gestionar': 'Registrar vehículos en la lista blanca: vigencia, horarios y categoría',
+  'padron:supervisar': 'Consultar y gestionar los permisos otorgados por todos los usuarios, incluidos los retirados',
+  'alertas:restringir': 'Agregar placas a la lista negra',
   'alertas:gestionar': 'Registrar placas en la lista negra',
   'accesos:excepcion': 'Autorizar ingresos por excepción (fuera de horario o vigencia)',
   'solicitudes:crear': 'Solicitar la autorización de una placa',
@@ -44,7 +46,6 @@ export const ETIQUETA_PERMISO: Record<Permiso, string> = {
   'avisos:padron': 'Notificaciones de vehículos agregados a la lista blanca',
   'alarmas:escalamiento': 'Alarmas no atendidas escaladas',
   'reportes:ver': 'Reportes por período y cámara',
-  'evaluacion:ver': 'Evaluación científica del reconocimiento',
   'camaras:operar': 'Cambiar la cámara del motor y su región de interés',
   'camaras:gestionar': 'Alta y diagnóstico de cámaras',
   'usuarios:gestionar': 'Cuentas, roles y bloqueos del personal',
@@ -54,7 +55,7 @@ export const ETIQUETA_PERMISO: Record<Permiso, string> = {
 };
 
 export const DESCRIPCION_ROL: Record<Rol, string> = {
-  Guardia: 'Monitorea el punto de control en tiempo real, valida lecturas, consulta la lista blanca y solicita autorizaciones. Recibe la notificación de cada permiso otorgado.',
-  GestorPermisos: 'Registra y administra la lista blanca de vehículos autorizados y resuelve las solicitudes de acceso desde una sola vista, sin monitoreo en vivo. Solo se le notifica la llegada de los vehículos a los que dio permiso.',
+  Guardia: 'Monitorea el punto de control en tiempo real, administra las listas, autoriza los ingresos y solicita permisos. Recibe la notificación de cada permiso otorgado.',
+  GestorPermisos: 'Registra y administra la lista blanca de vehículos autorizados y resuelve las solicitudes de acceso desde una sola vista, sin Gestión de Accesos. Solo se le notifica la llegada de los vehículos a los que dio permiso.',
   Admin: 'Control total: usuarios, cámaras, configuración, auditoría, lista negra y todas las funciones operativas.',
 };

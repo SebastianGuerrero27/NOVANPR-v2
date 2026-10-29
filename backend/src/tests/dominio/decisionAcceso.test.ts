@@ -25,6 +25,19 @@ describe('política de decisión de acceso (tabla R1–R7)', () => {
       .toBe('no_reconocido');
   });
 
+  it('lista blanca con «solo confianza mínima»: se autoriza sola aunque la lectura no esté confirmada', () => {
+    // 22-10-2026: las 5 lecturas no confirmadas de placas del padrón tenían 100 % de confianza y eran correctas
+    const solo = { ...POLITICA, criterio: 'confianza' as const };
+    expect(decidirAcceso(entrada({ politica: solo, permiso: PERMISO, lectura: { ...BUENA, lecturaValida: false, confianzaOcr: 1 } })))
+      .toMatchObject({ estado: 'autorizado', regla: 'R5' });
+    expect(decidirAcceso(entrada({ politica: solo, permiso: PERMISO, lectura: { ...BUENA, lecturaValida: false, confianzaOcr: 0.81 } })))
+      .toMatchObject({ estado: 'pendiente_revision', regla: 'R3' });
+    expect(decidirAcceso(entrada({ politica: solo, alerta: { id: 1, coincidencia: 'exacta' }, permiso: PERMISO, lectura: { ...BUENA, lecturaValida: false } })))
+      .toMatchObject({ estado: 'alerta', regla: 'R1' });
+    expect(decidirAcceso(entrada({ politica: solo, permiso: { id: 7, vigencia: 'vencida' }, lectura: { ...BUENA, lecturaValida: false } })).estado)
+      .toBe('no_reconocido');
+  });
+
   it('R3 · lectura no confirmada o con baja confianza → revisión humana', () => {
     expect(decidirAcceso(entrada({ permiso: PERMISO, lectura: { ...BUENA, lecturaValida: false } }))).toMatchObject({ estado: 'pendiente_revision', regla: 'R3' });
     expect(decidirAcceso(entrada({ permiso: PERMISO, lectura: { ...BUENA, confianzaOcr: 0.81 } }))).toMatchObject({ estado: 'pendiente_revision', regla: 'R3' });

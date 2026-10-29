@@ -62,6 +62,13 @@ describe('Dominio · usuarios', () => {
       expect(leerAltaUsuario({ ...ALTA, cargo: '   ' }, DOMINIOS)).toMatchObject({ ok: true, valor: { cargo: null } });
     });
 
+    it('acepta una contraseña inicial válida y rechaza una que no cumple la política', () => {
+      expect(leerAltaUsuario({ ...ALTA, password: 'ClaveSegura#2026' }, DOMINIOS))
+        .toMatchObject({ ok: true, valor: { password: 'ClaveSegura#2026' } });
+      expect(error(leerAltaUsuario({ ...ALTA, password: 'debil' }, DOMINIOS)))
+        .toBe('La contraseña debe tener al menos 10 caracteres.');
+    });
+
     it.each([
       [{ nombre_completo: 'Ana 2' }, 'Nombres y apellidos: solo letras, espacios y . \' - &.'],
       [{ nombre_completo: 'Al' }, 'Nombres y apellidos: mínimo 3 caracteres.'],
@@ -81,6 +88,9 @@ describe('Dominio · usuarios', () => {
   it('registro público y configuración inicial: además valida la contraseña', () => {
     const base = { nombre_completo: 'Carlos Andrade', email: 'carlos@ecu911.gob.ec', password: 'ClaveSegura#2026' };
     expect(leerRegistro(base, DOMINIOS)).toEqual({ ok: true, valor: { ...base, cargo: null } });
+    expect(leerRegistro({ ...base, email: 'carlos@gmail.com' }, [])).toEqual({
+      ok: true, valor: { ...base, email: 'carlos@gmail.com', cargo: null },
+    });
     expect(error(leerRegistro({ ...base, password: 'debil' }, DOMINIOS))).toBe('La contraseña debe tener al menos 10 caracteres.');
   });
 

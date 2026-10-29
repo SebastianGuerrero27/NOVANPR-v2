@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { mensajeError } from '../infraestructura/api';
+import { versionCargada, versionPublicada } from '../infraestructura/version';
 
 /** true mientras la pestaña está visible (Page Visibility API). */
 export function usePaginaVisible(): boolean {
@@ -70,4 +71,26 @@ export function useTic(ms: number) {
     const id = window.setInterval(() => set(x => x + 1), ms);
     return () => window.clearInterval(id);
   }, [ms]);
+}
+
+/**
+ * true cuando el servidor publica una versión del frontend distinta de la que ejecuta esta
+ * pestaña (se revisa cada `ms` y al volver a la pestaña). En desarrollo nunca avisa.
+ */
+export function useVersionNueva(ms = 120_000): boolean {
+  const [nueva, setNueva] = useState(false);
+  useEffect(() => {
+    const cargada = versionCargada();
+    if (!cargada) return undefined;
+    let vigente = true;
+    const revisar = async () => {
+      const publicada = await versionPublicada();
+      if (vigente && publicada && publicada !== cargada) setNueva(true);
+    };
+    const alVolver = () => { if (document.visibilityState === 'visible') void revisar(); };
+    const id = window.setInterval(() => void revisar(), ms);
+    document.addEventListener('visibilitychange', alVolver);
+    return () => { vigente = false; window.clearInterval(id); document.removeEventListener('visibilitychange', alVolver); };
+  }, [ms]);
+  return nueva;
 }

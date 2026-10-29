@@ -51,11 +51,14 @@ export const VisorVideo: React.FC<{ perfil: PerfilVideo; pausado: boolean; clave
 
     (async () => {
       try {
-        const { ticket, url } = (await api.post('/monitoreo/ticket', { alcance: 'stream' })).data;
+        const { ticket } = (await api.post('/monitoreo/ticket', { alcance: 'stream' })).data;
         if (cerrado) return;
         const p = PERFILES[perfil];
         const q = new URLSearchParams({ ticket, ancho: String(p.ancho), fps: String(p.fps), calidad: String(p.calidad) });
-        ws = new WebSocket(`${String(url).replace(/^http/, 'ws')}/ws/stream?${q}`);
+        // El motor vive dentro de Docker y no expone su puerto al navegador. Nginx
+        // reenvía este WebSocket al servicio ANPR usando el mismo origen de la SPA.
+        const wsBase = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+        ws = new WebSocket(`${wsBase}/ws/stream?${q}`);
         ws.binaryType = 'blob';
         ws.onopen = () => { if (!cerrado) { setEstado('en_vivo'); setError(null); } };
         ws.onmessage = async (ev: MessageEvent<Blob>) => {
@@ -115,7 +118,7 @@ export const VisorVideo: React.FC<{ perfil: PerfilVideo; pausado: boolean; clave
   })();
 
   return (
-    <div ref={contenedor} style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', background: '#050b16', borderRadius: 10, overflow: 'hidden' }}>
+    <div ref={contenedor} className="reproductor" style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', background: '#050b16', borderRadius: 10, overflow: 'hidden' }}>
       <canvas ref={canvas} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} aria-label="Video en vivo del acceso" />
       {capa && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
@@ -125,7 +128,7 @@ export const VisorVideo: React.FC<{ perfil: PerfilVideo; pausado: boolean; clave
       )}
       <div style={{ position: 'absolute', left: 10, top: 10, display: 'flex', gap: 6, alignItems: 'center' }}>
         {estado === 'en_vivo' && (
-          <span className="insignia" style={{ background: 'rgba(185,28,28,0.92)', borderColor: 'transparent', color: '#fff' }}>
+          <span className="insignia al-pasar" style={{ background: 'rgba(185,28,28,0.92)', borderColor: 'transparent', color: '#fff' }}>
             <span className="punto" style={{ background: '#fff', width: 6, height: 6 }} /> EN VIVO
           </span>
         )}

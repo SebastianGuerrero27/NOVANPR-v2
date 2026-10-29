@@ -68,7 +68,7 @@ export const repositorioUsuariosSql: RepositorioUsuarios = {
       .input('creador', sql.Int, creadorId)
       .query(`INSERT INTO Usuarios (email, nombre_completo, cargo, password_hash, rol_id, estado, email_verificado, creado_por)
               OUTPUT INSERTED.id
-              SELECT @email, @nombre, @cargo, @hash, id, 'activo', 1, @creador FROM Roles WHERE codigo = @rol`);
+              SELECT @email, @nombre, @cargo, @hash, id, 'activo', TRUE, @creador FROM Roles WHERE codigo = @rol`);
     return ins.recordset[0].id;
   },
 
@@ -82,6 +82,19 @@ export const repositorioUsuariosSql: RepositorioUsuarios = {
       .query(`UPDATE Usuarios SET nombre_completo = @nombre, cargo = @cargo, estado = @estado,
                 rol_id = (SELECT id FROM Roles WHERE codigo = @rol), fecha_actualizacion = SYSDATETIME()
               WHERE id = @id`);
+  },
+
+  async cambiarPasswordAdministrativo(id, passwordHash) {
+    await db().request()
+      .input('id', sql.Int, id)
+      .input('hash', sql.VarChar(100), passwordHash)
+      .query(`
+        UPDATE RestablecimientoPassword SET usado = 1 WHERE usuario_id = @id AND usado = 0;
+        UPDATE Usuarios SET password_hash = @hash, fecha_cambio_password = SYSDATETIME(),
+          intentos_fallidos = 0, bloqueado_hasta = NULL,
+          email_verificado = 1, estado = CASE WHEN estado = 'pendiente' THEN 'activo' ELSE estado END,
+          fecha_actualizacion = SYSDATETIME()
+        WHERE id = @id`);
   },
 
   async bloquear(id) {

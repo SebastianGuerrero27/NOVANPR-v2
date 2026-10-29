@@ -53,6 +53,11 @@ describe('API · integración', () => {
     await request(app).get('/api/vehiculos-autorizados').set('Authorization', 'Bearer token-falso').expect(401);
   });
 
+  it('métricas de CPU solo disponibles para administración', async () => {
+    await request(app).get('/api/panel/cpu').set('Authorization', `Bearer ${token('GestorPermisos')}`).expect(403);
+    await request(app).get('/api/panel/cpu').set('Authorization', `Bearer ${token('Guardia')}`).expect(403);
+  });
+
   /**
    * [método, ruta, cuerpo, { rol: estado esperado }]. 400/404/200 = pasó la autorización y
    * llegó a la lógica del endpoint; 403 = la matriz RBAC lo impidió; PERMITIDO = cualquier
@@ -61,7 +66,9 @@ describe('API · integración', () => {
   const PERMITIDO = -1;
   const MATRIZ: [string, string, object, Record<Rol, number>][] = [
     ['post', '/api/vehiculos-autorizados', {}, { Admin: 400, GestorPermisos: 400, Guardia: 403 }],
-    ['post', '/api/blacklist', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
+    ['post', '/api/blacklist', {}, { Admin: 400, GestorPermisos: 403, Guardia: 400 }],
+    ['put', '/api/blacklist/1', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
+    ['delete', '/api/blacklist/1', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
     ['get', '/api/vehiculos-autorizados', {}, { Admin: 200, GestorPermisos: 200, Guardia: 200 }],
     ['post', '/api/solicitudes-acceso', {}, { Admin: 400, GestorPermisos: 403, Guardia: 400 }],
     ['post', '/api/solicitudes-acceso/5/rechazar', {}, { Admin: 400, GestorPermisos: 400, Guardia: 403 }],
@@ -69,7 +76,6 @@ describe('API · integración', () => {
     ['get', '/api/panel/accesos', {}, { Admin: 200, GestorPermisos: 200, Guardia: 403 }],
     ['get', '/api/usuarios', {}, { Admin: 200, GestorPermisos: 403, Guardia: 403 }],
     ['delete', '/api/detecciones/1', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
-    ['get', '/api/notificaciones/metricas', {}, { Admin: 200, GestorPermisos: 403, Guardia: 403 }],
     ['get', '/api/reportes?desde=2026-10-02&hasta=2026-10-01', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
     ['get', '/api/auditoria', {}, { Admin: PERMITIDO, GestorPermisos: 403, Guardia: 403 }],
     // El gestor de permisos no accede al monitoreo ni por la API (detecciones, video en vivo, inicio)
@@ -78,7 +84,6 @@ describe('API · integración', () => {
     ['post', '/api/monitoreo/ticket', { alcance: 'stream' }, { Admin: PERMITIDO, GestorPermisos: 403, Guardia: PERMITIDO }],
     ['get', '/api/panel/resumen', {}, { Admin: PERMITIDO, GestorPermisos: 403, Guardia: PERMITIDO }],
     ['get', '/api/camaras', {}, { Admin: PERMITIDO, GestorPermisos: 403, Guardia: PERMITIDO }],
-    ['get', '/api/evaluacion/resumen', {}, { Admin: PERMITIDO, GestorPermisos: 403, Guardia: 403 }],
     ['post', '/api/camaras/1/ping', {}, { Admin: PERMITIDO, GestorPermisos: 403, Guardia: 403 }],
     // Excepción de acceso (autorizar fuera de horario): solo con accesos:excepcion
     ['post', '/api/detecciones/validar/1', { placa_validada: 'ABC1234', excepcion: true, observacion: 'Reunión urgente' },

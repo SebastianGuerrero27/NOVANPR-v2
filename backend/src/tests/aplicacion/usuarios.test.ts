@@ -23,6 +23,7 @@ function preparar(guardada: UsuarioDTO | null = cuenta(), administradoresActivos
     existeEmail: jest.fn().mockResolvedValue(false),
     crear: jest.fn().mockResolvedValue(15),
     actualizar: jest.fn().mockResolvedValue(undefined),
+    cambiarPasswordAdministrativo: jest.fn().mockResolvedValue(undefined),
     bloquear: jest.fn().mockResolvedValue(undefined),
     desbloquear: jest.fn().mockResolvedValue(undefined),
     darDeBaja: jest.fn().mockResolvedValue(undefined),
@@ -33,11 +34,13 @@ function preparar(guardada: UsuarioDTO | null = cuenta(), administradoresActivos
   const auditoria = { cuenta: jest.fn().mockResolvedValue(undefined), acceso: jest.fn().mockResolvedValue(undefined) };
   const correo = { definirPasswordCuentaNueva: jest.fn().mockResolvedValue(true), restablecerPassword: jest.fn().mockResolvedValue(true) };
   const tokens = { generar: jest.fn().mockReturnValue({ token: 'a'.repeat(64), hash: 'h'.repeat(64) }) };
-  const claves = { inutilizable: jest.fn().mockResolvedValue('$2a$10$inutilizable') };
+  const claves = {
+    inutilizable: jest.fn().mockResolvedValue('$2a$10$inutilizable'),
+    cifrar: jest.fn().mockResolvedValue('$2a$10$hash'),
+  };
   const invalidarSesiones = jest.fn();
   const casos = casosUsuarios({
     repositorio, auditoria, correo, tokens, claves, invalidarSesiones,
-    dominiosPermitidos: () => ['ecu911.gob.ec'],
     urlFrontend: () => 'https://anpr.ecu911.gob.ec',
   });
   return { casos, repositorio, auditoria, correo, tokens, claves, invalidarSesiones };
@@ -73,7 +76,6 @@ describe('Casos de uso · usuarios', () => {
       [{ ...ALTA, nombre_completo: '  ' }, 'El campo «Nombres y apellidos» es obligatorio.'],
       [{ ...ALTA, nombre_completo: 'Al' }, 'Nombres y apellidos: mínimo 3 caracteres.'],
       [{ ...ALTA, email: 'ana@' }, 'Correo electrónico inválido.'],
-      [{ ...ALTA, email: 'ana@gmail.com' }, 'Solo se aceptan correos de: @ecu911.gob.ec.'],
       [{ ...ALTA, cargo: 'Jefe <b>' }, 'Cargo: letras, números'],
       [{ ...ALTA, cargo: 'Jefe; DROP' }, 'Cargo: letras, números'],
       [{ ...ALTA, cargo: 'x'.repeat(101) }, 'Cargo: máximo 100 caracteres.'],
@@ -100,12 +102,67 @@ describe('Casos de uso · usuarios', () => {
       correo.definirPasswordCuentaNueva.mockResolvedValue(false);
       expect((await casos.crear(ALTA, ADMIN)).enviado).toBe(false);
     });
+
+    it('crea con la contraseña inicial entregada sin enviar enlace de invitación', async () => {
+      const { casos, repositorio, claves, correo, auditoria } = preparar(cuenta({ id: 15 }));
+      const r = await casos.crear({ ...ALTA, password: 'ClaveSegura#2026' }, ADMIN);
+      expect(r).toMatchObject({ enviado: false, passwordDefinida: true });
+      expect(claves.cifrar).toHaveBeenCalledWith('ClaveSegura#2026');
+      expect(repositorio.crear).toHaveBeenCalledWith(expect.objectContaining({ passwordHash: '$2a$10$hash' }), ADMIN.id);
+      expect(repositorio.emitirEnlaceRestablecimiento).not.toHaveBeenCalled();
+      expect(correo.definirPasswordCuentaNueva).not.toHaveBeenCalled();
+      expect(auditoria.cuenta).toHaveBeenCalledWith(ADMIN, 'USUARIO_CREADO', { id: 15, email: 'ana.villacis@ecu911.gob.ec' },
+        'Rol Guardia; contraseña inicial definida');
+    });
+
+    it('rechaza una contraseña inicial que no cumple la política', async () => {
+      const { casos, repositorio } = preparar();
+      expect((await fallo(casos.crear({ ...ALTA, password: 'debil' }, ADMIN))).message)
+        .toBe('La contraseña debe tener al menos 10 caracteres.');
+      expect(repositorio.crear).not.toHaveBeenCalled();
+    });
+
+    it('permite crear cuentas invitadas con cualquier dominio de correo válido', async () => {
+      const { casos, repositorio } = preparar(cuenta({ id: 15 }));
+      await casos.crear({ ...ALTA, email: 'prueba@gmail.com' }, ADMIN);
+      expect(repositorio.crear).toHaveBeenCalledWith(expect.objectContaining({ email: 'prueba@gmail.com' }), 1);
+    });
   });
 
   describe('obtener (detalle)', () => {
     it('devuelve la cuenta con el mismo formato del listado', async () => {
       const { casos } = preparar();
       expect(await casos.obtener(7)).toEqual(cuenta());
+    });
+
+    describe('cambiar contraseña desde administración', () => {
+      it('valida, cifra, invalida sesiones y audita sin guardar la contraseña en auditoría', async () => {
+        const { casos, repositorio, claves, invalidarSesiones, auditoria } = preparar();
+        const respuesta = await casos.cambiarPassword(7, { password: 'NuevaClave#2026' }, ADMIN);
+        expect(respuesta.message).toContain('Contraseña cambiada');
+        expect(claves.cifrar).toHaveBeenCalledWith('NuevaClave#2026');
+        expect(repositorio.cambiarPasswordAdministrativo).toHaveBeenCalledWith(7, '$2a$10$hash');
+        expect(invalidarSesiones).toHaveBeenCalledWith(7);
+        expect(auditoria.cuenta).toHaveBeenCalledWith(ADMIN, 'PASSWORD_ADMIN_CAMBIADO', { id: 7, email: 'guardia@ecu911.gob.ec' });
+        expect(JSON.stringify(auditoria.cuenta.mock.calls)).not.toContain('NuevaClave#2026');
+      });
+
+      it('rechaza contraseña débil o usuario inexistente sin cambiar claves', async () => {
+        const debil = preparar();
+        expect((await fallo(debil.casos.cambiarPassword(7, { password: 'debil' }, ADMIN))).tipo).toBe('validacion');
+        expect(debil.repositorio.cambiarPasswordAdministrativo).not.toHaveBeenCalled();
+        const inexistente = preparar(null);
+        expect((await fallo(inexistente.casos.cambiarPassword(99, { password: 'NuevaClave#2026' }, ADMIN))).tipo).toBe('no_encontrado');
+        expect(inexistente.repositorio.cambiarPasswordAdministrativo).not.toHaveBeenCalled();
+      });
+
+      it('impide que el administrador use esta acción sobre su propia cuenta', async () => {
+        const propio = preparar();
+        expect((await fallo(propio.casos.cambiarPassword(ADMIN.id, { password: 'NuevaClave#2026' }, ADMIN))).message)
+          .toBe('Use «Mi perfil» para cambiar su propia contraseña.');
+        expect(propio.repositorio.obtener).not.toHaveBeenCalled();
+        expect(propio.repositorio.cambiarPasswordAdministrativo).not.toHaveBeenCalled();
+      });
     });
 
     it('404 si no existe', async () => {

@@ -46,8 +46,10 @@ class ParametrosSinPlaca:
     muestras_min: int = 2
     #: Con movimiento sostenido (varios vehículos seguidos) el evento se corta y empieza otro
     duracion_max_s: float = 60.0
-    #: Cuadros del evento que se guardan para el detector de vehículos y la evidencia
-    cuadros_guardados: int = 3
+    #: Cuadros del evento que se guardan para el detector de vehículos y la evidencia, repartidos en
+    #: todo el evento. Antes eran los 3 de mayor movimiento: los del vehículo pegado a la cámara, de
+    #: costado y sin la placa a la vista, y en un paso rápido se perdían el acercamiento y el frente
+    cuadros_guardados: int = 8
 
 
 @dataclass
@@ -83,24 +85,22 @@ class VigilanteSinPlaca:
         self._evento = None
 
     def _guardar(self, hora: float, fraccion: float, cuadro: Optional[np.ndarray]) -> None:
-        """Conserva los cuadros de mayor movimiento del evento (una copia solo si entra entre los mejores)."""
+        """Conserva cuadros repartidos en todo el evento: lleno, se quita el más próximo en el tiempo a
+        su anterior (el primero se queda: suele ser el vehículo entero acercándose)."""
         if cuadro is None or fraccion < self.p.fraccion_vehiculo:
             return
         cuadros = self._evento.cuadros
-        if len(cuadros) >= self.p.cuadros_guardados:
-            peor = min(range(len(cuadros)), key=lambda i: cuadros[i][1])
-            # Solo si mejora claramente al peor guardado: evita copiar un cuadro 1080p en cada análisis
-            if fraccion <= cuadros[peor][1] * 1.1:
-                return
-            cuadros.pop(peor)
         cuadros.append((hora, fraccion, cuadro.copy()))
+        if len(cuadros) > self.p.cuadros_guardados:
+            cuadros.pop(min(range(1, len(cuadros)), key=lambda i: cuadros[i][0] - cuadros[i - 1][0]))
 
     def alimentar(self, hora: float, fraccion: float, cuadro: Optional[np.ndarray] = None,
                   placa_vista: bool = False) -> Optional[EventoMovimiento]:
         """
-        Fracción de la zona en movimiento del cuadro analizado a la `hora` (s) y si el detector de placas
-        vio una placa en él. Devuelve el evento que se cerró en este cuadro si merece revisión
-        (intensidad y duración suficientes), o None.
+        Fracción de la zona en movimiento del cuadro a la `hora` (s) y si el detector de placas vio hace
+        poco algo con forma de placa. El motor lo alimenta 6 veces por segundo desde el hilo de captura.
+        Devuelve el evento que se cerró en este cuadro si merece revisión (intensidad y duración
+        suficientes), o None.
         """
         p = self.p
         cerrado: Optional[EventoMovimiento] = None

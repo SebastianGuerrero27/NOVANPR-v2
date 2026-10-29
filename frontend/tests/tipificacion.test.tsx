@@ -53,7 +53,7 @@ describe('Tipificación por la placa (Tabla 6)', () => {
 
 describe('Tipificación visible para el guardia', () => {
   const pista = (placa: string, estado: string | null): PistaHud => ({
-    id: 1, caja: [0, 0, 0.1, 0.1], puntos: null, velocidad: [0, 0], confianza: 0.9,
+    id: 1, caja: [0, 0, 0.1, 0.1], puntos: null, velocidad: [0, 0], edad: 0, confianza: 0.9,
     placa, parcial: null, confianzaPlaca: 0.97, estado,
   });
 

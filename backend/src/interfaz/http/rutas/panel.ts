@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware, requierePermiso } from '../middlewares/auth';
 import { panel } from '../../../contenedor/panel';
+import { usoCpuSistema } from '../../../infraestructura/servicios/recursosCpu';
 import { actorDe, controlador } from '../respuesta';
 
 /**
@@ -9,7 +10,7 @@ import { actorDe, controlador } from '../respuesta';
  *
  *   GET /resumen          operación del día y de los últimos 7 días (operacion:monitorear)
  *   GET /accesos          solicitudes, padrón, denegados y reincidentes (padron:gestionar)
- *   GET /administracion   cuentas, accesos, actividad y estado de los servicios (usuarios:gestionar)
+ *   GET /administracion   cuentas y estado de los servicios (usuarios:gestionar)
  *
  * Casos de uso en aplicacion/panel.ts.
  */
@@ -28,6 +29,11 @@ router.get('/accesos', authMiddleware, requierePermiso('padron:gestionar'),
 router.get('/administracion', authMiddleware, requierePermiso('usuarios:gestionar'),
   controlador('PANEL administración', 'No se pudo obtener el panel de administración.', async (_req, res) => {
     res.json(await panel.administracion());
+  }));
+
+router.get('/cpu', authMiddleware, requierePermiso('usuarios:gestionar'),
+  controlador('PANEL uso de CPU', 'No se pudieron consultar las métricas de CPU.', async (_req, res) => {
+    res.json(await usoCpuSistema());
   }));
 
 export default router;

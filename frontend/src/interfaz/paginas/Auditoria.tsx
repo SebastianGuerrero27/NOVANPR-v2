@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Activity, Archive, Download, KeyRound, Loader2, Search, UserCog, X } from 'lucide-react';
+import { Activity, Archive, Download, KeyRound, Loader2, ScanSearch, Search, UserCog, UserSearch, X } from 'lucide-react';
 import api, { mensajeError, mensajeErrorDescarga } from '../../infraestructura/api';
 import { useConsulta, useRetardado } from '../../aplicacion/hooks';
 import type { Pagina } from '../../dominio/tipos';
@@ -14,16 +14,21 @@ import { useNotificar } from '../componentes/Notificaciones';
 
 /**
  * Auditoría (solo Administrador): consulta paginada con filtros, detalle de cada registro,
- * exportación CSV y retención.
+ * exportación CSV y retención. Cinco registros: operaciones, cuentas, inicios de sesión, lecturas
+ * que descartó el motor ANPR y consultas del propietario de un vehículo.
  *
  * Es de solo inserción (ISO/IEC 27001 A.8.15): la pantalla no ofrece editar ni borrar. La
  * retención traslada los registros antiguos a las tablas de archivo sin eliminarlos, y tanto la
  * exportación como la retención quedan a su vez registradas por la API.
  */
 
-type Fuente = 'operaciones' | 'cuentas' | 'accesos';
+const FUENTES = ['operaciones', 'cuentas', 'accesos', 'descartes', 'propietario'] as const;
+type Fuente = typeof FUENTES[number];
 
-/** Fila de cualquiera de los tres registros: cada fuente trae sus columnas. */
+/** Fuentes con tabla de archivo: la retención solo se aplica a ellas */
+const ARCHIVABLES: readonly Fuente[] = ['operaciones', 'cuentas', 'accesos'];
+
+/** Fila de cualquiera de los registros: cada fuente trae sus columnas. */
 interface FilaAuditoria {
   id: number;
   fecha: string;
@@ -40,9 +45,55 @@ interface FilaAuditoria {
   exito?: boolean;
   motivo?: string;
   user_agent?: string | null;
+  // Descartes del motor
+  texto_candidato?: string | null;
+  confianza?: number | null;
+  fuente?: string | null;
+  camara_id?: number | null;
+  // Consultas de propietario
+  placa?: string;
+  deteccion_id?: number | null;
+  proveedor?: string;
+  resultado?: string;
 }
 
-const NOMBRE_FUENTE: Record<Fuente, string> = { operaciones: 'Operaciones', cuentas: 'Cuentas de usuario', accesos: 'Inicios de sesión' };
+const NOMBRE_FUENTE: Record<Fuente, string> = {
+  operaciones: 'Operaciones', cuentas: 'Cuentas de usuario', accesos: 'Inicios de sesión',
+  descartes: 'Descartes del motor', propietario: 'Consultas de propietario',
+};
+
+const TITULO_FUENTE: Record<Fuente, string> = {
+  operaciones: 'Acciones sobre ingresos, listas, cámaras y configuración', cuentas: 'Acciones sobre cuentas de usuario',
+  accesos: 'Intentos de inicio de sesión', descartes: 'Lecturas que el motor ANPR descartó y el motivo',
+  propietario: 'Consultas del propietario de un vehículo y su base legal',
+};
+
+const BUSQUEDA_FUENTE: Record<Fuente, string> = {
+  operaciones: 'Usuario, acción o detalle', cuentas: 'Usuario, acción o detalle', accesos: 'Correo, motivo o IP',
+  descartes: 'Lectura, motivo u origen', propietario: 'Usuario, placa, motivo o resultado',
+};
+
+/** Motivos con los que el motor descarta una lectura (services/anpr/app/aplicacion/motor.py → _descartar) */
+const MOTIVOS_DESCARTE: Record<string, string> = {
+  segunda_verificacion_ocr_no_valido: 'La segunda lectura no confirmó una placa válida',
+  formato_no_corresponde_a_la_placa: 'El formato no corresponde al tipo de placa',
+  lectura_inferida: 'Lectura con caracteres supuestos',
+  placa_de_moto_sin_moto: 'Placa de moto sin una moto en la imagen',
+  region_sin_caracteres: 'La región detectada no tiene caracteres',
+  confianza_deteccion_baja: 'Confianza de detección insuficiente',
+  backend_no_disponible: 'La API no respondió al registrar',
+  error_interno: 'Error interno del motor',
+  falso_positivo_ocr: 'Falso positivo del OCR',
+};
+
+/** Resultado de una consulta de propietario (backend/src/aplicacion/propietario.ts → ResultadoConsulta) */
+const RESULTADOS_PROPIETARIO: Record<string, { texto: string; clase: string }> = {
+  ok: { texto: 'Datos entregados', clase: 'autorizado' }, no_encontrado: { texto: 'Sin datos', clase: 'neutro' },
+  limite: { texto: 'Cupo por hora agotado', clase: 'no_reconocido' }, deshabilitado: { texto: 'Servicio deshabilitado', clase: 'neutro' },
+  error: { texto: 'Error del proveedor', clase: 'alerta' },
+};
+
+const porcentaje = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? `${(v <= 1 ? v * 100 : v).toFixed(1)} %` : '—');
 
 const MOTIVOS_ACCESO: Record<string, string> = {
   ok: 'Inicio de sesión correcto', credenciales: 'Contraseña incorrecta o correo inexistente', bloqueado: 'Cuenta bloqueada',
@@ -60,6 +111,9 @@ const ETIQUETA_CAMPO: Record<string, string> = {
   usuario_id: 'Id del usuario', usuario_email: 'Usuario', entidad: 'Elemento', entidad_id: 'Id del elemento',
   actor_id: 'Id de quien actuó', actor_email: 'Realizado por', objetivo_id: 'Id de la cuenta afectada', objetivo_email: 'Cuenta afectada',
   email: 'Correo', exito: 'Resultado', motivo: 'Motivo', user_agent: 'Navegador (user agent)',
+  tracking_id: 'Seguimiento (track)', texto_candidato: 'Lectura descartada', confianza: 'Confianza', fuente: 'Origen',
+  camara_id: 'Id de la cámara', usuario_nombre: 'Consultado por', placa: 'Placa', deteccion_id: 'Id del paso',
+  proveedor: 'Proveedor', resultado: 'Resultado',
 };
 
 const legible = (accion: string) => accion.replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase());
@@ -73,7 +127,10 @@ function valorCampo(campo: string, valor: unknown): React.ReactNode {
     case 'exito': return <span className={`insignia ${valor ? 'autorizado' : 'alerta'}`}>{valor ? 'Correcto' : 'Fallido'}</span>;
     case 'accion': return <>{legible(texto)} <span className="texto-secundario mono">{texto}</span></>;
     case 'entidad': return ENTIDADES[texto] ?? texto;
-    case 'motivo': return MOTIVOS_ACCESO[texto] ?? texto;
+    case 'motivo': return MOTIVOS_ACCESO[texto] ?? MOTIVOS_DESCARTE[texto] ?? texto;
+    case 'confianza': return porcentaje(valor);
+    case 'resultado': return RESULTADOS_PROPIETARIO[texto]?.texto ?? texto;
+    case 'placa': case 'texto_candidato': return <span className="mono">{texto}</span>;
     case 'ip': case 'user_agent': return <span className="mono" style={{ fontSize: 12 }}>{texto}</span>;
     case 'detalle': return <span style={{ whiteSpace: 'pre-wrap' }}>{texto}</span>;
     default: return texto;
@@ -106,7 +163,7 @@ interface Archivados { operaciones: number; cuentas: number; accesos: number }
 const Auditoria: React.FC = () => {
   const notificar = useNotificar();
   const [params, setParams] = useSearchParams();
-  const fuente = (['operaciones', 'cuentas', 'accesos'].includes(params.get('fuente') ?? '') ? params.get('fuente') : 'operaciones') as Fuente;
+  const fuente = ((FUENTES as readonly string[]).includes(params.get('fuente') ?? '') ? params.get('fuente') : 'operaciones') as Fuente;
   const [texto, setTexto] = useState(params.get('q') ?? '');
   const q = useRetardado(texto, 400);
   const desde = params.get('desde') ?? '';
@@ -183,12 +240,14 @@ const Auditoria: React.FC = () => {
           { valor: 'operaciones', etiqueta: NOMBRE_FUENTE.operaciones, icono: <Activity size={15} /> },
           { valor: 'cuentas', etiqueta: NOMBRE_FUENTE.cuentas, icono: <UserCog size={15} /> },
           { valor: 'accesos', etiqueta: NOMBRE_FUENTE.accesos, icono: <KeyRound size={15} /> },
+          { valor: 'descartes', etiqueta: NOMBRE_FUENTE.descartes, icono: <ScanSearch size={15} /> },
+          { valor: 'propietario', etiqueta: NOMBRE_FUENTE.propietario, icono: <UserSearch size={15} /> },
         ]} />
         <Tarjeta>
           <div className="filtros">
             <div className="campo crece"><label htmlFor="a-q">Buscar</label>
               <div className="input-icono"><Search size={15} /><input id="a-q" className="input" value={texto} onChange={e => setTexto(e.target.value)}
-                maxLength={LARGO_BUSQUEDA} placeholder={fuente === 'accesos' ? 'Correo, motivo o IP' : 'Usuario, acción o detalle'} /></div></div>
+                maxLength={LARGO_BUSQUEDA} placeholder={BUSQUEDA_FUENTE[fuente]} /></div></div>
             {fuente === 'accesos' && (
               <div className="campo"><label htmlFor="a-res">Resultado</label>
                 <select id="a-res" className="select" value={resultado} onChange={e => cambiar({ resultado: e.target.value })}>
@@ -203,24 +262,30 @@ const Auditoria: React.FC = () => {
           </div>
         </Tarjeta>
         {error && <Aviso tipo="error">{error}</Aviso>}
-        <Tarjeta titulo={fuente === 'operaciones' ? 'Acciones sobre ingresos, listas, cámaras y configuración' : fuente === 'cuentas' ? 'Acciones sobre cuentas de usuario' : 'Intentos de inicio de sesión'}
+        <Tarjeta titulo={TITULO_FUENTE[fuente]}
           subtitulo="Seleccione un registro para ver todas sus columnas. Registro inalterable: no puede editarse ni borrarse."
           acciones={<>
             <button className="btn btn-secondary btn-sm" onClick={exportar} disabled={exportando || !datos?.total}
               title="Descarga los registros que cumplen los filtros actuales">
               {exportando ? <Loader2 size={14} className="girar" /> : <Download size={14} />} Exportar CSV
             </button>
-            <button className="btn btn-secondary btn-sm" onClick={() => { setDias(String(RETENCION_AUDITORIA.omision)); setRetencion(true); }}
-              title="Traslada al archivo los registros más antiguos que el plazo indicado">
-              <Archive size={14} /> Retención
-            </button>
+            {ARCHIVABLES.includes(fuente) && (
+              <button className="btn btn-secondary btn-sm" onClick={() => { setDias(String(RETENCION_AUDITORIA.omision)); setRetencion(true); }}
+                title="Traslada al archivo los registros más antiguos que el plazo indicado">
+                <Archive size={14} /> Retención
+              </button>
+            )}
           </>} sinPadding>
           <div className="tabla-contenedor">
             <table className="tabla">
               <thead>
                 {fuente === 'accesos'
                   ? <tr><th>Fecha</th><th>Correo</th><th>Resultado</th><th>IP</th><th className="ocultar-movil">Navegador</th></tr>
-                  : <tr><th>Fecha</th><th>Usuario</th><th>Acción</th>{fuente === 'operaciones' ? <th>Elemento</th> : <th>Cuenta afectada</th>}<th>Detalle</th><th className="ocultar-movil">IP</th></tr>}
+                  : fuente === 'descartes'
+                    ? <tr><th>Fecha</th><th>Lectura descartada</th><th>Motivo</th><th>Confianza</th><th>Cámara</th><th className="ocultar-movil">Origen</th></tr>
+                    : fuente === 'propietario'
+                      ? <tr><th>Fecha</th><th>Consultado por</th><th>Placa</th><th>Motivo (base legal)</th><th>Resultado</th><th className="ocultar-movil">Proveedor</th></tr>
+                      : <tr><th>Fecha</th><th>Usuario</th><th>Acción</th>{fuente === 'operaciones' ? <th>Elemento</th> : <th>Cuenta afectada</th>}<th>Detalle</th><th className="ocultar-movil">IP</th></tr>}
               </thead>
               <tbody>
                 {cargando && !datos ? <FilasEsqueleto columnas={6} /> : datos?.items.map(x => {
@@ -230,6 +295,28 @@ const Auditoria: React.FC = () => {
                     onClick: () => setDetalle({ fuente, id: x.id }),
                     onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetalle({ fuente, id: x.id }); } },
                   };
+                  if (fuente === 'descartes') return (
+                    <tr key={x.id} {...abrir}>
+                      <td className="nowrap">{fechaHora(x.fecha)}</td>
+                      <td className="mono">{x.texto_candidato || <span className="texto-secundario">sin texto</span>}</td>
+                      <td>{MOTIVOS_DESCARTE[x.motivo ?? ''] ?? x.motivo}</td>
+                      <td className="nowrap">{porcentaje(x.confianza)}</td>
+                      <td>{x.camara_id ? `#${x.camara_id}` : '—'}</td>
+                      <td className="ocultar-movil">{x.fuente || '—'}</td>
+                    </tr>
+                  );
+                  if (fuente === 'propietario') {
+                    const r = RESULTADOS_PROPIETARIO[x.resultado ?? ''];
+                    return (
+                      <tr key={x.id} {...abrir}>
+                        <td className="nowrap">{fechaHora(x.fecha)}</td><td>{x.actor ?? '—'}</td>
+                        <td className="mono">{x.placa}</td>
+                        <td className="truncar" style={{ maxWidth: 320 }} title={x.motivo}>{x.motivo}</td>
+                        <td><span className={`insignia ${r?.clase ?? 'neutro'}`}>{r?.texto ?? x.resultado}</span></td>
+                        <td className="ocultar-movil">{x.proveedor}</td>
+                      </tr>
+                    );
+                  }
                   return fuente === 'accesos' ? (
                     <tr key={x.id} {...abrir}>
                       <td className="nowrap">{fechaHora(x.fecha)}</td><td>{x.email}</td>

@@ -4,6 +4,11 @@
 
 Esta guía explica la implementación del sistema de monitoreo con Prometheus y Grafana para el sistema ANPR del ECU 911 Zona 3.
 
+La página **Estado del sistema** también muestra anillos de uso de CPU para los contenedores
+frontend, backend y ANPR. cAdvisor suministra esas métricas a Prometheus; al iniciar o recrear
+los servicios, espera aproximadamente un minuto a que se acumulen muestras antes de que aparezcan
+porcentajes. Los valores son la proporción de CPU del host usada por cada contenedor.
+
 ## Arquitectura de Monitoreo
 
 ```

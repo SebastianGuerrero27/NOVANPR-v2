@@ -26,23 +26,52 @@ function esperarIce(pc: RTCPeerConnection, ms: number): Promise<void> {
 }
 
 /** Conecta un <video> a una URL WHEP. Rechaza si el servidor no acepta la sesión. */
-export async function conectarWhep(video: HTMLVideoElement, url: string): Promise<SesionWhep> {
+export async function conectarWhep(video: HTMLVideoElement, url: string, signal?: AbortSignal): Promise<SesionWhep> {
   const pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle' });
+  const peticion = new AbortController();
+  let ubicacion: string | null = null;
+  let flujo: MediaStream | null = null;
+  let cerrada = false;
+  const cerrar = () => {
+    if (cerrada) return;
+    cerrada = true;
+    signal?.removeEventListener('abort', cerrar);
+    peticion.abort();
+    pc.ontrack = null;
+    // Una sesión antigua no debe borrar el video de la cámara que la reemplazó.
+    if (flujo && video.srcObject === flujo) video.srcObject = null;
+    const cerrarConexion = () => pc.close();
+    if (ubicacion && !['closed', 'failed', 'disconnected'].includes(pc.connectionState)) {
+      // MediaMTX elimina la sesión al cerrar WebRTC. Primero se libera por WHEP para
+      // evitar pedir DELETE a una sesión que el servidor ya eliminó (404).
+      void fetch(new URL(ubicacion, url).toString(), { method: 'DELETE', signal: AbortSignal.timeout(2000) })
+        .catch(() => undefined).finally(cerrarConexion);
+    } else cerrarConexion();
+  };
+  signal?.addEventListener('abort', cerrar, { once: true });
+  if (signal?.aborted) {
+    cerrar();
+    throw new ErrorWhep('La conexión de video se canceló.');
+  }
   pc.addTransceiver('video', { direction: 'recvonly' });
   pc.ontrack = e => {
+    if (cerrada) return;
     // Búfer de reproducción mínimo: prioriza latencia sobre suavidad
     const receptor = e.receiver as RTCRtpReceiver & { jitterBufferTarget?: number; playoutDelayHint?: number };
     try { if ('jitterBufferTarget' in receptor) receptor.jitterBufferTarget = 0; } catch { /* no soportado */ }
     try { if ('playoutDelayHint' in receptor) receptor.playoutDelayHint = 0; } catch { /* no soportado */ }
-    video.srcObject = e.streams[0] ?? new MediaStream([e.track]);
+    flujo = e.streams[0] ?? new MediaStream([e.track]);
+    video.srcObject = flujo;
     video.play().catch(() => undefined);
   };
 
-  let ubicacion: string | null = null;
+  let timeout: number | undefined;
   try {
     await pc.setLocalDescription(await pc.createOffer());
     await esperarIce(pc, 1500);
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/sdp' }, body: pc.localDescription!.sdp });
+    timeout = window.setTimeout(() => peticion.abort(), 10000);
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/sdp' }, body: pc.localDescription!.sdp,
+      signal: peticion.signal });
     if (r.status !== 201) {
       throw new ErrorWhep(
         r.status === 401 ? 'Acceso al video no autorizado (ticket vencido).'
@@ -53,19 +82,14 @@ export async function conectarWhep(video: HTMLVideoElement, url: string): Promis
     ubicacion = r.headers.get('Location');
     await pc.setRemoteDescription({ type: 'answer', sdp: await r.text() });
   } catch (e) {
-    pc.close();
+    cerrar();
     if (e instanceof ErrorWhep) throw e;
     throw new ErrorWhep('No se pudo contactar con el servidor de video.');
-  }
+  } finally { window.clearTimeout(timeout); }
 
   return {
     pc,
-    cerrar: () => {
-      pc.close();
-      video.srcObject = null;
-      // Libera la sesión en el servidor sin esperar al vencimiento por inactividad
-      if (ubicacion) fetch(new URL(ubicacion, url).toString(), { method: 'DELETE' }).catch(() => undefined);
-    },
+    cerrar,
   };
 }
 

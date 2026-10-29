@@ -114,18 +114,14 @@ spec:
                   optional: true
             - name: MEDIA_DIR
               value: /app/media
+            - name: EVIDENCIA_LISTAS_DIR
+              value: /app/media/listas
             - name: ANPR_SERVICE_URL
               value: http://anpr:8000
             - name: MEDIAMTX_API_URL
               value: http://mediamtx:9997
             - name: MEDIAMTX_RTSP_URL
               value: rtsp://mediamtx:8554
-            - name: REDIS_HOST
-              value: redis
-            - name: REDIS_PORT
-              value: "6379"
-            - name: SOCKET_REDIS_ADAPTER
-              value: "true"
             # Detrás del Ingress (nginx): un salto de proxy. La IP del cliente sale de
             # X-Forwarded-For para el límite de solicitudes y la auditoría
             - name: TRUST_PROXY

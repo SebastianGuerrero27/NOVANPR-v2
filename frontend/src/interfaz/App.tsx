@@ -17,10 +17,10 @@ const RestablecerPassword = lazy(() => import('./paginas/auth/RestablecerPasswor
 const Inicio = lazy(() => import('./paginas/Inicio'));
 const Monitoreo = lazy(() => import('./paginas/Monitoreo'));
 const Detecciones = lazy(() => import('./paginas/Detecciones'));
+const HistorialCompleto = lazy(() => import('./paginas/HistorialCompleto'));
 const DetalleDeteccion = lazy(() => import('./paginas/DetalleDeteccion'));
 const Listas = lazy(() => import('./paginas/Listas'));
 const Reportes = lazy(() => import('./paginas/Reportes'));
-const Evaluacion = lazy(() => import('./paginas/Evaluacion'));
 const Usuarios = lazy(() => import('./paginas/Usuarios'));
 const Auditoria = lazy(() => import('./paginas/Auditoria'));
 const Camaras = lazy(() => import('./paginas/Camaras'));
@@ -38,9 +38,9 @@ const EstadoSistema = lazy(() => import('./paginas/EstadoSistema'));
  * lo devuelve a ella, conservando la consulta (p. ej. ?id= de una solicitud notificada).
  */
 const Privada: React.FC<{ permiso?: Permiso; children: React.ReactNode }> = ({ permiso, children }) => {
-  const { user, loading, puede } = useAuth();
+  const { user, loading, errorSesion, puede } = useAuth();
   const location = useLocation();
-  if (loading) return <PantallaCarga texto="VERIFICANDO SESIÓN…" />;
+  if (loading) return <PantallaCarga texto={errorSesion ?? 'VERIFICANDO SESIÓN…'} />;
   if (!user) return <Navigate to="/login" replace state={{ desde: location.pathname + location.search }} />;
   if (permiso && esVistaGestionPermisos(puede)) return <Navigate to={{ pathname: '/', search: location.search }} replace />;
   if (permiso && !puede(permiso)) return <Navigate to="/" replace />;
@@ -66,7 +66,9 @@ const App: React.FC = () => (
               {/* La raíz elige la pantalla de inicio según los permisos (ver Inicio) */}
               <Route path="/" element={<Privada><Inicio /></Privada>} />
               <Route path="/monitoreo" element={<Privada permiso="operacion:monitorear"><Monitoreo /></Privada>} />
+              {/* Registro de Salidas: solo los registros completos con salida; el historial completo tiene todos */}
               <Route path="/detecciones" element={<Privada permiso="operacion:monitorear"><Detecciones /></Privada>} />
+              <Route path="/historial" element={<Privada permiso="operacion:monitorear"><HistorialCompleto /></Privada>} />
               <Route path="/detecciones/:id" element={<Privada permiso="operacion:monitorear"><DetalleDeteccion /></Privada>} />
               <Route path="/listas/:tipo" element={<Privada permiso="listas:ver"><Listas /></Privada>} />
               <Route path="/solicitudes" element={<Privada permiso="solicitudes:crear"><SolicitudesAcceso /></Privada>} />
@@ -75,7 +77,6 @@ const App: React.FC = () => (
 
               {/* Análisis */}
               <Route path="/reportes" element={<Privada permiso="reportes:ver"><Reportes /></Privada>} />
-              <Route path="/evaluacion" element={<Privada permiso="evaluacion:ver"><Evaluacion /></Privada>} />
 
               {/* Administración */}
               <Route path="/usuarios" element={<Privada permiso="usuarios:gestionar"><Usuarios /></Privada>} />
@@ -85,10 +86,11 @@ const App: React.FC = () => (
               <Route path="/configuracion" element={<Privada permiso="configuracion:gestionar"><Configuracion /></Privada>} />
 
               {/* Rutas anteriores */}
-              <Route path="/historial" element={<Navigate to="/detecciones" replace />} />
               <Route path="/canales" element={<Navigate to="/camaras" replace />} />
               <Route path="/listas" element={<Navigate to="/listas/autorizados" replace />} />
               <Route path="/admin" element={<Navigate to="/usuarios" replace />} />
+              {/* «Permisos por usuario» se integró en Gestión de Permisos (misma información para el administrador) */}
+              <Route path="/permisos-usuarios" element={<Navigate to="/solicitudes" replace />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </Suspense>

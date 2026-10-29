@@ -168,9 +168,11 @@ export const CampoTexto: React.FC<Comunes & {
   /** Texto literal (correo, URL, usuario, IP): sin corrector ni mayúscula automática */
   literal?: boolean;
   multilinea?: boolean; tipo?: 'text' | 'email'; autoComplete?: string; claseControl?: string;
+  /** Sugerencias de un combobox editable: no restringen los valores escritos. */
+  opciones?: readonly string[];
 }> = ({
   id, etiqueta, ayuda, className, autoFocus, deshabilitado, placeholder, onEnter,
-  valor, onCambiar, regla, error, filtrar, literal, multilinea, tipo = 'text', autoComplete, claseControl,
+  valor, onCambiar, regla, error, filtrar, literal, multilinea, tipo = 'text', autoComplete, claseControl, opciones,
 }) => {
   const [tocado, setTocado] = useState(() => valor.trim() !== '');
   const mensaje = error !== undefined ? error : errorDe(validarTexto(valor, regla));
@@ -190,7 +192,8 @@ export const CampoTexto: React.FC<Comunes & {
     <Marco id={id} etiqueta={etiqueta} className={className} error={visible} ayuda={ayuda}>
       {multilinea
         ? <textarea className={clase('textarea', claseControl)} {...comunes} />
-        : <input className={clase('input', claseControl)} type={tipo} autoComplete={autoComplete} onKeyDown={alPresionarEnter(onEnter)} {...comunes} />}
+        : <input className={clase('input', claseControl)} type={tipo} list={opciones ? `${id}-opciones` : undefined} autoComplete={opciones ? 'off' : autoComplete} onKeyDown={alPresionarEnter(onEnter)} {...comunes} />}
+      {!multilinea && opciones && <datalist id={`${id}-opciones`}>{[...new Set(opciones)].map(opcion => <option key={opcion} value={opcion} />)}</datalist>}
     </Marco>
   );
 };

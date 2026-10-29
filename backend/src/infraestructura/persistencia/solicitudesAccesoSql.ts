@@ -25,6 +25,10 @@ function mapear(s: any): SolicitudDTO {
     id: s.id,
     placa: s.placa,
     propietario: s.propietario,
+    cedula: s.cedula ?? null,
+    institucion: s.institucion ?? null,
+    cargo: s.cargo ?? null,
+    observaciones: s.observaciones ?? null,
     departamento: s.departamento,
     categoria: s.categoria,
     motivo: s.motivo,
@@ -53,6 +57,10 @@ function parametros(request: PostgresRequest, s: DatosSolicitud): PostgresReques
   return request
     .input('placa', sql.VarChar(10), s.registro.placa)
     .input('propietario', sql.NVarChar(150), d.propietario)
+    .input('cedula', sql.VarChar(10), d.cedula)
+    .input('institucion', sql.NVarChar(150), d.institucion)
+    .input('cargo', sql.NVarChar(150), d.cargo)
+    .input('observaciones', sql.NVarChar(255), d.observaciones)
     .input('departamento', sql.NVarChar(100), d.departamento)
     .input('categoria', sql.VarChar(20), d.categoria ?? 'VISITANTE')
     .input('motivo', sql.NVarChar(300), s.motivo)
@@ -104,10 +112,10 @@ export const repositorioSolicitudesSql: RepositorioSolicitudes = {
 
   async crear(s, usuarioId) {
     const ins = await parametros(db().request(), s).input('uid', sql.Int, usuarioId).query(`
-      INSERT INTO SolicitudesAcceso (placa, propietario, departamento, categoria, motivo, tipo_vehiculo, marca, modelo, color,
+      INSERT INTO SolicitudesAcceso (placa, propietario, cedula, institucion, cargo, observaciones, departamento, categoria, motivo, tipo_vehiculo, marca, modelo, color,
                                      fecha_inicio, fecha_fin, horario, deteccion_id, solicitado_por)
       OUTPUT INSERTED.id
-      VALUES (@placa, @propietario, @departamento, @categoria, @motivo, @tipo, @marca, @modelo, @color,
+      VALUES (@placa, @propietario, @cedula, @institucion, @cargo, @observaciones, @departamento, @categoria, @motivo, @tipo, @marca, @modelo, @color,
               @inicio, @fin, @horario, ${DETECCION}, @uid)`);
     return ins.recordset[0].id;
   },
@@ -116,6 +124,7 @@ export const repositorioSolicitudesSql: RepositorioSolicitudes = {
     const r = await parametros(db().request(), s).input('id', sql.Int, id).input('uid', sql.Int, usuarioId).query(`
       UPDATE SolicitudesAcceso
       SET placa = @placa, propietario = @propietario, departamento = @departamento, categoria = @categoria, motivo = @motivo,
+          cedula = @cedula, institucion = @institucion, cargo = @cargo, observaciones = @observaciones,
           tipo_vehiculo = @tipo, marca = @marca, modelo = @modelo, color = @color,
           fecha_inicio = @inicio, fecha_fin = @fin, horario = @horario, deteccion_id = ${DETECCION}, version = version + 1
       WHERE id = @id AND estado = 'pendiente' AND solicitado_por = @uid`);

@@ -83,6 +83,19 @@ describe('Zonas del motor en el monitoreo en vivo', () => {
 });
 
 describe('Capa de dibujo del editor de zonas', () => {
+  it('en el editor la capa ocupa todo el reproductor sin conservar medidas anteriores', async () => {
+    const { container } = render(<ReproductorWebRTC obtener={obtener} adaptarProporcion capa={<div data-testid="capa-adaptada" />} />);
+    const video = container.querySelector('video')!;
+    await waitFor(() => expect(video.onloadeddata).toBeTruthy());
+    act(() => { (video.onloadeddata as () => void)(); });
+    const envoltura = screen.getByTestId('capa-adaptada').parentElement!;
+    expect(envoltura.style.inset).toBe('0');
+    expect(envoltura.style.width).toBe('');
+    tamanoVideo = { ancho: 720, alto: 1280 };
+    act(() => { video.dispatchEvent(new Event('resize')); });
+    expect(envoltura.style.inset).toBe('0');
+    expect(envoltura.style.height).toBe('');
+  });
   it('la proporción del reproductor sigue al flujo en el editor y queda 16:9 en el monitoreo', () => {
     expect(proporcionReproductor(null, 9 / 16, true)).toBeCloseTo(0.5625);
     expect(proporcionReproductor(null, 4 / 3, true)).toBeCloseTo(4 / 3);

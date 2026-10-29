@@ -10,7 +10,7 @@ import { ROL_POR_CODIGO, ROLES } from '../dominio/permisos';
  *
  *   resumen()          operación del día y de los últimos 7 días
  *   accesos(actor)     solicitudes, padrón, accesos denegados y placas reincidentes
- *   administracion()   cuentas, accesos, actividad y estado de los servicios
+ *   administracion()   cuentas y estado de los servicios
  */
 
 /** Fila tal como la entrega la base (conteos, detecciones, cámaras…). */
@@ -28,6 +28,16 @@ export interface ParametrosOperacion {
 }
 
 export interface DatosOperacion {
+  movimientos?: {
+    /** Ingresos de hoy en cualquier estado = entradas (sin salida) + salidas */
+    ingresos?: number;
+    entradas: number;
+    salidas: number;
+    dentro: number;
+    registros_completos?: number;
+    /** Total del historial sin filtros; PostgreSQL puede devolver COUNT como texto. */
+    registros_acceso?: number | string | null;
+  };
   /** Conteos de hoy: total, autorizados, alertas, no_registrados, pendientes, validados */
   hoy?: Fila;
   /** { total } de ayer hasta la misma hora */
@@ -43,8 +53,6 @@ export interface DatosOperacion {
   alertas: Fila[];
   /** Vigentes, por vencer y vencidos de las listas de control */
   listas?: Fila;
-  /** { validadas, correctas }: lectura automática frente a lo confirmado por el personal (7 días) */
-  precision?: Fila;
 }
 
 export interface ParametrosAccesos {
@@ -72,10 +80,6 @@ export interface DatosAccesos {
 export interface DatosAdministracion {
   /** Cuentas agrupadas por { codigo, estado, bloqueado, bloqueo_temporal, n } */
   usuarios: Fila[];
-  /** { exitosos, fallidos } de las últimas 24 horas */
-  accesos?: Fila;
-  fallidos: Fila[];
-  actividad: Fila[];
 }
 
 export interface RepositorioPanel {
@@ -139,6 +143,14 @@ export function casosPanel(d: DependenciasPanel) {
       return {
         generado: ahora,
         hoy: cero(r.hoy),
+        movimientos: {
+          ingresos: Number(r.movimientos?.ingresos ?? 0),
+          entradas: Number(r.movimientos?.entradas ?? 0),
+          salidas: Number(r.movimientos?.salidas ?? 0),
+          dentro: Number(r.movimientos?.dentro ?? 0),
+          registros_completos: Number(r.movimientos?.registros_completos ?? 0),
+          registros_acceso: Number(r.movimientos?.registros_acceso ?? 0),
+        },
         ayer_misma_hora: Number(r.ayer?.total ?? 0),
         por_hora: porHora,
         tendencia,
@@ -146,7 +158,6 @@ export function casosPanel(d: DependenciasPanel) {
         cola_revision: Number(r.cola?.n ?? 0),
         ultimas_alertas: r.alertas.map(x => d.mapearDeteccion(x)),
         listas: { ...cero(r.listas), dias_aviso: diasAviso },
-        exactitud_ocr: { validadas: Number(r.precision?.validadas ?? 0), correctas: Number(r.precision?.correctas ?? 0) },
       };
     },
 
@@ -191,9 +202,6 @@ export function casosPanel(d: DependenciasPanel) {
       }
       return {
         usuarios,
-        accesos_24h: cero(r.accesos),
-        ultimos_fallidos: r.fallidos,
-        actividad: r.actividad,
         servicios: {
           base_datos: { en_linea: true },
           anpr,

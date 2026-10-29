@@ -34,10 +34,16 @@ export function useEstadoSistema() {
   const [error, setError] = useState(false);
   useEffect(() => {
     let vivo = true;
-    obtenerEstadoSistema(true)
-      .then(e => vivo && setEstado(e))
-      .catch(() => vivo && setError(true));
-    return () => { vivo = false; };
+    let reintento: number | undefined;
+    const cargar = () => {
+      window.clearTimeout(reintento);
+      obtenerEstadoSistema(true)
+        .then(e => { if (vivo) { setEstado(e); setError(false); } })
+        .catch(() => { if (vivo) { setError(true); reintento = window.setTimeout(cargar, 5000); } });
+    };
+    cargar();
+    window.addEventListener('online', cargar);
+    return () => { vivo = false; window.clearTimeout(reintento); window.removeEventListener('online', cargar); };
   }, []);
   return { estado, error };
 }

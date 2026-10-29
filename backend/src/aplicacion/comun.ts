@@ -41,6 +41,12 @@ export interface Actor {
   ip: string | null;
 }
 
+/**
+ * Autor de las tareas automáticas (p. ej. el retiro de los permisos vencidos): quedan en la
+ * auditoría a nombre del sistema, sin usuario (usuario_id NULL en AuditoriaOperaciones).
+ */
+export const ACTOR_SISTEMA: Actor = { id: null as unknown as number, email: 'sistema@anpr', nombre: 'Sistema ANPR (tarea automática)', rol: 'Sistema', ip: null };
+
 /** Puerto de auditoría de operaciones (registro inmutable, ver infraestructura/auditoriaSql.ts). */
 export interface PuertoAuditoria {
   operacion(actor: Actor, accion: string, entidad: string, entidadId: number | null, detalle?: string): Promise<void>;

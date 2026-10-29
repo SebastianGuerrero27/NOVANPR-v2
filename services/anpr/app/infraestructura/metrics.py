@@ -235,8 +235,19 @@ def measure_frame_processing(stage: str):
 # Funciones Helper
 # =============================================================================
 
+_camara_fps: Optional[str] = None
+
+
 def update_fps(fps: float, camera_id: str = 'default'):
-    """Actualiza el FPS actual"""
+    """FPS de la cámara que el motor está leyendo. Al cambiar de cámara se retira la serie de la
+    anterior: con su último valor colgado, la alerta de cámara sin video la tomaría por activa."""
+    global _camara_fps
+    if _camara_fps is not None and _camara_fps != camera_id:
+        try:
+            fps_gauge.remove(_camara_fps)
+        except KeyError:
+            pass
+    _camara_fps = camera_id
     fps_gauge.labels(camera_id=camera_id).set(fps)
 
 def record_detection(status: str, camera_id: str = 'default'):

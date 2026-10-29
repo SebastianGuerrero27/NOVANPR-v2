@@ -13,6 +13,7 @@ respuesta < 2 s del sistema.
 from __future__ import annotations
 
 import re
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -56,6 +57,10 @@ class VerifierResult:
     within_budget: bool
     #: Texto leído del que sale la placa, antes de interpretar confusiones (evidencia)
     raw: str = ""
+    #: Texto abierto realmente observado, incluso si no tiene formato de matrícula.
+    texto_observado: str = ""
+    #: Menor confianza de los tokens no vacíos que componen la observación.
+    confianza_texto: float = 0.0
 
 
 class PlateOcrVerifier:
@@ -97,13 +102,14 @@ class PlateOcrVerifier:
         elapsed = (time.perf_counter() - t0) * 1000.0
 
         txts, scores = list(res.txts or []), list(res.scores or [])
+        texto_observado, confianza_texto = observar_texto(res.boxes, txts, scores)
         if res.boxes is not None and len(txts) > 1:
             txts, scores = merge_row_fragments(res.boxes, txts, scores)
         plate, conf, raw = leer_lineas_placa(txts, scores)
-        return VerifierResult(plate, conf, elapsed, elapsed <= self.max_ms, raw)
+        return VerifierResult(plate, conf, elapsed, elapsed <= self.max_ms, raw, texto_observado, confianza_texto)
 
 
-def merge_row_fragments(boxes, txts: list[str], scores: list[float]) -> tuple[list[str], list[float]]:
+def merge_row_fragments(boxes, txts: list[str], scores: list[float], *, separador: str = "") -> tuple[list[str], list[float]]:
     """
     Une fragmentos de texto de la misma fila (p. ej. "PS" + "Y-589"), ordenados de izquierda
     a derecha. Dos cajas están en la misma fila si su centro vertical cae dentro de la otra.
@@ -127,9 +133,44 @@ def merge_row_fragments(boxes, txts: list[str], scores: list[float]) -> tuple[li
     merged_txts, merged_scores = [], []
     for row in rows:
         row.sort(key=lambda it: it["x"])
-        merged_txts.append("".join(it["txt"] for it in row))
+        merged_txts.append(separador.join(it["txt"] for it in row))
         merged_scores.append(min(it["score"] for it in row))
     return merged_txts, merged_scores
+
+
+def observar_texto(boxes, txts: list[str], scores: list[float]) -> tuple[str, float]:
+    """Conserva los tokens del OCR general, en orden visual, sin forzar el formato ANT.
+
+    La confianza no aumenta por reconocer una palabra ni por encajar un formato. Se usa
+    el mínimo: un token muy seguro no respalda a los demás. Si faltan puntuaciones, la
+    observación se conserva con confianza cero y no puede producir una abstención.
+    """
+    textos = [str(t).strip() if t is not None else "" for t in txts]
+    confianzas = []
+    for indice in range(len(textos)):
+        try:
+            valor = float(scores[indice])
+            confianzas.append(valor if math.isfinite(valor) and 0.0 <= valor <= 1.0 else 0.0)
+        except (IndexError, TypeError, ValueError):
+            confianzas.append(0.0)
+    indices = [i for i, texto in enumerate(textos) if texto]
+    try:
+        boxes = [boxes[i] for i in indices] if boxes is not None and len(boxes) == len(textos) else None
+    except (TypeError, IndexError):
+        boxes = None
+    textos = [textos[i] for i in indices]
+    confianzas = [confianzas[i] for i in indices]
+    if boxes is not None and len(textos) > 1:
+        try:
+            # Conservar todos los tokens también si el proveedor entrega cajas incompletas.
+            if len(boxes) == len(textos):
+                textos, confianzas = merge_row_fragments(boxes, textos, confianzas, separador=" / ")
+        except (TypeError, ValueError, IndexError):
+            pass  # Sin cajas utilizables se respeta el orden de reconocimiento.
+    observados = [(texto, score) for texto, score in zip(textos, confianzas) if texto]
+    if not observados:
+        return "", 0.0
+    return " / ".join(texto for texto, _ in observados), min(score for _, score in observados)
 
 
 def parse_plate_lines(txts: list[str], scores: list[float]) -> tuple[str, float]:

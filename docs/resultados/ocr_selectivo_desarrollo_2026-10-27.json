@@ -1,0 +1,214 @@
+{
+  "protocolo": {
+    "unidad": "recorte",
+    "nota_conjunto": "Un único rótulo de desarrollo; caso del usuario, no conjunto de prueba. Sin positivos: no calcular exactitud de matrículas ni afirmar generalización.",
+    "latencia": "secuencial; excluye carga y calentamiento",
+    "ablacion": "agente_mas_verificador_sin_veto vs selector_texto_observado aísla la regla nueva; ambos comparten las mismas inferencias.",
+    "repeticiones_tiempo_por_recorte": 3,
+    "calentamientos": 2,
+    "anotacion_texto_usada_para_decidir": false,
+    "rectificador_aprendido_habilitado": false,
+    "limitaciones": [
+      "No mide autorización, detector, consenso temporal ni latencia de evento completo.",
+      "El selector de recortes no sustituye las evidencias E1–E5 del motor.",
+      "Sin positivos o negativos, su métrica es null; un único caso no demuestra generalización.",
+      "No se controla carga concurrente del equipo: registrar otras cargas antes de comparar tiempos."
+    ]
+  },
+  "entorno": {
+    "utc": "2026-10-28T00:52:04.589866+00:00",
+    "python": "3.12.15",
+    "sistema": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900H",
+    "nucleos_logicos": 20,
+    "cpu_cgroup_max": "max 100000",
+    "hilos_solicitados_por_motor": 2,
+    "semilla": 0,
+    "paquetes": {
+      "numpy": "2.5.3",
+      "opencv-python": "4.11.0.86",
+      "onnxruntime": "1.30.0",
+      "openvino": "2026.4.1",
+      "rapidocr": "3.9.2",
+      "fast-plate-ocr": "1.1.0",
+      "ultralytics": "8.4.174"
+    }
+  },
+  "carga_modelos_ms": 7497.951488000126,
+  "manifest": {
+    "archivo": "/tmp/ocr_selectivo_desarrollo.csv",
+    "sha256": "c9b5b00f1e5d047d62c2fd89413deb6e6487dd2d97028ee3fb7e7da8009546d3"
+  },
+  "fuentes": [
+    {
+      "archivo": "scripts/evaluar_ocr_selectivo.py",
+      "sha256": "9878fbd93a18e504f4be3ec808e35c2c7c04b592c00570bbc2981fee104f1752"
+    },
+    {
+      "archivo": "app/aplicacion/plate_agent.py",
+      "sha256": "0bdcbfa6b2b76ac5d3f8c6b07027fa16e38eec0649546a94a807547994f702ce"
+    },
+    {
+      "archivo": "app/infraestructura/ocr_engine.py",
+      "sha256": "48e28072708bc268a200b66d20956afb72a474aa1f31d499e541cf53c53c94fa"
+    },
+    {
+      "archivo": "app/infraestructura/ocr_verifier.py",
+      "sha256": "69b8f57934eb95d45cb667a7b1d6d011f2d91900fc02f926c0261c60f886535d"
+    },
+    {
+      "archivo": "app/dominio/texto_observado.py",
+      "sha256": "aaf0d4f215cdbd33c47b60e583d84813d0288b1e26ec7a4017ad6e937f9389f3"
+    },
+    {
+      "archivo": "app/dominio/plate_parser.py",
+      "sha256": "4f7decc599ede0d12de5b6726e027ba144b224ee6415282723dae211ad55316a"
+    }
+  ],
+  "modelos": [
+    {
+      "archivo": "/root/.cache/fast-plate-ocr/cct-s-v2-global-model/cct_s_v2_global.onnx",
+      "sha256": "384bbbd2cea3ef54761d3df70822ef3a349ee1a112aeafddbe0e3ba06bc6e47b",
+      "bytes": 5262230
+    },
+    {
+      "archivo": "/usr/local/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_medium.onnx",
+      "sha256": "92078b7355007ccfffcd4c8cd441a3afd4538904d06881b29a155e1e679907c2",
+      "bytes": 62119454
+    },
+    {
+      "archivo": "/usr/local/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_medium.onnx",
+      "sha256": "eef444829dbbe18d7fea59a3f6eb75647518d2b3a9568d27c92e42940204894b",
+      "bytes": 76629984
+    },
+    {
+      "archivo": "/usr/local/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+      "sha256": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
+      "bytes": 585532
+    }
+  ],
+  "metricas": {
+    "agente_actual": {
+      "casos": 1,
+      "positivos": 0,
+      "negativos": 1,
+      "aceptados": 1,
+      "falsas_aceptaciones_negativos": 1,
+      "tasa_falsa_aceptacion_negativos": 1.0,
+      "exactitud_bruta_positivos": null,
+      "exactitud_aceptada_positivos": null,
+      "exactitud_condicional_aceptadas_positivos": null,
+      "cobertura_positivos": null,
+      "cobertura_global": 1.0,
+      "riesgo_selectivo_global": 1.0,
+      "cer_propuesta_positivos": null,
+      "cer_salida_positivos": null,
+      "latencia_ms": {
+        "muestras": 3,
+        "p50": 107.68420299973513,
+        "p95": 123.07793350000793
+      }
+    },
+    "agente_mas_verificador_sin_veto": {
+      "casos": 1,
+      "positivos": 0,
+      "negativos": 1,
+      "aceptados": 1,
+      "falsas_aceptaciones_negativos": 1,
+      "tasa_falsa_aceptacion_negativos": 1.0,
+      "exactitud_bruta_positivos": null,
+      "exactitud_aceptada_positivos": null,
+      "exactitud_condicional_aceptadas_positivos": null,
+      "cobertura_positivos": null,
+      "cobertura_global": 1.0,
+      "riesgo_selectivo_global": 1.0,
+      "cer_propuesta_positivos": null,
+      "cer_salida_positivos": null,
+      "latencia_ms": {
+        "muestras": 3,
+        "p50": 807.6080490000095,
+        "p95": 992.6046500999746
+      }
+    },
+    "selector_texto_observado": {
+      "casos": 1,
+      "positivos": 0,
+      "negativos": 1,
+      "aceptados": 0,
+      "falsas_aceptaciones_negativos": 0,
+      "tasa_falsa_aceptacion_negativos": 0.0,
+      "exactitud_bruta_positivos": null,
+      "exactitud_aceptada_positivos": null,
+      "exactitud_condicional_aceptadas_positivos": null,
+      "cobertura_positivos": null,
+      "cobertura_global": 0.0,
+      "riesgo_selectivo_global": null,
+      "cer_propuesta_positivos": null,
+      "cer_salida_positivos": null,
+      "latencia_ms": {
+        "muestras": 3,
+        "p50": 807.6649159997942,
+        "p95": 992.6689988000362
+      }
+    }
+  },
+  "predicciones": [
+    {
+      "caso": {
+        "archivo": "anpr_ocr_caso.png",
+        "placa": "",
+        "tipo": "texto",
+        "texto_observado": "HAVAL / ambacar",
+        "grupo": "desarrollo_rotulo"
+      },
+      "imagen_sha256": "1de5723dfb3033096fc5a2b4deef9670f4712e2d2d3df535ff6b2392e2fd3684",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "OII1060",
+          "aceptada": true,
+          "latencia_ms": 107.68420299973513,
+          "texto_crudo": "0111060",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            107.68420299973513,
+            99.59623399981865,
+            124.78834800003824
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "OII1060",
+          "aceptada": true,
+          "latencia_ms": 807.6080490000095,
+          "texto_crudo": "0111060",
+          "texto_observado": "HAVAL / ambacar",
+          "confianza_texto": 0.98753,
+          "motivo": "agente_sin_confirmacion",
+          "latencias_ms": [
+            807.6080490000095,
+            786.763184999927,
+            1013.1598279999707
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "OII1060",
+          "aceptada": false,
+          "latencia_ms": 807.6649159997942,
+          "texto_crudo": "0111060",
+          "texto_observado": "HAVAL / ambacar",
+          "confianza_texto": 0.98753,
+          "motivo": "texto_no_matricula",
+          "latencias_ms": [
+            807.6649159997942,
+            786.8248429999767,
+            1013.2250080000631
+          ],
+          "prediccion_estable": true
+        }
+      }
+    }
+  ]
+}

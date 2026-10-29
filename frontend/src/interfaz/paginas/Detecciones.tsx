@@ -1,37 +1,39 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Filter, RefreshCw, Search, Trash2, X } from 'lucide-react';
-import api, { mensajeError } from '../../infraestructura/api';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Download, Edit3, FileText, Filter, History, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import api, { mensajeError, mensajeErrorDescarga } from '../../infraestructura/api';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta, useRetardado } from '../../aplicacion/hooks';
-import type { Camara, Deteccion, EstadoValidacion, Pagina } from '../../dominio/tipos';
-import { ESTADOS, fecha, hora, limiteDia, nombreDescarga } from '../../dominio/formato';
+import type { Camara, Deteccion, Pagina } from '../../dominio/tipos';
+import { fecha, hora, limiteDia, nombreDescarga } from '../../dominio/formato';
+import { ESTADOS_ACCESO, estadoAcceso } from '../../dominio/estadoAcceso';
 import { descargarBlob } from '../../infraestructura/descargas';
 import { normalizarPlaca } from '../../dominio/validacion';
-import { Aviso, FilasEsqueleto, InsigniaEstado, InsigniaTipificacion, Paginacion, Placa, Tarjeta, Vacio } from '../componentes/ui';
+import { Aviso, FilasEsqueleto, InsigniaEstado, Paginacion, Tarjeta, Vacio } from '../componentes/ui';
 import { filtrarEscrito } from '../componentes/campos';
-import { ConfianzaBadge, describirVehiculo, ImagenEvidencia, LineaIngreso, ValidarModal } from '../componentes/deteccion';
+import { PlacaFoto, ValidarModal } from '../componentes/deteccion';
+import { CeldaIngreso, actualizarCampoIngreso, type CampoIngreso } from '../componentes/CeldaIngreso';
+import { ConfianzaRegistro } from '../componentes/ConfianzaRegistro';
 import { VisorZoom } from '../componentes/ZoomDual';
+
 import { EliminarUno, EliminarVarios } from '../componentes/EliminarDetecciones';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useNotificar } from '../componentes/Notificaciones';
-
-/** Marca breve junto a la placa (OK en verde, ALERTA en rojo), como en la versión anterior. */
-const MarcaEstado: React.FC<{ d: Deteccion }> = ({ d }) =>
-  d.estado_validacion === 'autorizado' ? <span className="marca-estado ok">OK</span>
-    : d.estado_validacion === 'alerta' ? <span className="marca-estado alerta">ALERTA</span> : null;
-
-const ESTADOS_FILTRO: (EstadoValidacion | '')[] = ['', 'autorizado', 'pendiente_revision', 'no_reconocido', 'alerta', 'salida_registrada'];
 
 const Detecciones: React.FC = () => {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const notificar = useNotificar();
-  const [validando, setValidando] = useState<Deteccion | null>(null);
-  const [zoom, setZoom] = useState<Deteccion | null>(null);
+
+
   const [eliminando, setEliminando] = useState<Deteccion | null>(null);
+  const [zoom, setZoom] = useState<Deteccion | null>(null);
+  const [editando, setEditando] = useState<Deteccion | null>(null);
   const [eliminarVarios, setEliminarVarios] = useState(false);
-  const esAdmin = useAuth().puede('detecciones:eliminar');
+  const { puede } = useAuth();
+  const esAdmin = puede('detecciones:eliminar');
+  const puedeEditarCampos = puede('detecciones:validar');
+  const tieneAcciones = puedeEditarCampos || esAdmin;
   const [exportando, setExportando] = useState(false);
   const [nuevos, setNuevos] = useState(0);
   const [placaTexto, setPlacaTexto] = useState(() => normalizarPlaca(params.get('placa')).slice(0, 10));
@@ -54,6 +56,8 @@ const Detecciones: React.FC = () => {
   React.useEffect(() => { if ((params.get('placa') ?? '') !== placa) cambiar('placa', placa); }, [placa]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const consultaParams = useMemo(() => ({
+    cerrados: 'si',
+    completos: 'si',
     placa: params.get('placa') || undefined,
     estado: filtros.estado || undefined,
     camara: filtros.camara || undefined,
@@ -66,12 +70,15 @@ const Detecciones: React.FC = () => {
     () => api.get('/detecciones', { params: { ...consultaParams, pagina: filtros.pagina, tamano: 25 } }).then(r => r.data),
     [consultaParams, filtros.pagina]);
   const { datos: camaras } = useConsulta<Camara[]>(() => api.get('/camaras').then(r => r.data), []);
+  const alEditar = (actualizada: Deteccion, campo?: CampoIngreso) => {
+    setDatos(actuales => actuales && { ...actuales, items: actuales.items.map(d => d.id === actualizada.id ? actualizarCampoIngreso(d, actualizada, campo) : d) });
+  };
 
   // En vivo: las filas visibles se actualizan; los ingresos nuevos se anuncian sin mover la tabla
   const anunciados = useRef(new Set<number>());
   const olvidarAnunciados = () => { anunciados.current.clear(); setNuevos(0); };
-  useEvento<Deteccion>('deteccion:nueva', d => { anunciados.current.add(d.id); setNuevos(anunciados.current.size); });
-  useEvento<Deteccion>('deteccion:actualizada', d => setDatos(p => p && { ...p, items: p.items.map(x => (x.id === d.id ? d : x)) }));
+  useEvento<Deteccion>('deteccion:nueva', d => { if (!d.registro_completo || d.tipo_movimiento === 'salida') return; anunciados.current.add(d.id); setNuevos(anunciados.current.size); });
+  useEvento<Deteccion>('deteccion:actualizada', () => recargar(true));
   // Un ingreso eliminado (o consolidado con su paso previo) sale de la tabla y del total solo si se
   // estaba mostrando, y del aviso si se había anunciado: los demás nunca se contaron aquí
   useEvento<{ id: number }>('deteccion:eliminada', ({ id }) => {
@@ -96,6 +103,16 @@ const Detecciones: React.FC = () => {
     }
   };
 
+  const exportarPdf = async () => {
+    setExportando(true);
+    try {
+      const r = await api.get('/detecciones/registros.pdf', { params: consultaParams, responseType: 'blob' });
+      descargarBlob(r.data, nombreDescarga(r.headers['content-disposition'], 'registros.pdf'));
+    } catch (e) {
+      notificar('error', 'No se pudo generar el PDF', await mensajeErrorDescarga(e));
+    } finally { setExportando(false); }
+  };
+
   return (
     <div className="pagina">
       <div className="pila">
@@ -108,12 +125,6 @@ const Detecciones: React.FC = () => {
                 <input id="f-placa" className="input placa-input" value={placaTexto} onChange={e => setPlacaTexto(filtrarEscrito(e.target, normalizarPlaca))}
                   placeholder="Buscar placa" maxLength={10} autoComplete="off" spellCheck={false} />
               </div>
-            </div>
-            <div className="campo">
-              <label htmlFor="f-estado">Estado</label>
-              <select id="f-estado" className="select" value={filtros.estado} onChange={e => cambiar('estado', e.target.value)}>
-                {ESTADOS_FILTRO.map(e => <option key={e} value={e}>{e ? ESTADOS[e].etiqueta : 'Todos'}</option>)}
-              </select>
             </div>
             <div className="campo">
               <label htmlFor="f-camara">Cámara</label>
@@ -145,74 +156,74 @@ const Detecciones: React.FC = () => {
         {nuevos > 0 && (
           <Aviso tipo="info">
             <span className="fila" style={{ justifyContent: 'space-between', width: '100%' }}>
-              {nuevos === 1 ? 'Se registró 1 ingreso nuevo.' : `Se registraron ${nuevos} ingresos nuevos.`}
+              {nuevos === 1 ? 'Se cerró 1 registro.' : `Se registraron ${nuevos} registros con salida.`}
               <button className="btn btn-sm btn-secondary" onClick={() => { olvidarAnunciados(); cambiar('pagina', ''); recargar(); }}><RefreshCw size={13} /> Mostrar</button>
             </span>
           </Aviso>
         )}
         {error && <Aviso tipo="error">{error}</Aviso>}
 
-        <Tarjeta titulo="Ingresos registrados" subtitulo={datos ? `${datos.total.toLocaleString('es-EC')} registros${hayFiltros ? ' con los filtros aplicados' : ''}` : undefined}
+        <Tarjeta titulo="Registros completos con salida" subtitulo={datos ? `${datos.total.toLocaleString('es-EC')} registros${hayFiltros ? ' con los filtros aplicados' : ''} · Nombre, placa, tipo, marca, motivo e ingreso y salida válidos` : undefined}
           acciones={<>
+            <Link to="/historial" className="btn btn-ghost btn-sm"><History size={14} /> Historial completo</Link>
+            <button className="btn btn-navy btn-sm" onClick={exportarPdf} disabled={exportando || !datos?.total}><FileText size={14} /> {exportando ? 'Generando…' : 'Descargar PDF'}</button>
             <button className="btn btn-secondary btn-sm" onClick={exportar} disabled={exportando || !datos?.total}><Download size={14} /> {exportando ? 'Exportando…' : 'Exportar CSV'}</button>
             {esAdmin && <button className="btn btn-danger btn-sm" onClick={() => setEliminarVarios(true)} disabled={!datos?.total}>
               <Trash2 size={14} /> {hayFiltros ? 'Eliminar filtrados' : 'Eliminar todos'}</button>}
           </>}
           sinPadding>
-          <div className="tabla-contenedor">
-            <table className="tabla">
+          <div className="tabla-contenedor" role="region" aria-label="Tabla de registros completos" tabIndex={0}>
+            <table className="tabla tabla-registros">
               <thead><tr>
-                <th style={{ width: 78 }}>Evidencia</th><th>Placa</th><th>Tipificación</th><th>Fecha y hora</th><th>Estado</th><th>Cámara</th>
-                <th className="ocultar-movil">Vehículo / titular</th><th className="num ocultar-movil">Confianza OCR</th><th>Validación</th>{esAdmin && <th />}
+                <th className="num">N.º</th><th>Cédula</th><th>Titular</th><th>Placa</th><th>Motivo</th><th>Fecha</th><th>Hora de entrada</th><th>Hora de salida</th>
+                <th>Vehículo</th><th>Marca</th><th>Modelo</th><th>Cámara</th><th>Estado</th><th>Confianza</th>
+                <th>Registro de salida</th>{tieneAcciones && <th className="columna-acciones">Acciones</th>}
               </tr></thead>
               <tbody>
-                {cargando && !datos ? <FilasEsqueleto columnas={esAdmin ? 10 : 9} /> : datos?.items.map(d => (
-                  <tr key={d.id} className={`clic${d.estado_validacion === 'autorizado' ? ' fila-autorizado' : d.estado_validacion === 'alerta' ? ' fila-alerta' : ''}`} onClick={() => navigate(`/detecciones/${d.id}`)}>
-                    <td onClick={e => { e.stopPropagation(); if (d.imagen_placa || d.imagen_vehiculo) setZoom(d); }} className="miniatura-zoom" title="Ampliar evidencia">
-                      <ImagenEvidencia ruta={d.imagen_placa || d.imagen_vehiculo} alt="" alto={40} ajuste="contain" fondoOscuro /></td>
-                    <td className="nowrap"><Placa valor={d.placa} sinPlaca={d.sin_placa} /> <MarcaEstado d={d} />{d.tipo_movimiento === 'salida' && <span className="marca-estado salida">SALIDA</span>}</td>
-                    <td><InsigniaTipificacion placa={d.placa} provincia /></td>
-                    <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 600 }}>{hora(d.fecha_hora_ingreso)}</strong><span className="secundario">{fecha(d.fecha_hora_ingreso)}</span></td>
-                    <td><InsigniaEstado estado={d.estado_validacion} procesando={d.estado_procesamiento === 'pendiente_ocr'} /></td>
-                    <td>{d.camara ? <>{d.camara.nombre}<span className="secundario">{d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {d.camara.ubicacion}</span></> : <span className="texto-secundario">{d.fuente === 'manual' ? 'Registro manual' : d.tipo_movimiento === 'salida' ? 'Salida' : '—'}</span>}</td>
-                    <td className="ocultar-movil" style={{ maxWidth: 240 }}>
-                      <span className="truncar" style={{ display: 'block' }}>{d.alerta ? <b style={{ color: 'var(--alerta)' }}>{d.alerta.motivo}</b> : d.autorizado?.propietario ?? describirVehiculo(d)}</span>
-                      {d.autorizado?.departamento && <span className="secundario">{d.autorizado.departamento}</span>}
-                      <LineaIngreso d={d} />
+                {cargando && !datos ? <FilasEsqueleto columnas={tieneAcciones ? 16 : 15} /> : datos?.items.map((d, i) => (
+                  <tr key={d.id} className={`clic ${ESTADOS_ACCESO[estadoAcceso(d)].clase}`} onClick={() => navigate(`/detecciones/${d.id}`)}>
+                    <td className="num texto-secundario">{(filtros.pagina - 1) * (datos?.tamano ?? 25) + i + 1}</td>
+                    <CeldaIngreso d={d} campo="cedula" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
+                    <CeldaIngreso d={d} campo="persona_ingreso" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
+                    <td className="nowrap">
+                      <PlacaFoto d={d} alto={36} onClick={() => setZoom(d)} />
                     </td>
-                    <td className="num ocultar-movil"><ConfianzaBadge valor={d.confianza_ocr} /></td>
-                    <td onClick={e => e.stopPropagation()}>
-                      {d.validado_manualmente
-                        ? <span className="texto-secundario" title={d.validacion?.usuario?.email}>{d.validacion?.usuario?.nombre ?? 'Personal'}</span>
-                        : d.estado_validacion === 'pendiente_revision' && d.estado_procesamiento !== 'pendiente_ocr'
-                          ? <button className="btn btn-navy btn-sm" onClick={() => setValidando(d)}>Validar</button>
-                          : <button className="btn btn-ghost btn-sm" onClick={() => setValidando(d)}>Corregir</button>}
-                    </td>
-                    {esAdmin && (
-                      <td className="acciones-celda" onClick={e => e.stopPropagation()}>
-                        <button className="btn btn-ghost btn-sm btn-icono" title="Eliminar registro" aria-label="Eliminar registro" onClick={() => setEliminando(d)}>
-                          <Trash2 size={15} color="var(--alerta)" /></button>
-                      </td>
-                    )}
+                    <CeldaIngreso d={d} campo="motivo_ingreso" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
+                    <td className="nowrap">{fecha(d.fecha_hora_ingreso)}</td>
+                    <td className="nowrap"><strong>{hora(d.fecha_hora_ingreso)}</strong></td>
+                    <td className="nowrap">{d.fecha_hora_salida ? hora(d.fecha_hora_salida) : '—'}</td>
+                    <CeldaIngreso d={d} campo="tipo_vehiculo" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
+                    <CeldaIngreso d={d} campo="marca" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
+                    <CeldaIngreso d={d} campo="modelo" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
+                    <td>{d.camara?.nombre || 'Registro manual'}</td>
+                    <td className="nowrap"><InsigniaEstado estado={d.estado_validacion} corta /></td>
+                    <td className="nowrap"><ConfianzaRegistro valor={d.confianza_ocr} /></td>
+                    <td className="nowrap">{d.fecha_hora_salida ? 'Registrada' : '—'}</td>
+                    {tieneAcciones && <td className="acciones-celda" onClick={e => e.stopPropagation()}><div className="acciones-registro">
+                      {puedeEditarCampos && <button className="btn btn-ghost btn-sm btn-icono" title="Editar registro" aria-label="Editar registro" onClick={() => setEditando(d)}><Edit3 size={14} /></button>}
+                      {esAdmin && <button className="btn btn-ghost btn-sm btn-icono" title="Eliminar registro" aria-label="Eliminar registro" onClick={() => setEliminando(d)}><Trash2 size={15} color="var(--alerta)" /></button>}
+                    </div></td>}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           {datos && datos.items.length === 0 && (
-            <Vacio titulo={hayFiltros ? 'Sin resultados' : 'Aún no hay ingresos registrados'} icono={hayFiltros ? <Filter size={22} /> : undefined}
-              texto={hayFiltros ? 'Ningún ingreso coincide con los filtros. Pruebe ampliando el rango de fechas.' : 'Los pasos vehiculares aparecerán aquí en cuanto el motor ANPR los registre.'} />
+            <Vacio titulo={hayFiltros ? 'Sin resultados' : 'Aún no hay registros completos con salida'} icono={hayFiltros ? <Filter size={22} /> : undefined}
+              texto={hayFiltros ? 'Ningún registro completo con salida coincide con los filtros.' : 'Se requiere nombre, placa, tipo, marca, motivo y fechas de ingreso y salida válidas. Los incompletos permanecen en Movimientos recientes para completarlos.'} />
           )}
           {datos && datos.total > 0 && <Paginacion pagina={datos.pagina} tamano={datos.tamano} total={datos.total} onCambiar={p => cambiar('pagina', String(p))} />}
         </Tarjeta>
       </div>
+
       {zoom && <VisorZoom d={zoom} onCerrar={() => setZoom(null)} />}
+      {editando && <ValidarModal d={editando} onCerrar={() => setEditando(null)} onValidada={actualizada => alEditar(actualizada)} />}
       {eliminando && <EliminarUno d={eliminando} onCerrar={() => setEliminando(null)} />}
       {eliminarVarios && datos && (
         <EliminarVarios total={datos.total} filtros={consultaParams} onCerrar={() => setEliminarVarios(false)} onHecho={() => recargar(true)}
-          descripcion={hayFiltros ? 'Registros que cumplen los filtros aplicados' : 'Todos los registros de ingreso del sistema'} />
+          descripcion={hayFiltros ? 'Registros completos con salida que cumplen los filtros aplicados' : 'Todos los registros completos con salida del sistema'} />
       )}
-      {validando && <ValidarModal d={validando} onCerrar={() => setValidando(null)} onValidada={d => setDatos(p => p && { ...p, items: p.items.map(x => (x.id === d.id ? d : x)) })} />}
+
     </div>
   );
 };

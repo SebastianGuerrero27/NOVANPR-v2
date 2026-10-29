@@ -16,11 +16,10 @@ import deteccionesRoutes from './interfaz/http/rutas/detecciones';
 import { alertasRouter, autorizadosRouter } from './interfaz/http/rutas/listas';
 import panelRoutes from './interfaz/http/rutas/panel';
 import monitoreoRoutes from './interfaz/http/rutas/monitoreo';
-import reportesRoutes from './interfaz/http/rutas/reportes';
+import controlVehicularRoutes from './interfaz/http/rutas/controlVehicular';
 import configuracionRoutes from './interfaz/http/rutas/configuracion';
 import auditoriaRoutes from './interfaz/http/rutas/auditoria';
 import mediosRoutes from './interfaz/http/rutas/medios';
-import evaluacionRoutes from './interfaz/http/rutas/evaluacion';
 import propietarioRoutes from './interfaz/http/rutas/propietario';
 import notificacionesRoutes from './interfaz/http/rutas/notificaciones';
 import solicitudesAccesoRoutes from './interfaz/http/rutas/solicitudesAcceso';
@@ -39,11 +38,10 @@ export const MONTAJES: [string, express.Router][] = [
   ['/api/vehiculos-autorizados', autorizadosRouter],
   ['/api/panel', panelRoutes],
   ['/api/monitoreo', monitoreoRoutes],
-  ['/api/reportes', reportesRoutes],
+  ['/api/reportes', controlVehicularRoutes],
   ['/api/configuracion', configuracionRoutes],
   ['/api/auditoria', auditoriaRoutes],
   ['/api/medios', mediosRoutes],
-  ['/api/evaluacion', evaluacionRoutes],
   ['/api/propietario', propietarioRoutes],
   ['/api/notificaciones', notificacionesRoutes],
   ['/api/solicitudes-acceso', solicitudesAccesoRoutes],

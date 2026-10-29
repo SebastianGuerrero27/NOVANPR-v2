@@ -93,6 +93,11 @@ _INTERVALO_CUADRO_COMPLETO = 3
 _FUENTES = ("rtsp",)
 # Fracción de la caja de un track que debe cambiar (MOG2) para considerarlo en movimiento
 _FRACCION_PISTA_EN_MOVIMIENTO = 0.15
+# El HUD deja de dibujar una placa que el detector dejó de ver (la pista va con la predicción del
+# Kalman) tras dos análisis seguidos sin verla y más de este tiempo. El seguimiento la conserva unos
+# análisis más por si reaparece, pero a 2–3 análisis por segundo eso eran 1,5–2 s de una caja quieta
+# sobre el pavimento al salir el vehículo. Un solo análisis fallido no la oculta
+_HUD_SIN_DETECCION_MAX_S = 0.5
 
 # Estados que decide el backend (o la confirmación del registro): una lectura OCR posterior
 # ("leida"/"escaneando") no debe sobrescribirlos.
@@ -100,14 +105,14 @@ _ESTADOS_FINALES = {"confirmada", "autorizado", "alerta", "no_reconocido", "pend
 
 # Colores de estado (BGR) iguales a los del sistema web: autorizado #15803d,
 # pendiente #2563eb, no registrado #d97706, alerta #b91c1c. Mientras el OCR escanea,
-# ámbar #f59e0b; con la placa leída y sin decisión del backend, verde #22c55e.
+# ámbar #f59e0b; con la placa leída y sin decisión del backend, verde #16a34a.
 _COLOR_ESTADO = {
     "autorizado": (61, 128, 21),
     "pendiente_revision": (235, 99, 37),
     "no_reconocido": (6, 119, 217),
     "alerta": (28, 28, 185),
 }
-_COLOR_LEIDA = (94, 197, 34)
+_COLOR_LEIDA = (74, 163, 22)
 _TEXTO_ESTADO = {
     "autorizado": "AUTORIZADO",
     "pendiente_revision": "POR CONFIRMAR",
@@ -481,6 +486,8 @@ class VisualOverlayBox:
     velocidad: tuple[float, float] = (0.0, 0.0)
     # Región comprobada como placa (fila de caracteres) o con dos lecturas ANT
     verificada: bool = False
+    # Sin detección en este análisis: la caja es la predicción del Kalman, no una medición
+    predicha: bool = False
 
 
 # =============================================================================
@@ -619,6 +626,9 @@ class DetectionPipeline:
         self._last_fps_calc = time.time()
         self._fps: float = 0.0
         self._ultimo_medido = 0.0
+        # Duración real de un paso del Kalman (un paso por cuadro analizado), para la velocidad
+        self._paso_kalman_s: Optional[float] = None
+        self._ultimo_paso_kalman: Optional[float] = None
 
     @property
     def fps(self) -> float:
@@ -829,6 +839,11 @@ class DetectionPipeline:
             self._fijar_estado(entry, status)
             entry["time"] = time.time()
 
+            # Un OCR general confirmó texto ajeno a una matrícula. Un trabajo rápido que
+            # ya estaba en curso no debe volver a insertar la hipótesis descartada.
+            if entry.get("texto_no_matricula"):
+                return
+
             if clean_plate and is_valid_ecuador_plate(clean_plate) and is_sharp_enough:
                 votes: Counter = entry.setdefault("votes", Counter())
                 votes[clean_plate] += max(0.05, confidence)
@@ -855,6 +870,26 @@ class DetectionPipeline:
                 entry["plate"] = clean_plate
                 entry["confidence"] = confidence
 
+    def retirar_lectura(self, tracking_id: int) -> None:
+        """Retira la lectura de una sola pista y bloquea votos tardíos de ese mismo rótulo.
+
+        Conserva el seguimiento y los estados del backend. Una nueva pista, aunque sea
+        de otra placa próxima, mantiene su propio consenso sin verse afectada.
+        """
+        with self._overlays_lock:
+            retirada = self._retirados.get(tracking_id, (0, None, None))[1]
+            entry = self._track_plates.get(tracking_id)
+            if entry is None:
+                entry = retirada if retirada is not None else {"status": "", "time": time.time()}
+                self._track_plates[tracking_id] = entry
+            for registro in (entry, retirada):
+                if registro is not None:
+                    registro.update(
+                        plate="", confidence=0.0, lecturas=0,
+                        votes=Counter(), conteo=Counter(), texto_no_matricula=True,
+                    )
+            self._current_overlays = [o for o in self._current_overlays if o.tracking_id != tracking_id]
+
     @staticmethod
     def _fijar_estado(entry: dict, status: str) -> None:
         """Actualiza el estado del track sin que una lectura OCR pise la decisión del backend."""
@@ -874,8 +909,8 @@ class DetectionPipeline:
         speed = None
         for trk in list(self._trackers):
             if trk.id == tracking_id:
-                vx, vy = float(trk.kf.statePost[4, 0]), float(trk.kf.statePost[5, 0])
-                speed = round(((vx * vx + vy * vy) ** 0.5) * 30.0, 1)  # px/frame -> px/s a 30 FPS nominales
+                vx, vy = self.velocidad_px_s(trk)
+                speed = round((vx * vx + vy * vy) ** 0.5, 1)
                 break
         return born, speed
 
@@ -938,6 +973,7 @@ class DetectionPipeline:
         orig_h, orig_w = frame.shape[:2]
         t_inicio = time.perf_counter()
         dur_detector = 0.0
+        self._medir_paso_kalman()
 
         # 1. Paso de Predicción del Filtro de Kalman para todos los tracks activos
         predicted_boxes: list[list[float]] = []
@@ -1109,6 +1145,34 @@ class DetectionPipeline:
         # Seguimiento: todo el paso salvo la inferencia (NMS, asociación en dos fases, Kalman, altas y bajas)
         self.tiempos.registrar("seguimiento", time.perf_counter() - t_inicio - dur_detector)
 
+    def _medir_paso_kalman(self) -> None:
+        ahora = time.monotonic()
+        if self._ultimo_paso_kalman is not None:
+            dt = min(1.0, max(1e-3, ahora - self._ultimo_paso_kalman))
+            self._paso_kalman_s = dt if self._paso_kalman_s is None else 0.8 * self._paso_kalman_s + 0.2 * dt
+        self._ultimo_paso_kalman = ahora
+
+    def velocidad_px_s(self, trk: KalmanBoxTracker) -> tuple[float, float]:
+        """Velocidad del centro en píxeles por segundo. El filtro avanza un paso por cuadro
+        analizado (estado [cx, cy, s, r, v_cx, v_cy, v_s], velocidad en píxeles por paso): se divide
+        por la duración real del paso. Multiplicar por 30 fps nominales la daba unas 10 veces más
+        alta con 3 análisis por segundo."""
+        paso = self._paso_kalman_s or (1.0 / 30.0)
+        return float(trk.kf.statePost[4, 0]) / paso, float(trk.kf.statePost[5, 0]) / paso
+
+    def cajas_hud(self) -> dict[int, tuple[tuple[float, float, float, float], Optional[list[tuple[float, float]]], bool]]:
+        """Caja, cuadrilátero y si es solo la predicción del Kalman, de cada placa del HUD en el
+        último cuadro analizado."""
+        with self._overlays_lock:
+            return {
+                ov.tracking_id: (
+                    (float(ov.x1), float(ov.y1), float(ov.x2), float(ov.y2)),
+                    [(float(x), float(y)) for x, y in ov.oriented_box] if len(ov.oriented_box) == 4 else None,
+                    ov.predicha,
+                )
+                for ov in self._current_overlays
+            }
+
     def _construir_pistas(self, frame: np.ndarray, mov: Movimiento) -> list[TrackedPlateROI]:
         """Paso 7: regiones rastreadas del cuadro y recuadros del HUD a partir del estado de los tracks."""
         orig_h, orig_w = frame.shape[:2]
@@ -1165,12 +1229,7 @@ class DetectionPipeline:
                 # Rango de Operación Inteligente Extendido (hasta 15.0 metros)
                 in_sweet_spot = (0.5 <= dist_m <= 15.0) or (pw >= 16)
 
-                # Extraer velocidad del centro en píxeles/frame desde el vector de estado Kalman
-                # Estado: [cx, cy, s, r, v_cx, v_cy, v_s]
-                # Multiplicar por FPS nominal (30) para obtener píxeles/segundo
-                _FPS = 30.0
-                vx_px_s = float(trk.kf.statePost[4, 0]) * _FPS
-                vy_px_s = float(trk.kf.statePost[5, 0]) * _FPS
+                vx_px_s, vy_px_s = self.velocidad_px_s(trk)
 
                 # 7.2. Verificación estilo OpenALPR: ¿la región contiene la fila de caracteres
                 # de una placa? El cuadrilátero se ajusta a esa fila y a su inclinación, en vez
@@ -1209,6 +1268,8 @@ class DetectionPipeline:
                 placa = texto_ocr if lecturas >= 1 else ""
                 if not placa:
                     continue
+                if trk.time_since_update >= 2 and trk.time_since_update * (self._paso_kalman_s or 1.0 / 30.0) > _HUD_SIN_DETECCION_MAX_S:
+                    continue
                 parcial = ""
                 confianza_placa = float(plate_info.get("confidence", 0.0))
                 estado = plate_info.get("status", "") if plate_info else ""
@@ -1237,10 +1298,16 @@ class DetectionPipeline:
                     confianza_placa=confianza_placa,
                     velocidad=(round(vx_px_s, 2), round(vy_px_s, 2)),
                     verificada=verificada,
+                    predicha=trk.time_since_update > 0,
                 ))
 
         with self._overlays_lock:
-            self._current_overlays = new_overlays
+            # El OCR asíncrono puede retirar la lectura mientras este cuadro construye
+            # el HUD fuera del candado. No publicar una copia local que quedó obsoleta.
+            self._current_overlays = [
+                ov for ov in new_overlays
+                if not self._track_plates.get(ov.tracking_id, {}).get("texto_no_matricula")
+            ]
 
         return tracked_rois
 
@@ -1262,10 +1329,11 @@ class DetectionPipeline:
         inference_fps: float = 0.0,
     ) -> np.ndarray:
         """
-        Dibuja el bounding box en formato industrial Rekor Scout / OpenALPR:
+        Dibuja el HUD del modo de compatibilidad con el mismo estilo que el del navegador (hud.ts),
+        al estilo de Rekor Scout / OpenALPR:
         - Zona de movimiento MOG2 en verde translúcido
-        - Caja orientada de 4 vértices para inclinación de placa
-        - Badge Glassmorphism oscuro con borde de estado y texto en alta legibilidad
+        - Caja fina (orientada si la placa está inclinada) sobre un contorno oscuro
+        - Etiqueta oscura con la barra del color del estado
         NUNCA muta el fotograma original en memoria (usa frame.copy()).
         """
         out_frame = frame.copy()
@@ -1314,52 +1382,38 @@ class DetectionPipeline:
         with self._overlays_lock:
             overlays = list(self._current_overlays)
 
+        # Grosor y texto en proporción al cuadro: el modo de compatibilidad lo reduce a 640 px
+        grosor = max(1, round(w / 1280))
+        escala = 0.5 * w / 1280
         for ov in overlays:
             x1, y1, x2, y2 = ov.x1, ov.y1, ov.x2, ov.y2
             color = ov.color
 
-            # 1. Bounding Box orientado de 4 puntos si existe inclinación, o rectángulo
-            if ov.oriented_box and len(ov.oriented_box) == 4:
-                pts = np.int32(ov.oriented_box)
-                cv2.polylines(out_frame, [pts], isClosed=True, color=color, thickness=2, lineType=cv2.LINE_AA)
-            else:
-                cv2.rectangle(out_frame, (x1, y1), (x2, y2), color, 2)
+            # 1. Caja fina como en el HUD del navegador: línea del color del estado sobre un
+            #    contorno oscuro que la hace legible en cualquier fondo, sin relleno
+            pts = np.int32(ov.oriented_box) if ov.oriented_box and len(ov.oriented_box) == 4 else np.int32(
+                [[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
+            cv2.polylines(out_frame, [pts], isClosed=True, color=(0, 0, 0), thickness=grosor + 2, lineType=cv2.LINE_AA)
+            cv2.polylines(out_frame, [pts], isClosed=True, color=color, thickness=grosor, lineType=cv2.LINE_AA)
 
-            # 2. Insignia flotante oscura con borde del color del track (solo con texto)
+            # 2. Etiqueta pegada a la esquina superior izquierda (debajo si no cabe arriba):
+            #    barra del color del estado y el texto sin negrita
             if not ov.label:
                 continue
-            badge_text = f" {ov.label} "
-            (tw, th), baseline = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
-            badge_x = max(10, min(w - tw - 10, x1))
-            badge_y = max(th + 10, y1 - 8)
-
-            cv2.rectangle(
-                out_frame,
-                (badge_x - 4, badge_y - th - 4),
-                (badge_x + tw + 4, badge_y + baseline + 2),
-                (25, 25, 25),
-                -1,
-            )
-            cv2.rectangle(
-                out_frame,
-                (badge_x - 4, badge_y - th - 4),
-                (badge_x + tw + 4, badge_y + baseline + 2),
-                color,
-                1,
-            )
-            cv2.putText(
-                out_frame,
-                badge_text,
-                (badge_x, badge_y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
-                (255, 255, 255),
-                2,
-                cv2.LINE_AA,
-            )
+            izquierda, arriba, abajo = int(pts[:, 0].min()), int(pts[:, 1].min()), int(pts[:, 1].max())
+            (tw, th), base = cv2.getTextSize(ov.label, cv2.FONT_HERSHEY_SIMPLEX, escala, 1)
+            margen, barra = 4 * grosor, 2 * grosor
+            alto = th + base + 2 * margen
+            ancho = barra + tw + 2 * margen
+            ex = max(0, min(w - ancho, izquierda))
+            ey = arriba - alto - grosor if arriba - alto - grosor >= 34 else abajo + grosor
+            cv2.rectangle(out_frame, (ex, ey), (ex + ancho, ey + alto), (22, 13, 9), -1)
+            cv2.rectangle(out_frame, (ex, ey), (ex + barra, ey + alto), color, -1)
+            cv2.putText(out_frame, ov.label, (ex + barra + margen, ey + margen + th), cv2.FONT_HERSHEY_SIMPLEX,
+                        escala, (248, 250, 252), 1, cv2.LINE_AA)
 
         # 5. Barra Superior de Estado Institucional (HUD ECU 911 ITS)
-        cv2.rectangle(out_frame, (0, 0), (w, 32), (11, 19, 41), -1)
+        cv2.rectangle(out_frame, (0, 0), (w, 32), (41, 19, 11), -1)  # azul marino #0b1329 (BGR)
         status_text = (
             f"ECU 911 ZONA 3 | STREAM: {capture_fps:.1f} FPS | "
             f"BYTE-TRACK KALMAN: {inference_fps:.1f} FPS | TRACKS ACTIVOS: {len(overlays)}"
@@ -1370,7 +1424,7 @@ class DetectionPipeline:
             (12, 21),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.46,
-            (0, 240, 255),
+            (225, 232, 240),
             1,
             cv2.LINE_AA,
         )

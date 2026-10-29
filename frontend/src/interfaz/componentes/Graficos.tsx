@@ -165,26 +165,6 @@ export const BarrasHorizontales: React.FC<{
   );
 };
 
-/** Distribución de un total en una barra única segmentada (con leyenda y porcentajes). */
-export const BarraDistribucion: React.FC<{ valores: object; series: readonly Serie[] }> = ({ valores, series }) => {
-  const total = series.reduce((s, x) => s + conteo(valores, x.clave), 0);
-  return (
-    <div className="pila" style={{ gap: 10 }}>
-      <div style={{ display: 'flex', gap: 2, height: 12, borderRadius: 6, overflow: 'hidden', background: 'var(--surface-3)' }}>
-        {total > 0 && series.map(s => conteo(valores, s.clave) > 0 && (
-          <div key={s.clave} style={{ width: `${(conteo(valores, s.clave) / total) * 100}%`, background: s.color }} title={`${s.etiqueta}: ${conteo(valores, s.clave)}`} />
-        ))}
-      </div>
-      <div className="leyenda">
-        {series.map(s => (
-          <span key={s.clave}><i style={{ background: s.color }} />{s.etiqueta} <b style={{ color: 'var(--text)' }}>{numero(conteo(valores, s.clave))}</b>
-            {total > 0 && <span className="texto-secundario">({Math.round((conteo(valores, s.clave) / total) * 100)} %)</span>}</span>
-        ))}
-      </div>
-    </div>
-  );
-};
-
 /**
  * Dona de una distribución (como el panel de vigilance-heart): porcentaje junto a cada segmento,
  * total al centro y leyenda a la derecha. Separación de 2 px entre segmentos.

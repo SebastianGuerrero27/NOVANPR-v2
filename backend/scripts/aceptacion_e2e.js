@@ -182,15 +182,13 @@ async function paso(placa, tid, extra = {}) {
   ok(!!escalada, `alarma escalada al administrador: ${escalada?.n.titulo}`);
   ok(!recibidas.op.some(x => x.n.tipo === 'alarma.escalada'), 'el guardia no recibe la escalada');
 
-  // 11. Push, métricas, panel del gestor
+  // 11. Push y panel del gestor
   r = await axios.post(`${B}/notificaciones/push/suscripcion`, { endpoint: 'https://push.ejemplo.invalid/abc', keys: { p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg' } }, h(gestor.token));
   ok(r.status === 201, 'suscripción Web Push registrada');
   r = await axios.get(`${B}/notificaciones/push/clave`, h(gestor.token));
   ok(r.data.habilitado && r.data.clave_publica?.length > 60, 'clave pública VAPID disponible');
   r = await axios.get(`${B}/panel/accesos`, h(gestor.token));
   ok(r.status === 200 && r.data.padron.vigentes >= 2, `panel del gestor: ${JSON.stringify({ solicitudes: r.data.solicitudes.pendientes, padron: r.data.padron, hoy: r.data.hoy })}`);
-  r = await axios.get(`${B}/notificaciones/metricas?dias=1`, h(admin));
-  ok(r.status === 200, `métricas de alarmas: ${JSON.stringify(r.data.por_severidad.map(f => ({ s: f.severidad, n: f.emitidas, ack: f.reconocidas, esc: f.escaladas, tta: f.tta_mediana_s })))}`);
   const prom = (await axios.get(`${RAIZ}/metrics`)).data;
   ok(/anpr_notificaciones_total\{tipo="acceso.restringido"/.test(prom) && /anpr_notificacion_latencia_seconds_bucket/.test(prom) && /anpr_notificacion_tiempo_reconocimiento_seconds_count/.test(prom), 'métricas Prometheus de notificaciones');
   const lat = prom.match(/anpr_notificacion_latencia_seconds_sum\{tipo="acceso.no_registrado"\} ([\d.]+)\nanpr_notificacion_latencia_seconds_count\{tipo="acceso.no_registrado"\} (\d+)/);
@@ -260,9 +258,6 @@ async function paso(placa, tid, extra = {}) {
   ok(r.status === 200 && Array.isArray(r.data.parametros), 'configuración del sistema');
   r = await axios.get(`${B}/reportes`, h(admin));
   ok(r.status === 200 && r.data.totales.total >= 5, `reporte consolidado: ${r.data.totales.total} pasos`);
-  r = await axios.get(`${B}/evaluacion/resumen`, h(admin));
-  ok(r.status === 200 && typeof r.data.total_registros === 'number', `evaluación del reconocimiento: ${r.data.total_registros} pasos, ${r.data.validados} validados`);
-
   [sOp, sGe, sAdm].forEach(s => s.disconnect());
   console.log(process.exitCode ? 'E2E CON FALLAS' : 'E2E OK');
 })().catch(e => { console.error('ERROR', e.response?.status, e.response?.data || e.message); process.exit(1); });

@@ -27,7 +27,7 @@ services:
       - db_data:/var/lib/postgresql/data
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -35,26 +35,8 @@ services:
       resources:
         limits:
           memory: 768m
-  redis:
-    image: redis:7-alpine
-    # Sin puertos publicados: solo lo usa el backend dentro de la red de Docker
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 384m
-
   mediamtx:
-    image: bluenviron/mediamtx:1.21.1
+    image: bluenviron/mediamtx:1.21.2
     environment:
       # IP del servidor en la LAN que el navegador usa para WebRTC (además de 127.0.0.1)
       - MTX_WEBRTCADDITIONALHOSTS=${WEBRTC_HOSTS:-127.0.0.1}
@@ -94,6 +76,9 @@ services:
       # nginx del frontend está delante del backend: un salto de proxy (IP real para los límites)
       - TRUST_PROXY=${TRUST_PROXY:-1}
       - LIMITE_API_POR_MINUTO=${LIMITE_API_POR_MINUTO:-600}
+      - ECUADORAPI_KEY=${ECUADORAPI_KEY:-}
+      - CONSULTA_PERSONA_PROVEEDOR=${CONSULTA_PERSONA_PROVEEDOR:-ecuadorapi}
+      - SOCKET_STUDIO_TOKEN=${SOCKET_STUDIO_TOKEN:-}
       - LIMITE_ACCESO_POR_15_MIN=${LIMITE_ACCESO_POR_15_MIN:-20}
       - ANPR_SERVICE_TOKEN=${ANPR_SERVICE_TOKEN:?Defina ANPR_SERVICE_TOKEN en .env}
       - SMTP_HOST=${SMTP_HOST:-}
@@ -106,25 +91,22 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - CORS_ORIGINS=${CORS_ORIGINS:-}
       - MEDIA_DIR=/app/media
+      - EVIDENCIA_LISTAS_DIR=/app/evidencia-listas
       - ANPR_SERVICE_URL=http://anpr:8000
       - ANPR_PUBLIC_URL=${ANPR_PUBLIC_URL:-http://localhost:8000}
       - MEDIAMTX_API_URL=http://mediamtx:9997
       - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
       - WEBRTC_PUBLIC_URL=${WEBRTC_PUBLIC_URL:-http://localhost:8889}
       - DOCKER_CONTAINER=true
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - SOCKET_REDIS_ADAPTER=true
+      # Centro de notificaciones: Socket.IO en memoria (una instancia del backend) y Web Push
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:anpr@ecu911.gob.ec}
     volumes:
       - anpr_media:/app/media
+      - listas_evidencia:/app/evidencia-listas
     depends_on:
       db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     restart: always
     healthcheck:
@@ -170,6 +152,8 @@ services:
       - OCR_ENGINE=plate
       - MEDIA_DIR=/app/media
       - RTSP_URL=
+      # Hilos del decodificador de video: 1 = sin cuadros retenidos (ver video_source.py)
+      - RTSP_HILOS_DECODIFICADOR=${RTSP_HILOS_DECODIFICADOR:-1}
       - RUNNING_IN_DOCKER=true
       - DEBUG_VISUAL=true
       - DEBUG_SHOW_WINDOW=false
@@ -194,54 +178,8 @@ services:
         limits:
           memory: 6g
 
-  prometheus:
-    image: prom/prometheus:v3.5.0
-    ports:
-      - "127.0.0.1:9090:9090"
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
-    restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 512m
-    depends_on:
-      - backend
-      - anpr
-
-  grafana:
-    image: grafana/grafana:12.1.0
-    ports:
-      - "127.0.0.1:3001:3000"
-    volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafana_data:/var/lib/grafana
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Defina GRAFANA_ADMIN_PASSWORD en .env}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:3001
-    restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 512m
-    depends_on:
-      - prometheus
-
 volumes:
   db_data:
-  redis_data:
   anpr_media:
   anpr_model_cache:
-  prometheus_data:
-  grafana_data:
+  listas_evidencia:

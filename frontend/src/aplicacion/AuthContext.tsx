@@ -30,6 +30,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
+  errorSesion: string | null;
   /** Instante (ms) en que vence la sesión actual */
   expira: number | null;
   /** Motivo del último cierre de sesión forzado, para mostrarlo en el login */
@@ -60,6 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [errorSesion, setErrorSesion] = useState<string | null>(null);
   const [motivoCierre, setMotivoCierre] = useState<string | null>(null);
   const [expira, setExpira] = useState<number | null>(null);
   const temporizador = useRef<number | undefined>(undefined);
@@ -72,6 +74,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     setUser(null);
     setExpira(null);
+    setLoading(false);
+    setErrorSesion(null);
     setMotivoCierre(motivo ?? null);
   }, []);
 
@@ -95,17 +99,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(t);
     setUser(u);
     setMotivoCierre(null);
+    setErrorSesion(null);
+    setLoading(false);
     programarExpiracion(t);
   }, [programarExpiracion]);
 
   useEffect(() => {
     const inicial = leerToken();
     if (!inicial) { setLoading(false); return; }
+    let cancelado = false;
+    let reintento: number | undefined;
+    let intentos = 0;
     setToken(inicial);
-    api.get('/auth/me')
-      .then(res => { setUser(res.data.user); programarExpiracion(inicial); })
-      .catch(() => logout())
-      .finally(() => setLoading(false));
+    programarExpiracion(inicial);
+    const cargar = async () => {
+      try {
+        const res = await api.get('/auth/me');
+        if (cancelado || leerToken() !== inicial) return;
+        setUser(res.data.user); setErrorSesion(null); setLoading(false);
+      } catch (e) {
+        if (cancelado) return;
+        if (leerToken() !== inicial) { setLoading(false); return; }
+        const status = respuestaError(e)?.status;
+        if (status === 401 || status === 403) { logout(); setLoading(false); return; }
+        setErrorSesion('Sin conexión con el servidor. Reintentando automáticamente…');
+        reintento = window.setTimeout(cargar, Math.min(30000, 2000 * 2 ** Math.min(intentos++, 4)));
+      }
+    };
+    void cargar();
+    return () => { cancelado = true; window.clearTimeout(reintento); };
   }, [logout, programarExpiracion]);
 
   useEffect(() => {
@@ -142,7 +164,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const puede = useCallback((...permisos: Permiso[]) => !!user?.permisos && permisos.every(p => user.permisos!.includes(p)), [user]);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, expira, motivoCierre, login, establecerSesion, logout, refrescarUsuario, tieneRol, puede }}>
+    <AuthContext.Provider value={{ user, token, loading, errorSesion, expira, motivoCierre, login, establecerSesion, logout, refrescarUsuario, tieneRol, puede }}>
       {children}
     </AuthContext.Provider>
   );

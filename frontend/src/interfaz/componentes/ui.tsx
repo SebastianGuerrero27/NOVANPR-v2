@@ -152,7 +152,7 @@ export const Paginacion: React.FC<{ pagina: number; tamano: number; total: numbe
 
 export const Modal: React.FC<{
   titulo: React.ReactNode; subtitulo?: React.ReactNode; onCerrar: () => void; children: React.ReactNode;
-  pie?: React.ReactNode; tamano?: 'estrecho' | 'normal' | 'ancho'; bloquear?: boolean;
+  pie?: React.ReactNode; tamano?: 'estrecho' | 'normal' | 'ancho' | 'panoramico'; bloquear?: boolean;
 }> = ({ titulo, subtitulo, onCerrar, children, pie, tamano = 'normal', bloquear }) => {
   const id = useId();
   useEffect(() => {

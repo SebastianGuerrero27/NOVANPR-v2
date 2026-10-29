@@ -6,7 +6,7 @@ detector de prueba cuenta cuántas veces se ejecuta.
 """
 import numpy as np
 
-from app.aplicacion.detector import _COLOR_ESCANEANDO, DetectionPipeline
+from app.aplicacion.detector import DetectionPipeline
 from app.aplicacion.movimiento import CompuertaInferencia, DetectorMovimiento
 from app.dominio.models import Detection
 from app.infraestructura.detectors import MockDetector
@@ -22,6 +22,19 @@ class DetectorContado(MockDetector):
     def predict(self, frame):
         self.llamadas += 1
         return super().predict(frame)
+
+
+class DetectorQueVe(DetectorContado):
+    """Devuelve la caja del objeto claro en la imagen que recibe, como el detector real: el pipeline
+    le pasa solo la ventana de movimiento y suma su desplazamiento a cada caja."""
+
+    def predict(self, frame):
+        self.llamadas += 1
+        ys, xs = np.where(frame[..., 0] == 240)
+        if not len(xs):
+            return []
+        return [Detection(bbox=[float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)],
+                          confidence=0.88, class_name="plate")]
 
 
 def fondo():
@@ -172,14 +185,16 @@ def test_lo_que_ya_estaba_en_la_escena_al_arrancar_no_cuenta_como_movimiento():
     assert p._current_overlays == []
 
 
-def test_placa_en_movimiento_se_dibuja_desde_su_primer_cuadro():
-    det, p = pipeline(CompuertaInferencia())
+def test_placa_en_movimiento_se_sigue_desde_su_primer_cuadro_y_se_dibuja_al_leerla():
+    """La placa se sigue (y se lee) desde el primer cuadro en que se mueve, pero el HUD solo la
+    dibuja con una lectura: sin recuadros de "ESCANEANDO OCR" ni detecciones provisionales."""
+    p = DetectionPipeline(detector=DetectorQueVe(), compuerta=CompuertaInferencia())
     for _ in range(3):
         p.detect_and_track(fondo())
-    det.set_detections(placa())
     rois = p.detect_and_track(con_objeto())  # aparece un objeto en la caja de la placa
     assert rois[0].en_movimiento
-    ov = p._current_overlays[0]
-    assert ov.label.startswith("ESCANEANDO OCR") and ov.color == _COLOR_ESCANEANDO and not ov.verificada
+    x1, y1, x2, y2 = rois[0].plate_bbox
+    assert abs(x1 - CAJA[0]) <= 2 and abs(y1 - CAJA[1]) <= 2 and abs(x2 - CAJA[2]) <= 2 and abs(y2 - CAJA[3]) <= 2
+    assert p._current_overlays == []
     caja, porcentaje, vehiculo = p.get_motion_info("rtsp")
     assert vehiculo and caja is not None and porcentaje > 0

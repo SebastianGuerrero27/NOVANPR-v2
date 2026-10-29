@@ -1,4 +1,4 @@
-import { esSinPlaca, evidenciaDe, MAX_EVIDENCIA, motivoRevision, normalizarFuente, serializarEvidencia } from '../../dominio/detecciones';
+import { esSinPlaca, evidenciaDe, leerFiltros, leerHoraDelDia, MAX_EVIDENCIA, motivoRevision, normalizarFuente, origenDe, serializarEvidencia } from '../../dominio/detecciones';
 
 describe('Detecciones · fuente de la detección', () => {
   it('una URL RTSP (con o sin credenciales) se guarda como «rtsp»: nunca la URL', () => {
@@ -54,5 +54,33 @@ describe('Detecciones · vehículo sin placa visible', () => {
     expect(esSinPlaca(paso(null))).toBe(false);
     expect(motivoRevision(paso(null), politica)).toMatch(/^La placa no se pudo leer/);
     expect(motivoRevision(paso({ motivo: 'vehiculo_sin_placa' }, { validado_manualmente: true }), politica)).toBeNull();
+  });
+});
+
+describe('Detecciones · filtros del historial completo', () => {
+  it('franja horaria HH:MM en minutos; un formato o una hora inválidos se rechazan', () => {
+    expect(leerHoraDelDia('08:30', 'Hora inicial')).toEqual({ ok: true, valor: 510 });
+    expect(leerHoraDelDia('', 'Hora inicial')).toEqual({ ok: true, valor: null });
+    expect(leerHoraDelDia('24:00', 'Hora inicial').ok).toBe(false);
+    expect(leerHoraDelDia('8h30', 'Hora inicial').ok).toBe(false);
+  });
+
+  it('lee movimiento, origen, franja, placa aproximada y orden; rechaza valores fuera de las listas', () => {
+    const f = leerFiltros({ placa: 'pba-12', aproximada: 'si', movimiento: 'salida', origen: 'video', hora_desde: '22:00', hora_hasta: '06:00', orden: 'antiguo' });
+    expect(f).toMatchObject({ ok: true, valor: { placa: 'PBA12', aproximada: true, movimiento: 'salida', origen: 'video', horaDesde: 1320, horaHasta: 360, orden: 'antiguo' } });
+    // Sin placa, "aproximada" no es un filtro
+    expect(leerFiltros({ aproximada: 'si' })).toMatchObject({ ok: true, valor: { placa: null } });
+    expect((leerFiltros({ aproximada: 'si' }) as { valor: object }).valor).not.toHaveProperty('aproximada');
+    expect(leerFiltros({ movimiento: 'entrada' }).ok).toBe(false);
+    expect(leerFiltros({ origen: 'webcam' }).ok).toBe(false);
+    expect(leerFiltros({ orden: 'placa' }).ok).toBe(false);
+    expect(leerFiltros({ hora_hasta: '25:00' }).ok).toBe(false);
+  });
+
+  it('origen del paso según su fuente: cámara en vivo por omisión, video de prueba y registro manual', () => {
+    expect(origenDe('rtsp')).toBe('camara');
+    expect(origenDe(null)).toBe('camara');
+    expect(origenDe('video')).toBe('video');
+    expect(origenDe('manual')).toBe('manual');
   });
 });

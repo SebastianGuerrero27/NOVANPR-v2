@@ -118,9 +118,10 @@ def crear_app(motor: MotorAnpr) -> FastAPI:
     async def pistas(websocket: WebSocket):
         """
         Cajas de detección y zona de movimiento para dibujar sobre el video WebRTC del navegador:
-        solo JSON (≈10 envíos por segundo); el video llega aparte desde MediaMTX. Se envía al
-        cambiar y, mientras haya algo visible, al menos cada 0,3 s: el navegador desvanece las
-        pistas que dejan de llegar.
+        solo JSON; el video llega aparte desde MediaMTX. Se envía al cambiar (≈25 veces por
+        segundo con una placa a la vista, porque el seguidor la mueve en cada cuadro) y, mientras
+        haya algo visible, al menos cada 0,2 s: el navegador desvanece las pistas que dejan de
+        llegar (a los 0,3 s).
         """
         if not ticket_valido(websocket.query_params.get("ticket"), "stream"):
             await websocket.close(code=4401)
@@ -133,11 +134,11 @@ def crear_app(motor: MotorAnpr) -> FastAPI:
                 datos = motor.pistas_actuales()
                 ahora = time.monotonic()
                 visible = bool(datos.get("pistas") or datos.get("movimiento"))
-                if datos != ultimo or (visible and ahora - enviado >= 0.3):
+                if datos != ultimo or (visible and ahora - enviado >= 0.2):
                     await websocket.send_json(datos)
                     ultimo = datos
                     enviado = ahora
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.04 if visible else 0.1)
         except WebSocketDisconnect:
             pass
         except Exception as e:
@@ -177,6 +178,31 @@ def crear_app(motor: MotorAnpr) -> FastAPI:
             return JSONResponse({"error": "JSON inválido"}, status_code=400)
         codigo, cuerpo = motor.fijar_roi(payload)
         return cuerpo if codigo == 200 else JSONResponse(cuerpo, status_code=codigo)
+
+    @app.get("/api/historial")
+    def historial(request: Request):
+        """Miniaturas de los últimos 30 s de la cámara que procesa el motor, para elegir la foto de
+        evidencia de un registro manual (requiere X-Servicio-Token)."""
+        if not token_servicio_valido(request.headers.get("X-Servicio-Token")):
+            return _denegado()
+        return motor.historial_cuadros()
+
+    @app.post("/api/historial/guardar")
+    async def guardar_historial(request: Request):
+        """{"t": hora} → guarda ese cuadro del historial como foto de evidencia: {"ruta": "/media/…"}."""
+        if not token_servicio_valido(request.headers.get("X-Servicio-Token")):
+            return _denegado()
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        hora = payload.get("t") if isinstance(payload, dict) else None
+        if isinstance(hora, bool) or not isinstance(hora, (int, float)):
+            return JSONResponse({"error": "Indique la hora del cuadro (t)."}, status_code=400)
+        ruta = motor.guardar_cuadro_historial(float(hora))
+        if ruta is None:
+            return JSONResponse({"error": "El cuadro ya no está en el historial de los últimos 30 s."}, status_code=404)
+        return {"ruta": ruta}
 
     @app.get("/api/camera/active")
     def camara_activa():

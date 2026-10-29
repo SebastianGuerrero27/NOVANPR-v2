@@ -127,7 +127,6 @@ stateDiagram-v2
 | `GET /api/notificaciones/push/clave` | Clave pública VAPID |
 | `POST`/`DELETE /api/notificaciones/push/suscripcion` | Alta/baja del navegador |
 | `POST /api/notificaciones/push/prueba` | Push de prueba a los equipos del usuario |
-| `GET /api/notificaciones/metricas?dias` | TTA, escalamiento, avalanchas (permiso `evaluacion:ver`) |
 
 Eventos Socket.IO (sala `usuario:{id}`): `notificacion:nueva`, `notificacion:actualizada`
 (repetición, ACK, resolución o escalamiento), `notificacion:eliminada` (`{ ids }`: las quitó la
@@ -141,9 +140,10 @@ Claves VAPID: `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`; si faltan,
 `ClavesServicio`. **Web Push exige contexto seguro**: https o `http://localhost`; en la LAN publique el
 frontend tras un proxy con TLS. En un puesto compartido, cerrar sesión desvincula el navegador de la cuenta.
 
-## 8. Evaluación
+## 8. Métricas operativas
 
-**Indicadores** (Prometheus y `GET /api/notificaciones/metricas`, visibles en Evaluación del sistema):
+Los indicadores del canal se conservan como métricas de observabilidad de Prometheus; ya no se
+exponen en una pantalla ni en una API de evaluación del sistema.
 
 | Indicador | Fuente | Referencia |
 |---|---|---|

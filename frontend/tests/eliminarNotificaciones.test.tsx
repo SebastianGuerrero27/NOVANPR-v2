@@ -12,6 +12,7 @@ const { centro, notificar } = vi.hoisted(() => ({
     items: [] as unknown[], noLeidas: 0, pendientes: 0, revisadas: 0,
     marcarLeida: vi.fn().mockResolvedValue(undefined), marcarTodas: vi.fn(), reconocer: vi.fn(),
     eliminar: vi.fn().mockResolvedValue(undefined),
+    recargar: vi.fn().mockResolvedValue(undefined),
     eliminarRevisadas: vi.fn().mockResolvedValue('Se eliminaron 3 notificaciones revisadas. Las alarmas pendientes siguen en la bandeja.'),
   },
   notificar: vi.fn(),
@@ -62,6 +63,7 @@ describe('Quitar notificaciones de la bandeja', () => {
     Object.assign(centro, { items: [notificacion({ id: 3 })], noLeidas: 0, pendientes: 1, revisadas: 3 });
     enRouter(<CampanaNotificaciones />);
     fireEvent.click(screen.getByRole('button', { name: /Notificaciones/ }));
+    expect(centro.recargar).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Limpiar revisadas (3)' }));
     expect(centro.eliminarRevisadas).not.toHaveBeenCalled();
     expect(screen.getByText(/Las alarmas pendientes de atención y las no leídas se conservan/)).toBeTruthy();

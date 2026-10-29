@@ -1,13 +1,13 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Bell, Camera, ChevronDown, ChevronsLeft, ChevronsRight, Clock, GripVertical, KeyRound, LogOut, Menu, Moon, Shield, Sun, UserCircle, Volume2, VolumeX, Wifi, WifiOff,
+  Bell, Camera, ChevronDown, ChevronsLeft, ChevronsRight, Clock, GripVertical, KeyRound, LogOut, Menu, Moon, RefreshCw, Shield, Sun, UserCircle, Volume2, VolumeX, Wifi, WifiOff,
 } from 'lucide-react';
 import api from '../../infraestructura/api';
 import type { Camara } from '../../dominio/tipos';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useEvento, useReconexion, useTiempoReal } from '../../aplicacion/tiempoReal';
-import { useDiferido, useTic } from '../../aplicacion/hooks';
+import { useDiferido, useTic, useVersionNueva } from '../../aplicacion/hooks';
 import { iniciales, ROLES } from '../../dominio/formato';
 import { Cargando } from '../componentes/ui';
 import { AvisosAcceso } from '../componentes/AvisosAcceso';
@@ -239,6 +239,21 @@ const Header: React.FC<{ onMenuMovil: () => void }> = ({ onMenuMovil }) => {
   );
 };
 
+/**
+ * Una pestaña abierta antes de actualizar el sistema (p. ej. la del guardia, que pasa el turno
+ * entero en Gestión de Accesos) sigue con el código anterior en memoria: se ofrece recargarla.
+ */
+const AvisoVersionNueva: React.FC = () => {
+  const nueva = useVersionNueva();
+  if (!nueva) return null;
+  return (
+    <div className="aviso-version" role="status">
+      <RefreshCw size={15} /> <span>Se instaló una versión nueva del sistema. Actualice para ver los cambios.</span>
+      <button type="button" className="btn btn-sm btn-navy" onClick={() => window.location.reload()}>Actualizar ahora</button>
+    </div>
+  );
+};
+
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [colapsado, setColapsado] = useState(() => {
     try { return localStorage.getItem(CLAVE_COLAPSO) === '1'; } catch { return false; }
@@ -260,6 +275,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
           <Suspense fallback={<Cargando texto="Cargando módulo…" alto={320} />}>{children}</Suspense>
         </main>
         <AvisosAcceso />
+        <AvisoVersionNueva />
       </div>
     </div>
   );

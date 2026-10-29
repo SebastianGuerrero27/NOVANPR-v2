@@ -99,25 +99,13 @@ PP-OCRv6 (RapidOCR + OpenVINO). Su lectura se suma al consenso temporal con peso
 `OCR_VERIFIER_VOTE_WEIGHT` y se descarta si supera `OCR_VERIFIER_MAX_MS` (2000 ms).
 Variables: `OCR_VERIFIER_ENABLED`, `OCR_VERIFIER_MODEL` (tiny/small/medium), `OCR_VERIFIER_ENGINE`.
 
-## 5. Evaluación con datos de operación (ECU 911)
+## 5. Evidencia de los registros operativos
 
-El sistema guarda por cada paso vehicular la **lectura original del OCR**, la **decisión
-automática** (antes de cualquier corrección del operador) y metadatos de la captura: luminancia,
-distancia estimada, ancho de la placa en píxeles, nitidez, velocidad, latencia de principio a fin,
-lectura del verificador y versión de los modelos (`db/migration_evaluacion.sql`).
-
-**Protocolo:** durante el periodo de evaluación el operador valida **todos** los registros
-(también los correctos, confirmando la misma placa). Si valida solo los dudosos, las métricas
-quedan sesgadas; `cobertura_validacion` debe ser ≥ 95 %. El clima se anota en `condicion_clima`.
-
-```
-GET /api/evaluacion/resumen?desde=2026-10-01&hasta=2026-10-31   (JSON, requiere sesión)
-GET /api/evaluacion/export.csv?desde=...&hasta=...               (una fila por paso vehicular)
-```
-
-Métricas: exactitud por placa, CER, tasa de no legibles, **falsa aceptación** (se autorizó un
-vehículo no autorizado), **falso rechazo**, **lista negra no detectada**, falsas alertas y
-latencia p50/p95, en total y por luz, distancia, tipo de placa, formato y clima.
+La base conserva los campos de la lectura OCR original, la decisión automática y los metadatos
+de captura para la trazabilidad de cada detección (`db/migration_evaluacion.sql`). El módulo de
+evaluación operativa y sus endpoints fueron retirados de la aplicación; se conservan la migración
+y los datos existentes. Los scripts de estadística de este experimento siguen disponibles para
+conjuntos de datos preparados fuera del sistema.
 
 ## 6. Estadística
 

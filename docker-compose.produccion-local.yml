@@ -1,0 +1,51 @@
+# Usa el proyecto y los datos actuales; backend, frontend y motor usan código empaquetado.
+# docker compose -p anpr -f docker-compose.yml -f docker-compose.produccion-local.yml up -d --build --no-deps backend frontend anpr
+services:
+  anpr:
+    build: ./services/anpr
+    image: anpr-motor:produccion
+    env_file:
+      - path: ./services/anpr/.env
+        required: false
+    # En operación no se vigilan los archivos: editar fuentes o pruebas no reinicia los modelos.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes: !override
+      - ./services/anpr/media:/app/media
+      - anpr_model_cache:/root/.cache
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.prod
+    image: anpr-backend:produccion
+    command: ["node", "scripts/supervisar.cjs"]
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY: "1"
+    volumes: !override
+      - ./services/anpr/media:/app/media
+      - ./services/anpr/media:/app/services/anpr/media
+      - listas_evidencia:/app/evidencia-listas
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/health/ready > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    image: anpr-frontend:produccion
+    ports: !override
+      - "${FRONTEND_HOST:-127.0.0.1}:3000:8080"
+    volumes: !override
+      - ./frontend/nginx.compose.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+volumes:
+  listas_evidencia:

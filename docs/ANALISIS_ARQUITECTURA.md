@@ -73,8 +73,7 @@ flowchart TB
 
 - `src/dominio/` — reglas del negocio sin E/S: matriz RBAC (`permisos.ts`), validación de lo que
   escribe una persona (`validacion.ts`), restricciones temporales (`horario.ts`), política de
-  decisión (`decisionAcceso.ts`), catálogo de alarmas (`notificaciones.ts`) y métricas de
-  evaluación (`evaluacion.ts`).
+  decisión (`decisionAcceso.ts`) y catálogo de alarmas (`notificaciones.ts`).
 - `src/aplicacion/` — casos de uso de cada módulo con sus puertos (interfaces).
 - `src/infraestructura/` — repositorios SQL Server, sesiones, Socket.IO, Web Push, correo,
   MediaMTX, motor ANPR, métricas y tareas programadas.
@@ -171,7 +170,7 @@ no de implementación):
 | Alarmas con reconocimiento y escalamiento | ✓ (Security Center) | ✓ (Alarm Manager) | vía sistema de acceso | parcial | webhooks | ✓ (ISA-18.2) |
 | Notificación fuera de la consola | app/correo | app/correo | — | app | webhooks/correo | Web Push estándar + correo |
 | Segundo factor (marca/color) | parcial | — | — | parcial | ✓ (atributos) | ✓ |
-| Métricas de evaluación científica (IC, McNemar, TTA) | — | — | — | — | — | ✓ |
+| Métricas de evaluación científica dentro de la aplicación | — | — | — | — | — | — |
 
 Aporte diferencial para el artículo: una arquitectura **abierta y reproducible** que integra decisión
 con costos asimétricos y evidencia de lectura, permisos temporales formalizados, gestión de alarmas
@@ -222,7 +221,7 @@ Escalado horizontal: notificación originada en la instancia A entregada a un cl
 | H1: la alerta llega al personal en tiempo operativo | p95 de `anpr_notificacion_latencia_seconds` (captura → notificación) | < 1 s |
 | H2: la supresión reduce la carga de alarmas | alarmas/h por operador con y sin supresión (`repeticiones_agrupadas`) | ≈ 6/h en régimen estable; sin ventanas > 10 alarmas/10 min |
 | H3: ninguna alarma crítica queda sin atender | tasa de escalamiento y TTA p95 por prioridad | escaladas → 0 con dotación adecuada |
-| H4: la política no concede accesos indebidos | tasa de falsa aceptación (`Evaluación del sistema`) con IC 95 % de Wilson | FAR → 0; comparación de configuraciones con McNemar |
+| H4: la política no concede accesos indebidos | análisis offline de conjuntos de prueba | FAR → 0; comparación de configuraciones con McNemar |
 
 **Amenazas a la validez:** el benchmark no incluye la inferencia ni la red de la institución (la latencia
 total = inferencia + OCR + este canal); el TTA depende de la dotación y del turno; las métricas de
