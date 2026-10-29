@@ -1,7 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { cargarConfiguracion } from './servicios/configuracion';
@@ -70,38 +69,21 @@ function rutaEsquema(): string {
   return ruta;
 }
 
-/**
- * Desde el 2026-10-28 los pasos de una cámara de prueba (video cargado, `video://…`) se guardan
- * con fuente 'video' para separarlos del flujo real en el historial. Los registrados antes se
- * reclasificaron así una sola vez; los demás datos del paso no cambian.
- */
-const ORIGEN_VIDEO_PRUEBA_SQL = `UPDATE deteccionvehiculo d SET fuente = 'video'
-  FROM camaras c WHERE c.id = d.camara_id AND c.rtsp_url LIKE 'video://%' AND COALESCE(d.fuente, 'rtsp') = 'rtsp'`;
-
-/**
- * Cambio de datos que debe ejecutarse una sola vez: queda anotado en SchemaMigraciones (con la
- * suma SHA-256 del SQL) en la misma sentencia, así dos instancias del backend no lo repiten.
- */
-async function aplicarUnaVez(nombre: string, sentencia: string): Promise<void> {
-  const suma = createHash('sha256').update(sentencia).digest('hex');
-  const r = await pool.query(`WITH registro AS (
-      INSERT INTO schemamigraciones (nombre, suma_sha256) VALUES ('${nombre}', '${suma}')
-      ON CONFLICT (nombre) DO NOTHING RETURNING nombre)
-    SELECT COUNT(*) AS nueva FROM registro`);
-  if (Number(r.rows[0]?.nueva ?? 0) === 0) return;
-  await pool.query(sentencia);
-  console.log(`[DB] Migración de datos aplicada: ${nombre}`);
-}
-
 async function initDatabaseSchema(): Promise<void> {
   const ddl = fs.readFileSync(rutaEsquema(), 'utf8');
+  const migracion = (archivo: string) => fs.readFileSync(path.join(path.dirname(rutaEsquema()), archivo), 'utf8');
+  // Antes del CREATE IF NOT EXISTS: así no se crea una lista vacía junto al padrón existente.
+  await pool.query(migracion('migracion_renombrar_lista_blanca.sql'));
   await pool.query(ddl);
-  await pool.query(fs.readFileSync(path.join(path.dirname(rutaEsquema()), 'migracion_campos_permisos.sql'), 'utf8'));
-  await pool.query(fs.readFileSync(path.join(path.dirname(rutaEsquema()), 'migracion_evidencias_listas.sql'), 'utf8'));
-  await pool.query('ALTER TABLE vehiculosautorizados ALTER COLUMN placa DROP NOT NULL');
+  await pool.query(migracion('migracion_campos_permisos.sql'));
+  await pool.query(migracion('migracion_evidencias_listas.sql'));
+  // Formulario «Autorizar ingreso»: del JSON datos_permiso a una columna por campo
+  await pool.query(migracion('migracion_ficha_ingreso_columnas.sql'));
+  await pool.query(migracion('migracion_columnas_sin_uso.sql'));
+  await pool.query('ALTER TABLE listablanca ALTER COLUMN placa DROP NOT NULL');
   // Motivo de ingreso del permiso: los pasos del vehículo lo toman si el guardia no escribe otro
-  await pool.query('ALTER TABLE vehiculosautorizados ADD COLUMN IF NOT EXISTS motivo_ingreso VARCHAR(300)');
-  await pool.query(`ALTER TABLE vehiculosautorizados
+  await pool.query('ALTER TABLE listablanca ADD COLUMN IF NOT EXISTS motivo_ingreso VARCHAR(300)');
+  await pool.query(`ALTER TABLE listablanca
     ADD COLUMN IF NOT EXISTS cedula VARCHAR(10),
     ADD COLUMN IF NOT EXISTS institucion VARCHAR(150),
     ADD COLUMN IF NOT EXISTS cargo VARCHAR(150)`);
@@ -109,7 +91,6 @@ async function initDatabaseSchema(): Promise<void> {
     ADD COLUMN IF NOT EXISTS fecha_inicio DATE,
     ADD COLUMN IF NOT EXISTS horario VARCHAR(600)`);
   await pool.query('ALTER TABLE deteccionvehiculo ADD COLUMN IF NOT EXISTS fecha_hora_salida TIMESTAMP NULL');
-  await aplicarUnaVez('pg_2026_10_28_origen_video_prueba', ORIGEN_VIDEO_PRUEBA_SQL);
   // Mantiene el historial de notificaciones, pero desvincula la detección al eliminarla.
   // CREATE TABLE IF NOT EXISTS no actualiza restricciones en bases ya inicializadas.
   await pool.query(`

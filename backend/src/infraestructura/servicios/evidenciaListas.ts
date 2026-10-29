@@ -10,7 +10,7 @@ type Conexion = Pick<PoolClient, 'query' | 'release'>;
 type Base = Pick<Pool, 'query'> & { connect(): Promise<Conexion> };
 type Lista = 'autorizado' | 'lista_negra';
 const LISTAS = [
-  { tabla: 'vehiculosautorizados', lista: 'autorizado' as Lista },
+  { tabla: 'listablanca', lista: 'autorizado' as Lista },
   { tabla: 'listanegra', lista: 'lista_negra' as Lista },
 ];
 const PLACA_SQL = "UPPER(REPLACE(REPLACE(placa, '-', ''), ' ', ''))";

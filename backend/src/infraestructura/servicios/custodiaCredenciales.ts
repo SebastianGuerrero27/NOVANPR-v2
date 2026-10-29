@@ -18,6 +18,9 @@ import type { PuertoCustodiaCredenciales } from '../../aplicacion/camaras';
  * la derivada de JWT_SECRET cuando ya hay clave propia) solo se usan para descifrar; al arrancar,
  * las contraseñas cifradas con ellas se vuelven a cifrar con la vigente. Pasar de la clave
  * derivada a una propia, o cambiar la propia, no obliga a volver a escribir las contraseñas.
+ *
+ * La misma clave protege los secretos sueltos del sistema (la contraseña del correo saliente,
+ * tabla ConfiguracionCorreo): cifrarSecreto / descifrarSecreto, con el mismo formato enc.v1.
  */
 
 const PREFIJO = 'enc.v1.';
@@ -77,14 +80,38 @@ function descifrar(texto: string, k: Buffer): string | null {
   }
 }
 
+/** Texto cifrado con la clave vigente: enc.v1.<iv>.<cifrado+etiqueta> (base64url). */
+export function cifrarSecreto(texto: string): string {
+  const iv = crypto.randomBytes(12);
+  const cifrador = crypto.createCipheriv(ALGORITMO, obtenerClaves().vigente, iv);
+  const cifrado = Buffer.concat([cifrador.update(texto, 'utf8'), cifrador.final(), cifrador.getAuthTag()]);
+  return `${PREFIJO}${iv.toString('base64url')}.${cifrado.toString('base64url')}`;
+}
+
+/**
+ * Secreto en claro (prueba la clave vigente y las anteriores). Falla si no tiene el formato
+ * cifrado, si fue alterado o si ninguna clave configurada lo descifra.
+ */
+export function descifrarSecreto(texto: string): string {
+  if (!texto.startsWith(PREFIJO)) throw new Error('El secreto guardado no está cifrado.');
+  const { vigente, anteriores } = obtenerClaves();
+  for (const k of [vigente, ...anteriores]) {
+    const claro = descifrar(texto, k);
+    if (claro !== null) return claro;
+  }
+  throw new Error('Secreto ilegible: la clave de cifrado cambió o el dato fue alterado.');
+}
+
+/** El mismo secreto cifrado con la clave vigente (sin cambios si ya lo está). */
+export function secretoConClaveVigente(texto: string): string {
+  return descifrar(texto, obtenerClaves().vigente) !== null ? texto : cifrarSecreto(descifrarSecreto(texto));
+}
+
 /** URL con la contraseña cifrada; sin contraseña o ya cifrada, se devuelve igual. */
 export function proteger(url: string): string {
   const texto = segmento(url);
   if (!texto || texto.startsWith(PREFIJO)) return url;
-  const iv = crypto.randomBytes(12);
-  const cifrador = crypto.createCipheriv(ALGORITMO, obtenerClaves().vigente, iv);
-  const cifrado = Buffer.concat([cifrador.update(texto, 'utf8'), cifrador.final(), cifrador.getAuthTag()]);
-  return conClave(url, `${PREFIJO}${iv.toString('base64url')}.${cifrado.toString('base64url')}`);
+  return conClave(url, cifrarSecreto(texto));
 }
 
 /**

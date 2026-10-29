@@ -82,6 +82,17 @@ export function validarRol(valor: unknown): Validado<Rol> {
   return esRol(valor) ? { ok: true, valor } : falla('Rol inválido.');
 }
 
+/** El registro público nunca concede administración. Ausente conserva el contrato antiguo. */
+export const ROLES_REGISTRO_PUBLICO = ['Guardia', 'GestorPermisos'] as const;
+export type RolRegistroPublico = typeof ROLES_REGISTRO_PUBLICO[number];
+
+export function leerRolRegistroPublico(valor: unknown): Validado<RolRegistroPublico> {
+  if (valor === undefined) return { ok: true, valor: 'Guardia' };
+  return valor === 'Guardia' || valor === 'GestorPermisos'
+    ? { ok: true, valor }
+    : falla('Seleccione Guardia o Gestor de permisos para registrarse.');
+}
+
 export function validarEstado(valor: unknown): Validado<EstadoCuenta> {
   return (ESTADOS_CUENTA as readonly unknown[]).includes(valor) ? { ok: true, valor: valor as EstadoCuenta } : falla('Estado inválido.');
 }

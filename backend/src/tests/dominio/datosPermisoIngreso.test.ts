@@ -3,7 +3,14 @@ it('normaliza los datos completos del formulario con las reglas de lista blanca'
   const r = leerDatosIngreso({ datos_permiso: { propietario: 'ANA TORRES', cedula: '0123456789', institucion: 'ECU 911', cargo: 'Analista', departamento: 'Tecnologia', placa: 'ABC1234', marca: 'Mazda', modelo: 'CX-5', tipo_vehiculo: 'SUV', color: 'rojo', fecha_inicio: '2026-10-24', fecha_vencimiento: '2026-10-31', horario: null } });
   expect(r.ok).toBe(true);
   if (!r.ok) throw Error(r.error);
-  expect(r.valor.datosPermiso).toMatchObject({ propietario: 'ANA TORRES', cedula: '0123456789', institucion: 'ECU 911', cargo: 'Analista', fecha_inicio: '2026-10-24', fecha_fin: '2026-10-31', horario: null });
+  // Cada campo del formulario va a su columna: la ficha guarda lo que no tiene campo propio en el paso
+  expect(r.valor.ficha).toEqual({ institucion: 'ECU 911', cargo: 'Analista', departamento: 'Tecnologia', categoria: 'FUNCIONARIO',
+    observaciones: null, vigenciaDesde: '2026-10-24', vigenciaHasta: '2026-10-31', horario: null });
+  expect(r.valor).toMatchObject({ persona: 'ANA TORRES', cedula: '0123456789', tipo: 'SUV', marca: 'Mazda', modelo: 'CX-5', color: 'rojo' });
+});
+it('lo que llega aparte en el cuerpo prevalece sobre la copia de la ficha', () => {
+  const r = leerDatosIngreso({ persona_ingreso: 'Rosa Vera', motivo_ingreso: 'Reunión', datos_permiso: { propietario: 'ANA TORRES', motivo_ingreso: 'Visita' } });
+  expect(r.ok && r.valor).toMatchObject({ persona: 'Rosa Vera', motivo: 'Reunión' });
 });
 it.each([{ cedula: '123' }, { propietario: '' }, { fecha_inicio: '2026-10-31', fecha_vencimiento: '2026-10-24' }, { horario: 'incorrecto' }])('rechaza datos que tampoco admite lista blanca: %j', cambios => {
   expect(leerDatosIngreso({ datos_permiso: { propietario: 'ANA TORRES', ...cambios } }).ok).toBe(false);

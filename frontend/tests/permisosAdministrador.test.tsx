@@ -41,7 +41,11 @@ it('abre con los permisos de todos los usuarios, incluidos los del gestor y los 
   expect(screen.getByRole('tab', { name: /Permisos otorgados por todos los usuarios/ })).toHaveAttribute('aria-selected', 'true');
   expect(await screen.findByText('Ana Gestionada', {}, { timeout: 5000 })).toBeInTheDocument();
   expect(screen.getByText('Rosa Retirada')).toBeInTheDocument();
-  expect(screen.getByText('Retirado')).toBeInTheDocument();
+  expect(screen.getAllByText('Desactivado').length).toBeGreaterThan(0);
+  // «Registrado por»: nombre y correo de quien otorgó el permiso
+  const otorgado = screen.getByText('Ana Gestionada').closest('tr')!;
+  expect(within(otorgado).getByText('Gestora Uno')).toBeInTheDocument();
+  expect(within(otorgado).getByText('gestora uno@example.com')).toBeInTheDocument();
   expect(get).toHaveBeenCalledWith('/vehiculos-autorizados/registro', { params: { usuario: undefined, estado: 'todos' } });
 
   // Filtrar por el gestor deja solo sus permisos
@@ -57,17 +61,19 @@ it('una notificación de solicitud (?id=) abre la pestaña de solicitudes', asyn
   expect(await screen.findByText('No hay solicitudes pendientes')).toBeInTheDocument();
 });
 
-it('retira sin pedir motivo y elimina definitivamente un permiso retirado', async () => {
+it('desactiva sin pedir motivo y elimina definitivamente un permiso desactivado', async () => {
   render(<MemoryRouter initialEntries={['/solicitudes']}><SolicitudesAcceso /></MemoryRouter>);
   const vigente = (await screen.findByText('Ana Gestionada', {}, { timeout: 5000 })).closest('tr')!;
-  fireEvent.click(within(vigente).getByRole('button', { name: 'Retirar' }));
+  fireEvent.click(within(vigente).getByRole('button', { name: /Desactivar/ }));
   const dialogo = screen.getByRole('dialog');
   expect(within(dialogo).queryByRole('textbox')).not.toBeInTheDocument();
-  fireEvent.click(within(dialogo).getByRole('button', { name: 'Retirar' }));
+  expect(within(dialogo).getByText(/dejará de autorizar el ingreso/)).toBeInTheDocument();
+  fireEvent.click(within(dialogo).getByRole('button', { name: 'Desactivar' }));
   await waitFor(() => expect(borrar).toHaveBeenCalledWith('/vehiculos-autorizados/5'));
 
   const retirado = screen.getByText('Rosa Retirada').closest('tr')!;
-  expect(within(retirado).getByRole('button', { name: /Reactivar/ })).toBeInTheDocument();
+  expect(within(retirado).getByText('Desactivado')).toBeInTheDocument();
+  expect(within(retirado).getByRole('button', { name: /Activar/ })).toBeInTheDocument();
   fireEvent.click(within(retirado).getByRole('button', { name: /Eliminar/ }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Eliminar definitivamente' }));
   await waitFor(() => expect(borrar).toHaveBeenCalledWith('/vehiculos-autorizados/1/definitivo'));

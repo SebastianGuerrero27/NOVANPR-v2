@@ -87,6 +87,7 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
       - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-ecu911.gob.ec}
+      - REGISTRO_VERIFICACION_EMAIL_HABILITADA=${REGISTRO_VERIFICACION_EMAIL_HABILITADA:-false}
       # URL con la que el personal abre el sistema (enlaces de correo y origen permitido)
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - CORS_ORIGINS=${CORS_ORIGINS:-}

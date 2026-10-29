@@ -5,12 +5,13 @@ import {
   camposModificados, type DefinicionLista, describirRegistro, leerRegistroLista, type RegistroLista,
 } from '../dominio/listas';
 import { validarEntero, validarTexto, validarPlaca } from '../dominio/validacion';
+import { type Rol, tienePermiso } from '../dominio/permisos';
 import { leerFilasImportacion } from '../dominio/importacionPermisos';
 import { LISTA_BLANCA } from '../dominio/listas';
 
 /**
  * Casos de uso de las listas de control (lista blanca y lista negra):
- * consultar, ver detalle, registrar (o reactivar), editar y retirar (baja lógica con motivo).
+ * consultar, ver detalle, registrar (o reactivar), editar y retirar (baja lógica; motivo opcional).
  * Toda alta, edición o retiro queda en la auditoría y se difunde en tiempo real.
  */
 
@@ -120,6 +121,13 @@ export function resumirPorUsuario(usuarios: { id: number; nombre: string; email:
 
 export function casosListas(d: DependenciasListas) {
   const difundir = (def: DefinicionLista) => d.eventos.emitir('listas:actualizadas', { lista: def.entidad });
+  /** Estado de un registro de permisos: activos, retirados (desactivados) o todos. */
+  const leerEstado = (valor: unknown, omision: EstadoRegistroPermisos): EstadoRegistroPermisos => {
+    const estado = valor ?? omision;
+    if (estado !== 'activos' && estado !== 'retirados' && estado !== 'todos') throw errorValidacion('Estado: use activos, retirados o todos.');
+    return estado;
+  };
+
   const verificarPropietario = (def: DefinicionLista, registro: Record<string, any>, actor?: Actor) => {
     if (def.tipo === 'autorizados' && actor?.rol === 'GestorPermisos' && Number(registro.registrado_por) !== actor.id) {
       throw errorProhibido('Este permiso pertenece a otro usuario. Solo puede gestionar sus propios permisos.');
@@ -202,11 +210,11 @@ export function casosListas(d: DependenciasListas) {
     },
 
     /**
-     * Retiro (baja lógica). Un permiso de la lista blanca se retira sin pedir motivo (se puede
-     * reactivar); una placa de la lista negra exige motivo porque deja de alertar.
+     * Retiro (baja lógica) de la lista blanca o de la lista negra, sin pedir motivo: queda en la
+     * auditoría con el usuario y la placa. Un motivo enviado se valida y se anota también.
      */
     async retirar(def: DefinicionLista, id: number, motivo: unknown, actor: Actor) {
-      const m = validarTexto(motivo, { etiqueta: 'Motivo del retiro', tipo: 'libre', min: 5, max: 300, requerido: def.tipo !== 'autorizados' });
+      const m = validarTexto(motivo, { etiqueta: 'Motivo del retiro', tipo: 'libre', min: 5, max: 300 });
       if (!m.ok) throw errorValidacion(m.error);
       if (def.tipo === 'autorizados' && actor.rol === 'GestorPermisos') {
         const actual = await d.repositorio.obtenerActivo(def, id);
@@ -333,8 +341,7 @@ export function casosListas(d: DependenciasListas) {
     async registroPermisos(consulta: Record<string, unknown>) {
       const usuario = validarEntero(consulta.usuario, { etiqueta: 'Usuario', min: 1, max: 2_147_483_647 });
       if (!usuario.ok) throw errorValidacion(usuario.error);
-      const estado = consulta.estado ?? 'todos';
-      if (estado !== 'activos' && estado !== 'retirados' && estado !== 'todos') throw errorValidacion('Estado: use activos, retirados o todos.');
+      const estado = leerEstado(consulta.estado, 'todos');
       const [items, todos, usuarios] = await Promise.all([
         d.repositorio.registroPermisos({ usuarioId: usuario.valor, estado }),
         d.repositorio.registroPermisos({ usuarioId: null, estado: 'todos' }),
@@ -343,12 +350,27 @@ export function casosListas(d: DependenciasListas) {
       return { items, usuarios: resumirPorUsuario(usuarios, todos) };
     },
 
-    /** Reactiva un permiso retirado con sus mismos datos (padron:supervisar); el motivo es opcional y queda en la auditoría. */
+    /**
+     * Permisos que otorgó el propio usuario («Mis permisos»), activos por omisión; con
+     * ?estado=retirados o todos, también los desactivados, para volver a activarlos o renovarlos.
+     */
+    async misPermisos(consulta: Record<string, unknown>, actor: Actor) {
+      return d.repositorio.registroPermisos({ usuarioId: actor.id, estado: leerEstado(consulta.estado, 'activos') });
+    },
+
+    /**
+     * Vuelve a activar un permiso desactivado con sus mismos datos. El administrador
+     * (padron:supervisar), cualquiera; quien gestiona el padrón, solo los que otorgó. El motivo es
+     * opcional y queda en la auditoría.
+     */
     async reactivar(def: DefinicionLista, id: number, motivo: unknown, actor: Actor) {
       const m = validarTexto(motivo, { etiqueta: 'Motivo de la reactivación', tipo: 'libre', min: 5, max: 300 });
       if (!m.ok) throw errorValidacion(m.error);
       const registro = await d.repositorio.obtener(def, id);
       if (!registro) throw errorNoEncontrado('Registro no encontrado.');
+      if (!tienePermiso(actor.rol as Rol, 'padron:supervisar') && Number(registro.registrado_por) !== actor.id) {
+        throw errorProhibido('Este permiso lo otorgó otro usuario: solo el administrador puede activarlo.');
+      }
       if (registro.activo) throw errorConflicto('El permiso ya está activo.');
       // Vencido: volver a activarlo no lo habilitaría y la tarea lo retiraría de nuevo; se renueva con otra vigencia
       if (registro.vigente === false && registro.fecha_vencimiento) {

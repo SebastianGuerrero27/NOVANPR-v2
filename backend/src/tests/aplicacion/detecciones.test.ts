@@ -43,7 +43,7 @@ function preparar(opciones: { alerta?: Fila | null; permiso?: Fila | null; exist
     pagina: jest.fn().mockResolvedValue([fila()]),
     resumenHistorial: jest.fn().mockResolvedValue({
       total: 1, ingresos: 1, salidas: 0, con_salida: 0, autorizados: 1, alertas: 0, no_registrados: 0, pendientes: 0,
-      sin_lectura: 0, placas: 1, camara: 1, video_prueba: 0, manuales: 0, primero: AHORA, ultimo: AHORA,
+      sin_lectura: 0, placas: 1, camara: 1, manuales: 0, primero: AHORA, ultimo: AHORA,
     }),
     recientes: jest.fn().mockResolvedValue([fila()]),
     registrarSalida: jest.fn().mockResolvedValue(true),
@@ -394,9 +394,13 @@ describe('Detecciones · consultas del personal', () => {
 
   it('PDF de registros: fuerza visitas cerradas y exporta todos los filtros sin paginación', async () => {
     const { casos, repositorio, pdfRegistros, auditoria } = preparar();
-    await casos.exportarPdf({ cerrados: 'no', completos: 'no', placa: 'PBA', pagina: 2 }, GUARDIA);
+    await casos.exportarPdf({ cerrados: 'no', completos: 'no', placa: 'PBA', pagina: 2, buscar: 'Rosa', desde: '2026-10-01', hasta: '2026-10-28' }, GUARDIA);
     expect(repositorio.exportar).toHaveBeenCalledWith(expect.objectContaining({ cerrados: true, completos: true, placa: 'PBA' }));
-    expect(pdfRegistros).toHaveBeenCalledWith([fila()], AHORA, 'America/Guayaquil');
+    // El encabezado del reporte lleva el período, la búsqueda y quién lo elabora
+    expect(pdfRegistros).toHaveBeenCalledWith([fila()], {
+      generado: AHORA, zona: 'America/Guayaquil', desde: new Date('2026-10-01T00:00:00Z'), hasta: new Date('2026-10-28T00:00:00Z'),
+      buscar: 'Rosa', elaboradoPor: 'Guardia',
+    });
     expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'EXPORTACION', 'deteccion', null, expect.stringContaining('PDF · 1 registros con salida'));
   });
 
@@ -616,7 +620,7 @@ describe('Detecciones · quién ingresa y motivo de ingreso (reporte de control 
   });
 
   it('edita una cédula sin reemplazar los datos del permiso ni cruzar o modificar listas', async () => {
-    const { casos, repositorio, listas, auditoria } = preparar({ existente: fila({ datos_permiso: { institucion: 'ECU 911', cargo: 'Analista' } }) });
+    const { casos, repositorio, listas, auditoria } = preparar({ existente: fila({ institucion_ingreso: 'ECU 911', cargo_ingreso: 'Analista' }) });
     await casos.editarIngreso(15, { cedula: '0123456789' }, GUARDIA);
     expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, { cedula: '0123456789' });
     expect(listas.permiso).not.toHaveBeenCalled();

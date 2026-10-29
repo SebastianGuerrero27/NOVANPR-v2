@@ -180,14 +180,16 @@ describe('Casos de uso · listas', () => {
     expect((await fallo(casos.registrar(LISTA_NEGRA, { placa: 'PBA1234', motivo: 'Vehículo robado', nivel_alerta: 'URGENTE' }, ACTOR))).tipo).toBe('validacion');
   });
 
-  it('retirar: un permiso se retira sin motivo; la lista negra lo exige; un motivo escrito se valida y audita', async () => {
+  it('retirar: un permiso y una placa de la lista negra se retiran sin motivo; un motivo escrito se valida y audita', async () => {
     const { casos, auditoria } = preparar();
     await casos.retirar(LISTA_BLANCA, 5, undefined, ACTOR);
     expect(auditoria.operacion).toHaveBeenLastCalledWith(ACTOR, 'LISTA_RETIRO', 'autorizado', 5, 'PBA1234');
     expect((await fallo(casos.retirar(LISTA_BLANCA, 5, 'no', ACTOR))).tipo).toBe('validacion');
     await casos.retirar(LISTA_BLANCA, 5, 'Finalizó el contrato', ACTOR);
     expect(auditoria.operacion).toHaveBeenLastCalledWith(ACTOR, 'LISTA_RETIRO', 'autorizado', 5, 'PBA1234 · Finalizó el contrato');
-    expect((await fallo(casos.retirar(LISTA_NEGRA, 5, undefined, ACTOR))).tipo).toBe('validacion');
+    await casos.retirar(LISTA_NEGRA, 5, undefined, ACTOR);
+    expect(auditoria.operacion).toHaveBeenLastCalledWith(ACTOR, 'LISTA_RETIRO', 'lista_negra', 5, 'PBA1234');
+    expect((await fallo(casos.retirar(LISTA_NEGRA, 5, 'no', ACTOR))).tipo).toBe('validacion');
   });
 });
 
@@ -332,6 +334,34 @@ describe('Casos de uso · registro de permisos del administrador', () => {
     cedula.repositorio.existeOtraConCedula = jest.fn().mockResolvedValue(true);
     expect((await fallo(cedula.casos.reactivar(LISTA_BLANCA, 4, 'Renovó el contrato', ADMIN))).tipo).toBe('conflicto');
     expect(cedula.repositorio.restaurar).not.toHaveBeenCalled();
+  });
+
+  it('activar: el gestor (y el guardia) solo los permisos que otorgó; el administrador, cualquiera', async () => {
+    const GUARDIA: Actor = { ...ACTOR, id: 3, rol: 'Guardia' };
+    const ajeno = { id: 4, placa: 'PBA1004', propietario: 'Ana', activo: false, vigente: true, registrado_por: 2 };
+    for (const actor of [ACTOR, GUARDIA]) {
+      const { casos, repositorio } = preparar();
+      repositorio.obtener.mockResolvedValue(ajeno);
+      expect((await fallo(casos.reactivar(LISTA_BLANCA, 4, undefined, actor))).tipo).toBe('prohibido');
+      expect(repositorio.restaurar).not.toHaveBeenCalled();
+    }
+    const propio = preparar();
+    propio.repositorio.obtener.mockResolvedValue({ ...ajeno, registrado_por: ACTOR.id });
+    await propio.casos.reactivar(LISTA_BLANCA, 4, undefined, ACTOR);
+    expect(propio.repositorio.restaurar).toHaveBeenCalledWith(LISTA_BLANCA, 4);
+    const admin = preparar();
+    admin.repositorio.obtener.mockResolvedValue(ajeno);
+    await admin.casos.reactivar(LISTA_BLANCA, 4, undefined, ADMIN);
+    expect(admin.repositorio.restaurar).toHaveBeenCalledWith(LISTA_BLANCA, 4);
+  });
+
+  it('mis permisos: activos por omisión; desactivados o todos a pedido, siempre los del usuario', async () => {
+    const { casos, repositorio } = preparar();
+    await casos.misPermisos({}, ACTOR);
+    expect(repositorio.registroPermisos).toHaveBeenLastCalledWith({ usuarioId: ACTOR.id, estado: 'activos' });
+    await casos.misPermisos({ estado: 'retirados', usuario: '2' }, ACTOR);
+    expect(repositorio.registroPermisos).toHaveBeenLastCalledWith({ usuarioId: ACTOR.id, estado: 'retirados' });
+    expect((await fallo(casos.misPermisos({ estado: 'borrados' }, ACTOR))).tipo).toBe('validacion');
   });
 });
 

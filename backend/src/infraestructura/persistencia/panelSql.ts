@@ -52,10 +52,10 @@ export const repositorioPanelSql: RepositorioPanel = {
         WHERE d.estado_validacion = 'alerta' ORDER BY d.fecha_hora_ingreso DESC`),
       q(`
         SELECT
-          (SELECT COUNT(*) FROM VehiculosAutorizados WHERE activo = 1 AND (fecha_vencimiento IS NULL OR fecha_vencimiento >= ${h})) AS autorizados_vigentes,
-          (SELECT COUNT(*) FROM VehiculosAutorizados WHERE activo = 1 AND fecha_vencimiento >= ${h}
+          (SELECT COUNT(*) FROM ListaBlanca WHERE activo = 1 AND (fecha_vencimiento IS NULL OR fecha_vencimiento >= ${h})) AS autorizados_vigentes,
+          (SELECT COUNT(*) FROM ListaBlanca WHERE activo = 1 AND fecha_vencimiento >= ${h}
              AND fecha_vencimiento <= DATEADD(DAY, @dias, ${h})) AS autorizados_por_vencer,
-          (SELECT COUNT(*) FROM VehiculosAutorizados WHERE activo = 1 AND fecha_vencimiento < ${h}) AS autorizados_vencidos,
+          (SELECT COUNT(*) FROM ListaBlanca WHERE activo = 1 AND fecha_vencimiento < ${h}) AS autorizados_vencidos,
             (SELECT COUNT(*) FROM ListaNegra WHERE activo = 1 AND (fecha_vencimiento IS NULL OR fecha_vencimiento >= ${h})) AS alertas_vigentes`),
       // Balance del guardia sobre los ingresos de hoy (cualquier estado, como «Todos los accesos»):
       // entradas = siguen sin salida (bajan al registrar la salida), salidas = ya salieron;
@@ -107,8 +107,8 @@ export const repositorioPanelSql: RepositorioPanel = {
           SUM(CASE WHEN fecha_vencimiento < ${h} THEN 1 ELSE 0 END) AS vencidos,
           SUM(CASE WHEN fecha_inicio > ${h} THEN 1 ELSE 0 END) AS por_iniciar,
           SUM(CASE WHEN horario IS NOT NULL THEN 1 ELSE 0 END) AS con_horario
-        FROM VehiculosAutorizados WHERE activo = 1 AND registrado_por = @uid`),
-      q(`SELECT categoria, COUNT(*) AS n FROM VehiculosAutorizados WHERE activo = 1 AND registrado_por = @uid GROUP BY categoria`),
+        FROM ListaBlanca WHERE activo = 1 AND registrado_por = @uid`),
+      q(`SELECT categoria, COUNT(*) AS n FROM ListaBlanca WHERE activo = 1 AND registrado_por = @uid GROUP BY categoria`),
     ]);
 
     return {

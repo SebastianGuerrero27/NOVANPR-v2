@@ -69,6 +69,15 @@ jest.mock('../../infraestructura/db', () => {
           }
           return { recordset: [], rowsAffected: [1] };
         }
+        if (/UPDATE Usuarios SET estado = 'activo'/.test(texto) && texto.includes('password_hash = @hash')) {
+          const u = porId();
+          const vigente = u && u.estado === 'pendiente' && !u.bloqueado && u.password_hash === entradas.hash
+            && !(u.bloqueado_hasta && new Date(u.bloqueado_hasta) > new Date());
+          if (!vigente) return { recordset: [], rowsAffected: [0] };
+          mockEscrituras.push({ texto, entradas: { ...entradas } });
+          u.estado = 'activo';
+          return { recordset: [{ id: u.id }], rowsAffected: [1] };
+        }
         if (/SET estado = 'inactivo'/.test(texto)) {
           mockEscrituras.push({ texto, entradas: { ...entradas } });
           if (porId()) porId()!.estado = 'inactivo';
@@ -105,7 +114,10 @@ jest.mock('../../infraestructura/servicios/emailService', () => ({
 /* eslint-disable @typescript-eslint/no-var-requires */
 const usuariosRoutes = require('../../interfaz/http/rutas/usuarios').default;
 const authRoutes = require('../../interfaz/http/rutas/auth').default;
-const { alInvalidarCuenta } = require('../../infraestructura/sesiones') as { alInvalidarCuenta: (fn: (id?: number) => void) => void };
+const { alInvalidarCuenta, cuentaVigente } = require('../../infraestructura/sesiones') as {
+  alInvalidarCuenta: (fn: (id?: number) => void) => void;
+  cuentaVigente: (id: number) => Promise<{ vigente: boolean }>;
+};
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 const sesion = (id: number, email: string, rol: string) =>
@@ -207,12 +219,36 @@ describe('API · autenticación (rechazos con código propio)', () => {
     expect(r.body).toEqual({ error: 'Cuenta bloqueada temporalmente por intentos fallidos. Intente en 10 min.' });
   });
 
-  it('correo sin verificar → 403 con el código EMAIL_NO_VERIFICADO y acceso fallido auditado', async () => {
-    const r = await request(app).post('/api/auth/login').send({ email: 'pendiente@ecu911.gob.ec', password: CLAVE }).set('User-Agent', 'jest').expect(403);
-    expect(r.body).toEqual({ error: 'Debe verificar su correo antes de ingresar.', codigo: 'EMAIL_NO_VERIFICADO' });
-    expect(mockEscrituras.map(e => e.entradas)).toEqual([
-      expect.objectContaining({ email: 'pendiente@ecu911.gob.ec', uid: 9, exito: false, motivo: 'no_verificado', ua: 'jest' }),
-    ]);
+  it('con verificación habilitada: correo sin verificar → 403 y acceso fallido auditado', async () => {
+    const anterior = process.env.REGISTRO_VERIFICACION_EMAIL_HABILITADA;
+    process.env.REGISTRO_VERIFICACION_EMAIL_HABILITADA = 'true';
+    try {
+      const r = await request(app).post('/api/auth/login').send({ email: 'pendiente@ecu911.gob.ec', password: CLAVE }).set('User-Agent', 'jest').expect(403);
+      expect(r.body).toEqual({ error: 'Debe verificar su correo antes de ingresar.', codigo: 'EMAIL_NO_VERIFICADO' });
+      expect(mockEscrituras.map(e => e.entradas)).toEqual([
+        expect.objectContaining({ email: 'pendiente@ecu911.gob.ec', uid: 9, exito: false, motivo: 'no_verificado', ua: 'jest' }),
+      ]);
+    } finally {
+      if (anterior === undefined) delete process.env.REGISTRO_VERIFICACION_EMAIL_HABILITADA;
+      else process.env.REGISTRO_VERIFICACION_EMAIL_HABILITADA = anterior;
+    }
+  });
+
+  it('sin correo: activa pendiente con contraseña y /me reconoce inmediatamente su sesión', async () => {
+    const anterior = process.env.REGISTRO_VERIFICACION_EMAIL_HABILITADA;
+    process.env.REGISTRO_VERIFICACION_EMAIL_HABILITADA = 'false';
+    try {
+      expect(await cuentaVigente(9)).toMatchObject({ vigente: false });
+      const r = await request(app).post('/api/auth/login').send({ email: 'pendiente@ecu911.gob.ec', password: CLAVE }).expect(200);
+      expect(r.body.user.rol).toBe('Guardia');
+      expect(mockUsuarios.get(9)).toMatchObject({ estado: 'activo', email_verificado: 0 });
+      expect(invalidadas).toContain(9);
+      const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${r.body.token}`).expect(200);
+      expect(me.body.user.id).toBe(9);
+    } finally {
+      if (anterior === undefined) delete process.env.REGISTRO_VERIFICACION_EMAIL_HABILITADA;
+      else process.env.REGISTRO_VERIFICACION_EMAIL_HABILITADA = anterior;
+    }
   });
 
   it('enlace de verificación vencido → 410 con el código TOKEN_EXPIRADO', async () => {

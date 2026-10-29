@@ -1,17 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Download, Edit3, FileStack, Plus, RotateCcw, Search, ShieldCheck, Trash2, Upload, UserCheck, Users } from 'lucide-react';
-import api, { mensajeError } from '../../infraestructura/api';
+import { Download, FileStack, Plus, PowerOff, Search, ShieldCheck, Upload, UserCheck, Users } from 'lucide-react';
+import api from '../../infraestructura/api';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta, useDiferido } from '../../aplicacion/hooks';
 import type { RegistroLista } from '../../dominio/tipos';
 import { fecha, fechaIsoLocal, numero, relativo } from '../../dominio/formato';
-import { formatearPlaca } from '../../dominio/validacion';
 import { descargarBlob } from '../../infraestructura/descargas';
-import { Aviso, Confirmar, FilasEsqueleto, Kpi, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
+import { Aviso, FilasEsqueleto, Kpi, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
 import { FormularioLista } from '../componentes/FormularioLista';
 import { ImportarPermisos } from '../componentes/ImportarPermisos';
 import { useNotificar } from '../componentes/Notificaciones';
+import { RegistradoPor } from '../componentes/RegistradoPor';
+import { AccionesPermiso, estadoPermiso, useAccionesPermiso } from '../componentes/AccionesPermiso';
 
 /** Respuesta de GET /vehiculos-autorizados/registro. */
 interface RegistroPermisos {
@@ -28,14 +29,6 @@ type Estado = 'activos' | 'retirados' | 'todos';
 /** Código del rol en la tabla Roles (lo entrega la API) → nombre visible. */
 const NOMBRE_ROL: Record<string, string> = { ADMIN: 'Administrador', GUARDIA: 'Guardia', GESTOR_PERMISOS: 'Gestor de permisos' };
 
-const estadoPermiso = (r: RegistroLista): { texto: string; clase: string } => {
-  if (r.activo === false) return { texto: 'Retirado', clase: 'neutro' };
-  if (!r.vigente) return { texto: `Vencido · ${fecha(r.fecha_vencimiento)}`, clase: 'alerta' };
-  if (r.pendiente_inicio) return { texto: `Desde ${fecha(r.fecha_inicio)}`, clase: 'info' };
-  if (r.por_vencer) return { texto: `Vence ${fecha(r.fecha_vencimiento)}`, clase: 'no_reconocido' };
-  return { texto: r.fecha_vencimiento ? `Hasta ${fecha(r.fecha_vencimiento)}` : 'Permanente', clase: 'autorizado' };
-};
-
 function aCsv(filas: RegistroLista[]): Blob {
   const c = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const cab = ['ID', 'Nombres', 'Cédula', 'Institución', 'Cargo', 'Placa', 'Marca', 'Modelo', 'Tipo', 'Color', 'Departamento', 'Vigente desde',
@@ -48,8 +41,9 @@ function aCsv(filas: RegistroLista[]): Blob {
 
 /**
  * Permisos por usuario (administrador, padron:supervisar): todos los permisos de la lista blanca
- * con quién los otorgó, incluidos los retirados. Resume lo que registró cada gestor, filtra por
- * usuario, estado y texto, y permite crear, editar, retirar, reactivar e importar permisos.
+ * con quién los otorgó, incluidos los desactivados. Resume lo que registró cada gestor, filtra por
+ * usuario, estado y texto, y permite crear, editar, desactivar, activar, renovar e importar permisos
+ * (acciones compartidas con el gestor: componentes/AccionesPermiso.tsx).
  */
 const PermisosUsuarios: React.FC<{ incrustada?: boolean }> = ({ incrustada }) => {
   const notificar = useNotificar();
@@ -57,11 +51,7 @@ const PermisosUsuarios: React.FC<{ incrustada?: boolean }> = ({ incrustada }) =>
   const usuario = params.get('usuario') ?? '';
   const estado: Estado = params.get('estado') === 'activos' || params.get('estado') === 'retirados' ? params.get('estado') as Estado : 'todos';
   const [busqueda, setBusqueda] = useState('');
-  const [editando, setEditando] = useState<RegistroLista | 'nuevo' | null>(null);
-  const [retirando, setRetirando] = useState<RegistroLista | null>(null);
-  const [reactivando, setReactivando] = useState<RegistroLista | null>(null);
-  const [eliminando, setEliminando] = useState<RegistroLista | null>(null);
-  const [renovando, setRenovando] = useState<RegistroLista | null>(null);
+  const [creando, setCreando] = useState(false);
   const [importando, setImportando] = useState(false);
 
   const { datos, cargando, error, recargar } = useConsulta<RegistroPermisos>(
@@ -69,6 +59,7 @@ const PermisosUsuarios: React.FC<{ incrustada?: boolean }> = ({ incrustada }) =>
   const diferido = useDiferido(() => recargar(true), 800);
   useEvento<{ lista: string }>('listas:actualizadas', e => { if (e.lista === 'autorizado') diferido(); });
   useReconexion(() => recargar(true));
+  const acciones = useAccionesPermiso(() => recargar(true));
 
   const cambiar = (k: string, v: string) => {
     const p = new URLSearchParams(params);
@@ -93,11 +84,11 @@ const PermisosUsuarios: React.FC<{ incrustada?: boolean }> = ({ incrustada }) =>
         <div>
           {/* Dentro de Gestión de Permisos la pestaña ya da el título */}
           {!incrustada && <h2>Permisos por usuario</h2>}
-          <p>Permisos de la lista blanca otorgados por cada gestor (vigentes, vencidos y retirados) · cada cambio queda en la auditoría</p>
+          <p>Permisos de la lista blanca otorgados por cada gestor (vigentes, vencidos y desactivados) · cada cambio queda en la auditoría</p>
         </div>
         <div className="fila">
           <button className="btn btn-secondary" onClick={() => setImportando(true)}><Upload size={15} /> Importar</button>
-          <button className="btn btn-navy" onClick={() => setEditando('nuevo')}><Plus size={15} /> Nuevo permiso</button>
+          <button className="btn btn-navy" onClick={() => setCreando(true)}><Plus size={15} /> Nuevo permiso</button>
         </div>
       </div>
       {error && <Aviso tipo="error" style={{ marginBottom: 16 }}>{error}</Aviso>}
@@ -106,8 +97,8 @@ const PermisosUsuarios: React.FC<{ incrustada?: boolean }> = ({ incrustada }) =>
         <div className="grid-kpi">
           <Kpi etiqueta="Permisos activos" valor={numero(datos ? totales.activos : null)} icono={<ShieldCheck size={17} />} color="var(--autorizado)" fondo="var(--autorizado-bg)"
             cargando={!datos} onClick={() => cambiar('estado', 'activos')} pie={datos ? `${numero(totales.por_vencer)} por vencer · ${numero(totales.vencidos)} vencidos` : undefined} />
-          <Kpi etiqueta="Retirados" valor={numero(datos ? totales.retirados : null)} icono={<RotateCcw size={17} />} cargando={!datos}
-            onClick={() => cambiar('estado', 'retirados')} pie="Se pueden reactivar" />
+          <Kpi etiqueta="Desactivados" valor={numero(datos ? totales.retirados : null)} icono={<PowerOff size={17} />} cargando={!datos}
+            onClick={() => cambiar('estado', 'retirados')} pie="Se pueden activar de nuevo" />
           <Kpi etiqueta="Usuarios que otorgan" valor={numero(datos?.usuarios.length)} icono={<Users size={17} />} cargando={!datos}
             pie="Gestores de permisos y quien registró alguno" />
         </div>
@@ -116,7 +107,7 @@ const PermisosUsuarios: React.FC<{ incrustada?: boolean }> = ({ incrustada }) =>
           <div className="tabla-contenedor">
             <table className="tabla compacta">
               <thead><tr><th>Usuario</th><th>Rol</th><th className="num">Total</th><th className="num">Vigentes</th><th className="num">Por vencer</th>
-                <th className="num">Vencidos</th><th className="num">Retirados</th><th className="num">Sin placa</th><th>Último registro</th><th /></tr></thead>
+                <th className="num">Vencidos</th><th className="num">Desactivados</th><th className="num">Sin placa</th><th>Último registro</th><th /></tr></thead>
               <tbody>
                 {!datos ? <FilasEsqueleto columnas={10} filas={3} /> : datos.usuarios.map(u => {
                   const activo = String(u.id) === usuario;
@@ -159,7 +150,7 @@ const PermisosUsuarios: React.FC<{ incrustada?: boolean }> = ({ incrustada }) =>
               </div>
             </div>
             <Segmentado<Estado> valor={estado} onCambiar={v => cambiar('estado', v === 'todos' ? '' : v)} opciones={[
-              { valor: 'todos', etiqueta: 'Todos' }, { valor: 'activos', etiqueta: 'Activos' }, { valor: 'retirados', etiqueta: 'Retirados' },
+              { valor: 'todos', etiqueta: 'Todos' }, { valor: 'activos', etiqueta: 'Activos' }, { valor: 'retirados', etiqueta: 'Desactivados' },
             ]} />
           </div>
           <div className="tabla-contenedor">
@@ -180,26 +171,9 @@ const PermisosUsuarios: React.FC<{ incrustada?: boolean }> = ({ incrustada }) =>
                       <td>{r.placa ? <Placa valor={r.placa} /> : <span className="insignia info">Pendiente de placa</span>}</td>
                       <td>{[r.tipo_vehiculo, [r.marca, r.modelo].filter(Boolean).join(' '), r.color].filter(Boolean).join(' · ') || '—'}</td>
                       <td><span className={`insignia ${e.clase}`}>{e.texto}</span></td>
-                      <td><span>{r.registrado_por_nombre ?? '—'}</span><span className="secundario">{fecha(r.fecha_registro)}</span></td>
+                      <td><RegistradoPor r={r} /></td>
                       <td className="num">{numero(r.ingresos)}</td>
-                      <td className="acciones-celda"><div className="acciones-registro">
-                        {r.activo === false
-                          // Un permiso vencido no se reactiva tal cual: se renueva con una vigencia nueva
-                          ? (r.vigente
-                            ? <button className="btn btn-ghost btn-sm" onClick={() => setReactivando(r)} title="Reactivar el permiso"><RotateCcw size={14} /> Reactivar</button>
-                            : <button className="btn btn-ghost btn-sm" onClick={() => setRenovando(r)} title="Renovar con una vigencia nueva"><RotateCcw size={14} /> Renovar</button>)
-                          : <button className="btn btn-ghost btn-sm btn-icono" onClick={() => setEditando(r)} title="Editar" aria-label="Editar"><Edit3 size={15} /></button>}
-                        {r.activo !== false && r.vigente && (
-                          <button className="btn btn-ghost btn-sm btn-icono" onClick={() => setRetirando(r)} title="Retirar de la lista (se puede reactivar)" aria-label="Retirar"><Trash2 size={15} color="var(--alerta)" /></button>
-                        )}
-                        {/* Retirado o vencido: se puede eliminar del todo si ningún ingreso del historial lo usa */}
-                        {(r.activo === false || !r.vigente) && (
-                          <button className="btn btn-ghost btn-sm" onClick={() => setEliminando(r)} disabled={r.ingresos > 0}
-                            title={r.ingresos > 0 ? `Tiene ${r.ingresos} ingresos en el historial: se conserva retirado para la trazabilidad` : 'Eliminar definitivamente'}>
-                            <Trash2 size={14} color={r.ingresos > 0 ? undefined : 'var(--alerta)'} /> Eliminar
-                          </button>
-                        )}
-                      </div></td>
+                      <td className="acciones-celda"><AccionesPermiso r={r} onAccion={acciones.abrir} puedeEliminar /></td>
                     </tr>
                   );
                 })}
@@ -213,47 +187,12 @@ const PermisosUsuarios: React.FC<{ incrustada?: boolean }> = ({ incrustada }) =>
         </Tarjeta>
       </div>
 
-      {editando && (
-        <FormularioLista tipo="autorizados" registro={editando === 'nuevo' ? undefined : editando} onCerrar={() => setEditando(null)}
-          onGuardado={() => { setEditando(null); recargar(true); notificar('exito', editando === 'nuevo' ? 'Permiso registrado' : 'Cambios guardados'); }} />
-      )}
-      {/* Renovar = alta con los mismos datos y una vigencia nueva (la API reactiva el registro de esa placa) */}
-      {renovando && (
-        <FormularioLista tipo="autorizados" inicial={{ ...renovando, fecha_inicio: '', fecha_vencimiento: '', fecha_fin: '' }} onCerrar={() => setRenovando(null)}
-          onGuardado={() => { setRenovando(null); recargar(true); notificar('exito', 'Permiso renovado'); }} />
+      {creando && (
+        <FormularioLista tipo="autorizados" onCerrar={() => setCreando(false)}
+          onGuardado={() => { setCreando(false); recargar(true); notificar('exito', 'Permiso registrado'); }} />
       )}
       {importando && <ImportarPermisos onCerrar={() => setImportando(false)} onImportado={() => recargar(true)} />}
-      {/* Retirar y reactivar se pueden revertir: basta un clic, sin motivo */}
-      {retirando && (
-        <Confirmar titulo="Retirar el permiso" peligro textoBoton="Retirar"
-          mensaje={<>Se retirará el permiso de <b>{retirando.placa ? formatearPlaca(retirando.placa) : retirando.propietario}</b>, otorgado por {retirando.registrado_por_nombre ?? 'otro usuario'}. Podrá reactivarlo o eliminarlo después; el historial de ingresos se conserva.</>}
-          onConfirmar={async () => {
-            try { await api.delete(`/vehiculos-autorizados/${retirando.id}`); } catch (e) { throw new Error(mensajeError(e)); }
-            recargar(true);
-            notificar('exito', 'Permiso retirado');
-          }}
-          onCerrar={() => setRetirando(null)} />
-      )}
-      {reactivando && (
-        <Confirmar titulo="Reactivar el permiso" textoBoton="Reactivar"
-          mensaje={<>El permiso de <b>{reactivando.placa ? formatearPlaca(reactivando.placa) : reactivando.propietario}</b> vuelve a la lista blanca con sus mismos datos y vigencia{reactivando.vigente ? '' : ' (está vencido: edite la vigencia después de reactivarlo)'}.</>}
-          onConfirmar={async () => {
-            try { await api.post(`/vehiculos-autorizados/${reactivando.id}/reactivar`, {}); } catch (e) { throw new Error(mensajeError(e)); }
-            recargar(true);
-            notificar('exito', 'Permiso reactivado');
-          }}
-          onCerrar={() => setReactivando(null)} />
-      )}
-      {eliminando && (
-        <Confirmar titulo="Eliminar definitivamente" peligro textoBoton="Eliminar definitivamente"
-          mensaje={<>Se borrará el permiso de <b>{eliminando.placa ? formatearPlaca(eliminando.placa) : eliminando.propietario}</b> ({eliminando.activo === false ? 'retirado' : 'vencido'}) y sus fotos. <b>No se puede deshacer</b>; la eliminación queda registrada en la auditoría.</>}
-          onConfirmar={async () => {
-            try { await api.delete(`/vehiculos-autorizados/${eliminando.id}/definitivo`); } catch (e) { throw new Error(mensajeError(e)); }
-            recargar(true);
-            notificar('exito', 'Permiso eliminado definitivamente');
-          }}
-          onCerrar={() => setEliminando(null)} />
-      )}
+      {acciones.dialogo}
     </div>
   );
 };

@@ -647,9 +647,6 @@ a.kpi:hover, button.kpi:hover { border-color: var(--kpi-color, var(--border-stro
 .tipificacion.particular { --franja: #cbd5e1; }
 .tipificacion.fuerzas_armadas { --franja: #4b5563; }
 .tipificacion.motocicleta::before, .tipificacion.antiguo::before { background: var(--surface-3); }
-/* Progreso de una carga (video de prueba) */
-.barra-progreso { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
-.barra-progreso > span { display: block; height: 100%; background: var(--pendiente); transition: width 0.2s; }
 
 /* Botones */
 .btn {
@@ -1466,3 +1463,40 @@ a.kpi:hover, button.kpi:hover { border-color: var(--kpi-color, var(--border-stro
 }
 .aviso-version svg { color: var(--opcion-activa-borde); flex-shrink: 0; }
 @media (max-width: 640px) { .aviso-version { flex-wrap: wrap; } }
+
+/* Configuración: aprovecha el ancho. Arriba el estado (motor, correo, servidor); abajo dos columnas
+   de parámetros que pasan a una sola en pantallas angostas; la barra de guardado queda fija abajo */
+.configuracion { display: flex; flex-direction: column; gap: 16px; max-width: 1760px; }
+.config-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; align-items: stretch; }
+.config-resumen > .tarjeta { height: 100%; }
+.config-columnas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 1180px) { .config-columnas { grid-template-columns: minmax(0, 1fr); } }
+.parametro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 240px); gap: 8px 20px; padding: 14px 20px; align-items: center; }
+.parametro + .parametro { border-top: 1px solid var(--border); }
+.parametro-texto label { font-weight: 600; font-size: 13.5px; color: var(--text); }
+.parametro-texto .texto-secundario { margin-top: 2px; }
+.parametro-origen { font-size: 11.5px; color: var(--text-4); margin-top: 4px; }
+.parametro .error { font-size: 12px; color: var(--alerta); }
+.parametro-control.interruptor-derecha { justify-self: end; }
+@media (max-width: 640px) {
+  .parametro { grid-template-columns: minmax(0, 1fr); padding: 14px 16px; }
+  .parametro-control.interruptor-derecha { justify-self: start; }
+}
+#correo-saliente { scroll-margin-top: 80px; }
+.guia-smtp { border: 1px solid var(--pendiente-border); background: var(--pendiente-bg); border-radius: var(--radius); padding: 12px 14px; font-size: 12.5px; color: var(--text-2); }
+.guia-smtp ol { margin: 6px 0 0 18px; display: grid; gap: 4px; }
+.guia-smtp a { display: inline-flex; align-items: center; gap: 3px; }
+.prueba-smtp { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; padding-top: 14px; border-top: 1px dashed var(--border); }
+.prueba-smtp > .btn { margin-top: 22px; }
+@media (max-width: 640px) { .prueba-smtp { grid-template-columns: minmax(0, 1fr); } .prueba-smtp > .btn { margin-top: 0; } }
+.barra-guardar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end;
+  padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.08);
+}
+.barra-guardar > .aviso { flex-basis: 100%; }
+.barra-guardar > .texto-secundario { margin-right: auto; }
+
+/* Acciones de un permiso: desactivar (reversible, ámbar) y activar (verde); eliminar sigue en rojo */
+.accion-desactivar { color: var(--no-registrado); }
+.accion-activar { color: var(--autorizado); }

@@ -13,6 +13,7 @@ import { iniciarWebPush } from './infraestructura/servicios/webPush';
 import { iniciarTareasProgramadas } from './infraestructura/servicios/tareasProgramadas';
 import { recuperarEvidenciasListas } from './infraestructura/servicios/evidenciaListas';
 import { iniciarRetiroPermisosVencidos } from './contenedor/listas';
+import { cargarCorreoSaliente } from './contenedor/configuracion';
 
 const app = crearApp();
 const server = createServer(app);
@@ -23,6 +24,8 @@ async function startServer() {
     // Base de datos (con reintentos) y esquema; luego los canales de tiempo real y las tareas
     const pool = await connectDB();
     await protegerCredencialesGuardadas(pool);
+    // Correo saliente de Configuración (si no hay, rigen las variables SMTP_*)
+    await cargarCorreoSaliente();
     await iniciarWebPush(pool);
 
     initSocket(server);

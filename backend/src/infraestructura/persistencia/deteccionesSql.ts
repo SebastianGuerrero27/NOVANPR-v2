@@ -3,7 +3,7 @@ import { getDB } from '../db';
 import { DATOS_INGRESO_COMPLETOS_SQL, REGISTRO_COMPLETO_SQL } from './registroCompletoSql';
 import type { Cruce, RepositorioDetecciones } from '../../aplicacion/detecciones';
 import type { Decision } from '../../dominio/decisionAcceso';
-import { FUENTE_VIDEO_PRUEBA, type FiltrosDetecciones, VENTANA_MISMO_PASO_S } from '../../dominio/detecciones';
+import { type FiltrosDetecciones, VENTANA_MISMO_PASO_S } from '../../dominio/detecciones';
 import { guardarAtributosVehiculo, guardarMetadatosCaptura, type LecturaAutomatica, registrarLecturaAutomatica } from '../servicios/metadatosDeteccion';
 import { desfaseMinutos } from '../servicios/tiempo';
 
@@ -24,7 +24,7 @@ const SELECT_DETECCION = `
   FROM DeteccionVehiculo d
   LEFT JOIN Camaras c ON c.id = d.camara_id
   LEFT JOIN ListaNegra l ON l.id = d.alerta_id
-  LEFT JOIN VehiculosAutorizados v ON v.id = d.vehiculo_autorizado_id
+  LEFT JOIN ListaBlanca v ON v.id = d.vehiculo_autorizado_id
   LEFT JOIN Usuarios uv ON uv.id = d.usuario_validador_id`;
 
 /** Placa sin separadores, para comparar lecturas y correcciones. */
@@ -65,15 +65,14 @@ function aplicarFiltros(f: FiltrosDetecciones, request: PostgresRequest): string
     w.push(`(${PLACA_D} ILIKE REPLACE(@buscar, '-', '')
       OR ${texto('d.persona_ingreso')} OR ${texto('d.motivo_ingreso')}
       OR ${texto('d.vehiculo_marca')} OR ${texto('d.vehiculo_modelo')}
-      OR d.datos_permiso->>'cedula' LIKE @buscar
-      OR EXISTS (SELECT 1 FROM VehiculosAutorizados permiso_busqueda
+      OR d.cedula_ingreso LIKE @buscar
+      OR EXISTS (SELECT 1 FROM ListaBlanca permiso_busqueda
         WHERE permiso_busqueda.id = d.vehiculo_autorizado_id
           AND (${texto('permiso_busqueda.propietario')} OR permiso_busqueda.cedula LIKE @buscar)))`);
   }
   if (f.movimiento) w.push(`COALESCE(d.tipo_movimiento, 'ingreso') = '${f.movimiento === 'salida' ? 'salida' : 'ingreso'}'`);
   if (f.origen === 'manual') w.push("d.fuente = 'manual'");
-  else if (f.origen === 'video') w.push(`d.fuente = '${FUENTE_VIDEO_PRUEBA}'`);
-  else if (f.origen === 'camara') w.push(`COALESCE(d.fuente, 'rtsp') NOT IN ('manual', '${FUENTE_VIDEO_PRUEBA}')`);
+  else if (f.origen === 'camara') w.push("COALESCE(d.fuente, 'rtsp') <> 'manual'");
   if (f.horaDesde !== undefined || f.horaHasta !== undefined) {
     // Franja en hora local; "hasta" incluye su minuto completo y 22:00–06:00 cruza la medianoche
     request.input('desfase', sql.Int, desfaseMinutos());
@@ -165,10 +164,7 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
         INSERT INTO DeteccionVehiculo (tracking_id, placa_reconocida, ruta_imagen_ingreso, confianza_deteccion, fuente,
                                        camara_id, tipo_movimiento, estado_procesamiento, estado_validacion, fecha_hora_ingreso)
         OUTPUT INSERTED.id, INSERTED.fecha_hora_ingreso
-        VALUES (@tid, @pista, @ruta, @conf,
-                -- Una cámara de prueba (video cargado) no es el flujo real: su origen queda guardado en el paso
-                CASE WHEN EXISTS (SELECT 1 FROM Camaras WHERE id = @camara AND rtsp_url LIKE 'video://%') THEN '${FUENTE_VIDEO_PRUEBA}' ELSE @fuente END,
-                @camara, @movimiento, 'pendiente_ocr', 'pendiente_revision', GETDATE())`);
+        VALUES (@tid, @pista, @ruta, @conf, @fuente, @camara, @movimiento, 'pendiente_ocr', 'pendiente_revision', GETDATE())`);
     return r.recordset[0];
   },
 
@@ -220,18 +216,24 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
   async guardarDatosIngreso(id, x) {
     const request = db().request().input('id', sql.Int, id);
     const campos: string[] = [];
-    // La edición de una celda actualiza únicamente ese dato del registro, sin reemplazar la ficha
-    // ni modificar el permiso de lista blanca. Se mantienen coherentes las copias del formulario.
-    const ficha = { ...x.datosPermiso };
-    if (x.cedula !== undefined) ficha.cedula = x.cedula;
-    if (x.persona !== undefined) ficha.propietario = x.persona;
-    if (x.tipo !== undefined) ficha.tipo_vehiculo = x.tipo;
-    if (x.marca !== undefined) ficha.marca = x.marca;
-    if (x.modelo !== undefined) ficha.modelo = x.modelo;
-    if (x.color !== undefined) ficha.color = x.color;
-    if (Object.keys(ficha).length) {
-      request.input('datosPermiso', sql.NVarChar(10000), JSON.stringify(ficha));
-      campos.push("datos_permiso = COALESCE(datos_permiso, '{}'::jsonb) || CAST(@datosPermiso AS jsonb)");
+    const poner = (columna: string, tipo: unknown, valor: string | null) => {
+      request.input(columna, tipo, valor);
+      campos.push(`${columna} = @${columna}`);
+    };
+    // La edición de una celda actualiza únicamente ese dato del registro, sin modificar el permiso de
+    // lista blanca. En los datos que también tiene el permiso, '' = vaciado a propósito: no se repone
+    // del permiso al presentarlo (NULL = nunca escrito; ver presentacionDetecciones.ts)
+    const vaciable = (v: string | null) => v ?? '';
+    if (x.cedula !== undefined) poner('cedula_ingreso', sql.VarChar(10), vaciable(x.cedula));
+    if (x.ficha) {
+      poner('institucion_ingreso', sql.VarChar(150), vaciable(x.ficha.institucion));
+      poner('cargo_ingreso', sql.VarChar(150), vaciable(x.ficha.cargo));
+      poner('departamento_ingreso', sql.VarChar(100), vaciable(x.ficha.departamento));
+      poner('categoria_permiso', sql.VarChar(20), x.ficha.categoria);
+      poner('observaciones_permiso', sql.VarChar(255), x.ficha.observaciones);
+      poner('vigencia_desde', sql.Date, x.ficha.vigenciaDesde);
+      poner('vigencia_hasta', sql.Date, x.ficha.vigenciaHasta);
+      poner('horario_permiso', sql.VarChar(600), x.ficha.horario);
     }
     if (x.persona !== undefined) { request.input('persona', sql.VarChar(150), x.persona); campos.push('persona_ingreso = @persona'); }
     if (x.motivo !== undefined) { request.input('motivo', sql.VarChar(300), x.motivo); campos.push('motivo_ingreso = @motivo'); }
@@ -244,7 +246,7 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
 
   async autorizarIngresoSinPlaca(id, usuarioId) {
     const crear = await db().request().input('id', sql.Int, id).input('usuario', sql.Int, usuarioId).query(`
-      INSERT INTO VehiculosAutorizados
+      INSERT INTO ListaBlanca
         (placa, propietario, tipo_vehiculo, marca, modelo, color, categoria, registrado_por, activo, fecha_registro)
       SELECT NULL, d.persona_ingreso, d.tipo_vehiculo, d.vehiculo_marca, d.vehiculo_modelo, d.vehiculo_color,
              'FUNCIONARIO', @usuario, TRUE, CURRENT_TIMESTAMP
@@ -255,7 +257,7 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
         AND d.vehiculo_marca IS NOT NULL
         AND d.vehiculo_modelo IS NOT NULL
         AND NOT EXISTS (
-          SELECT 1 FROM VehiculosAutorizados v
+          SELECT 1 FROM ListaBlanca v
           WHERE v.activo = TRUE AND v.placa IS NULL
             AND v.propietario = d.persona_ingreso
             AND v.tipo_vehiculo = d.tipo_vehiculo
@@ -267,7 +269,7 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
       .input('id', sql.Int, id)
       .query(`
         SELECT v.id
-        FROM VehiculosAutorizados v
+        FROM ListaBlanca v
         JOIN DeteccionVehiculo d
           ON v.placa IS NULL
          AND v.propietario = d.persona_ingreso
@@ -418,7 +420,6 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
         SUM(CASE WHEN ${PLACA_D} = '' THEN 1 ELSE 0 END) AS sin_lectura,
         COUNT(DISTINCT NULLIF(${PLACA_D}, '')) AS placas,
         SUM(CASE WHEN d.fuente = 'manual' THEN 1 ELSE 0 END) AS manuales,
-        SUM(CASE WHEN d.fuente = '${FUENTE_VIDEO_PRUEBA}' THEN 1 ELSE 0 END) AS video_prueba,
         MIN(d.fecha_hora_ingreso) AS primero, MAX(d.fecha_hora_ingreso) AS ultimo
       FROM DeteccionVehiculo d WHERE ${w.join(' AND ')}`);
     const x = r.recordset[0] ?? {};
@@ -426,8 +427,8 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
     return {
       total: n(x.total), ingresos: n(x.ingresos), salidas: n(x.salidas), con_salida: n(x.con_salida),
       autorizados: n(x.autorizados), alertas: n(x.alertas), no_registrados: n(x.no_registrados), pendientes: n(x.pendientes),
-      sin_lectura: n(x.sin_lectura), placas: n(x.placas), manuales: n(x.manuales), video_prueba: n(x.video_prueba),
-      camara: n(x.total) - n(x.manuales) - n(x.video_prueba),
+      sin_lectura: n(x.sin_lectura), placas: n(x.placas), manuales: n(x.manuales),
+      camara: n(x.total) - n(x.manuales),
       primero: x.primero ?? null, ultimo: x.ultimo ?? null,
     };
   },

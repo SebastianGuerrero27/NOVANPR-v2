@@ -1,0 +1,172 @@
+{
+  "entorno": {
+    "modelo": "services/anpr/models/license_plate_detector.pt",
+    "sha256": "3667d8168e8a5a62fddf0992546efa0dc60f37578c9e95e8c0cbc92d4ed74c5c",
+    "coincide_con_ficha": true,
+    "clases": {
+      "0": "license_plate"
+    },
+    "python": "3.13.1",
+    "torch": "2.14.0+cpu",
+    "ultralytics": "8.4.160",
+    "cpu": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+    "hilos_torch": 14,
+    "fecha": "2026-10-29T02:15:20"
+  },
+  "protocolo": {
+    "split": "test",
+    "imgsz": 512,
+    "iou_minimo": 0.5,
+    "umbral_servicio": 0.22,
+    "conf_minima_guardada": 0.01,
+    "emparejamiento": "codicioso por confianza (scripts/evaluate_detectors.py)",
+    "ap": "interpolación de todos los puntos"
+  },
+  "conjuntos": {
+    "Open Images V7 (prueba)": {
+      "imagenes": 2048,
+      "placas": 2816,
+      "umbral_servicio": {
+        "umbral": 0.22,
+        "TP": 2359,
+        "FP": 340,
+        "FN": 457,
+        "precisión": 0.87402741756206,
+        "recall": 0.8377130681818182,
+        "F1": 0.8554850407978242
+      },
+      "umbral_0_35": {
+        "umbral": 0.35,
+        "TP": 2296,
+        "FP": 151,
+        "FN": 520,
+        "precisión": 0.938291785860237,
+        "recall": 0.8153409090909091,
+        "F1": 0.8725061751852554
+      },
+      "umbral_f1_maximo": {
+        "umbral": 0.383,
+        "TP": 2281,
+        "FP": 127,
+        "FN": 535,
+        "precisión": 0.9472591362126246,
+        "recall": 0.8100142045454546,
+        "F1": 0.8732771822358346
+      },
+      "ic95_umbral_servicio": {
+        "precisión": [
+          0.8596937355120222,
+          0.8874026995361677
+        ],
+        "recall": [
+          0.8199908978840578,
+          0.8541610796056297
+        ],
+        "F1": [
+          0.8426192178731132,
+          0.8677940684458788
+        ]
+      },
+      "ap": {
+        "AP50": 0.8624267010951008,
+        "AP75": 0.6049597886567629,
+        "mAP50-95": 0.5364413255705769
+      },
+      "recall_por_ancho": [
+        {
+          "ancho de la placa": "< 20 px",
+          "placas": 580,
+          "recall": 0.38620689655172413
+        },
+        {
+          "ancho de la placa": "20–40 px",
+          "placas": 424,
+          "recall": 0.8867924528301887
+        },
+        {
+          "ancho de la placa": "40–80 px",
+          "placas": 800,
+          "recall": 0.9725
+        },
+        {
+          "ancho de la placa": "80–160 px",
+          "placas": 823,
+          "recall": 0.9744835965978129
+        },
+        {
+          "ancho de la placa": "≥ 160 px",
+          "placas": 189,
+          "recall": 0.9470899470899471
+        }
+      ]
+    },
+    "Ecuador real (piloto)": {
+      "imagenes": 105,
+      "placas": 101,
+      "umbral_servicio": {
+        "umbral": 0.22,
+        "TP": 86,
+        "FP": 9,
+        "FN": 15,
+        "precisión": 0.9052631578947369,
+        "recall": 0.8514851485148515,
+        "F1": 0.8775510204081632
+      },
+      "umbral_0_35": {
+        "umbral": 0.35,
+        "TP": 81,
+        "FP": 6,
+        "FN": 20,
+        "precisión": 0.9310344827586207,
+        "recall": 0.801980198019802,
+        "F1": 0.8617021276595743
+      },
+      "umbral_f1_maximo": {
+        "umbral": 0.178,
+        "TP": 88,
+        "FP": 10,
+        "FN": 13,
+        "precisión": 0.8979591836734694,
+        "recall": 0.8712871287128713,
+        "F1": 0.8844221105527638
+      },
+      "ic95_umbral_servicio": {
+        "precisión": [
+          0.8469387755102041,
+          0.957458006718925
+        ],
+        "recall": [
+          0.78,
+          0.9126423637042568
+        ],
+        "F1": [
+          0.8272077679239234,
+          0.9246231155778896
+        ]
+      },
+      "ap": {
+        "AP50": 0.8834410759700834,
+        "AP75": 0.3900795978183955,
+        "mAP50-95": 0.42193472322449976
+      },
+      "recall_por_ancho": [
+        {
+          "ancho de la placa": "80–160 px",
+          "placas": 46,
+          "recall": 0.7391304347826086
+        },
+        {
+          "ancho de la placa": "≥ 160 px",
+          "placas": 55,
+          "recall": 0.9454545454545454
+        }
+      ]
+    }
+  },
+  "ultralytics_val_open_images": {
+    "precisión": 0.9451218792339099,
+    "recall": 0.8114346590909091,
+    "mAP50": 0.8690167415028102,
+    "mAP50-95": 0.5458761897997514
+  }
+}

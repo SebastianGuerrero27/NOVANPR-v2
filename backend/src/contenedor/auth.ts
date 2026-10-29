@@ -1,7 +1,7 @@
 import { casosAuth } from '../aplicacion/auth';
 import { auditoriaCuentasSql, clavesBcrypt, tokensEnlace } from '../infraestructura/cuentas';
 import { repositorioAuthSql } from '../infraestructura/persistencia/authSql';
-import { firmarToken } from '../infraestructura/sesiones';
+import { firmarToken, invalidarCuenta } from '../infraestructura/sesiones';
 import { config } from '../infraestructura/servicios/configuracion';
 import { emailService } from '../infraestructura/servicios/emailService';
 import { dominiosPermitidos, maxIntentos, minutosBloqueo, urlFrontend } from '../infraestructura/servicios/seguridad';
@@ -19,6 +19,7 @@ export const auth = casosAuth({
   sesiones: { firmar: u => firmarToken(u) },
   parametros: {
     registroHabilitado: () => config.booleano('registro_publico_habilitado'),
+    verificacionEmailRequerida: () => config.booleano('registro_verificacion_email_habilitada'),
     dominiosPermitidos: () => dominiosPermitidos(),
     unidadInstitucional: () => config.texto('unidad_institucional'),
     maxIntentos: () => maxIntentos(),
@@ -26,4 +27,5 @@ export const auth = casosAuth({
   },
   urlFrontend: () => urlFrontend(),
   registrarFallo: (contexto, e) => console.error(`[AUTH] ${contexto}:`, e instanceof Error ? e.message : e),
+  alActivarCuenta: invalidarCuenta,
 });

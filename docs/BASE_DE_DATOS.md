@@ -8,6 +8,10 @@ La copia disponible de `db/esquema_completo.sql` contiene estructura, no registr
 un respaldo de la base anterior, la instancia PostgreSQL inicia vacía; las placas, cámaras, cuentas
 y detecciones deben registrarse nuevamente. El esquema SQL Server por sí solo no permite reconstruir esos datos.
 
+## Nombre de la lista blanca (29 de octubre de 2026)
+
+La tabla vigente es `public.listablanca` (`ListaBlanca` en SQL sin comillas). Se renombró desde `vehiculosautorizados`, conservando sus datos y dependencias. No se cambió la base `ANPR_ECU911`, el esquema `public`, las columnas ni las rutas HTTP. La migración idempotente se ejecuta antes de este esquema. Véase [procedimiento y verificación](RENOMBRE_LISTA_BLANCA.md).
+
 ## Principios
 
 - **Sin datos de prueba ni usuarios predefinidos.** El primer administrador se crea en la
@@ -40,7 +44,7 @@ y detecciones deben registrarse nuevamente. El esquema SQL Server por sí solo n
 | Sistema | `ConfiguracionSistema` | Parámetros editables desde la pantalla de configuración (sin filas iniciales: rige la variable de entorno o el valor por omisión) |
 | Infraestructura | `Camaras` | Canales RTSP: `rtsp_url` (flujo principal para el motor, con la contraseña cifrada AES-256-GCM), `rtsp_url_vista` (flujo secundario para el navegador, v9), `direccion` (`ingreso` o `salida`, v13), `roi` (área de detección) y `exclusiones` (hasta 8 polígonos donde no se buscan placas, v11); `activa` = habilitación administrativa, `estado` = conectividad observada (EN_LINEA, SIN_CONEXION, SIN_VERIFICAR); `registrado_por` |
 | Listas | `ListaNegra` | Placas con alerta (nivel CRÍTICA/ALTA/MEDIA), marca/modelo/color registrados, **fecha de vencimiento** y observaciones; `registrado_por` |
-| | `VehiculosAutorizados` | Permisos de placa: categoría, **vigencia desde/hasta**, **franjas horarias** (JSON), marca/modelo/color, observaciones, `registrado_por` y `solicitud_id` de origen |
+| | `ListaBlanca` | Permisos de placa: categoría, **vigencia desde/hasta**, **franjas horarias** (JSON), marca/modelo/color, observaciones, `registrado_por` y `solicitud_id` de origen |
 | | `SolicitudesAcceso` | Solicitudes de autorización (pendiente / aprobada / rechazada / cancelada) con solicitante, resolutor, vigencia y horario pedidos, ingreso de origen, permiso creado y `version` para la concurrencia optimista (v8) |
 | Operación | `DeteccionVehiculo` | Cada registro: `tipo_movimiento` (`ingreso` o `salida`, v13; los registros preexistentes quedan como ingreso), captura (fotos del vehículo y del recorte de la placa), OCR, decisión, validez de la lectura (`lectura_valida`, `evidencia_lectura` en JSON con las evidencias E1–E5 y el texto crudo de cada lector), validación del guardia (`usuario_validador_id`), lectura y decisión automáticas originales, metadatos de captura, atributos del vehículo y fuente (`rtsp` o `manual`, nunca la URL). Las salidas son eventos independientes y no ejecutan la decisión de autorización de ingreso. |
 | | `AuditoriaDescartes` | Pasos descartados por el motor con su motivo (p. ej. `region_sin_caracteres`, `formato_no_corresponde_a_la_placa`, foto ilegible tras los reintentos) |
@@ -49,16 +53,15 @@ y detecciones deben registrarse nuevamente. El esquema SQL Server por sí solo n
 | | `NotificacionUsuario` | Bandeja por usuario (destinatarios resueltos por permiso), fecha de lectura y `fecha_eliminacion` (v12: la persona quitó de su bandeja una notificación revisada; la notificación se conserva) |
 | | `SuscripcionesPush` | Suscripciones Web Push de los navegadores (endpoint, claves p256dh/auth) |
 | | `ClavesServicio` | Claves generadas por el sistema (par VAPID si no se define en el entorno) |
-| Esquema | `SchemaMigraciones` | Migraciones aplicadas y su suma SHA-256 |
 
 ## Relaciones principales
 
 ```
 Roles 1───* Usuarios ──* AuditoriaUsuarios / AuditoriaAccesos / VerificacionEmail / RestablecimientoPassword
-Usuarios 1───* Camaras · ListaNegra · VehiculosAutorizados   (registrado_por)
+Usuarios 1───* Camaras · ListaNegra · ListaBlanca   (registrado_por)
 Usuarios 1───* DeteccionVehiculo                              (usuario_validador_id)
 Camaras 1───* DeteccionVehiculo
-ListaNegra 1───* DeteccionVehiculo (alerta_id) · VehiculosAutorizados 1───* DeteccionVehiculo
+ListaNegra 1───* DeteccionVehiculo (alerta_id) · ListaBlanca 1───* DeteccionVehiculo
 ```
 
 ## Reglas de negocio en la base y el backend
@@ -66,8 +69,10 @@ ListaNegra 1───* DeteccionVehiculo (alerta_id) · VehiculosAutorizados 1�
 - Inicio de sesión con correo; tras `LOGIN_MAX_INTENTOS` (5) fallos la cuenta se bloquea
   `LOGIN_MINUTOS_BLOQUEO` (15) minutos y se notifica por correo.
 - Registro público (`REGISTRO_PUBLICO_HABILITADO`) acepta los dominios de `ALLOWED_EMAIL_DOMAINS`;
-  si la lista queda vacía, acepta cualquier correo válido. La cuenta queda `pendiente` hasta verificar
-  el correo y luego `activo` con rol Guardia. Producción conserva el dominio institucional por omisión.
+  si la lista queda vacía, acepta cualquier correo válido. Permite elegir Guardia o Gestor de permisos.
+  La verificación de correo está desactivada por omisión: la cuenta queda `activo`, sin enviar un enlace,
+  y conserva `email_verificado=false`. Si se habilita `registro_verificacion_email_habilitada`, queda
+  `pendiente` hasta verificar el correo. Véase [registro y política de correo](REGISTRO_ROLES_SIN_CORREO.md).
 - No se puede quitar el rol ni desactivar al último administrador activo.
 - Un permiso de placa solo concede el paso dentro de su vigencia (desde/hasta) y de sus franjas
   horarias; fuera de ellas el paso queda `no_reconocido` con `DeteccionVehiculo.restriccion_acceso`
@@ -103,7 +108,7 @@ ListaNegra 1───* DeteccionVehiculo (alerta_id) · VehiculosAutorizados 1�
 ## Cambios de la versión 5 (`migration_v5_accesos_notificaciones.sql`)
 
 - Se retira el `CHECK` fijo de `Roles.codigo` y se agrega `GESTOR_ACCESOS`.
-- `VehiculosAutorizados`: `categoria`, `fecha_inicio`, `horario`, `solicitud_id`.
+- `ListaBlanca`: `categoria`, `fecha_inicio`, `horario`, `solicitud_id`.
 - `DeteccionVehiculo.restriccion_acceso`.
 - Tablas nuevas: `SolicitudesAcceso`, `Notificaciones`, `NotificacionUsuario`, `SuscripcionesPush`,
   `ClavesServicio` (y `SchemaMigraciones`, creada por el backend).

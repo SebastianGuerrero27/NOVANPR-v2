@@ -26,7 +26,7 @@ fila indica **dónde** está la evidencia; lo que aún no se cumple se declara e
 
 | Proceso | Evidencia |
 |---|---|
-| Gestión de la configuración | Git con ramas y pull requests; migraciones de base versionadas (`db/migration_v*.sql`, tabla `SchemaMigraciones`) |
+| Gestión de la configuración | Git con ramas y pull requests; esquema y migraciones idempotentes de PostgreSQL versionados en `db/postgresql/` (se aplican en cada arranque del backend) |
 | Integración y verificación | CI en GitHub Actions (`.github/workflows/ci.yml`): pruebas del backend, del servicio ANPR y del frontend, build de imágenes y análisis Trivy |
 | Transición y operación | CD a Kubernetes (`cd.yml`, `deploy-k8s.yml`, [CICD.md](CICD.md)); monitoreo y alertas |
 | Gestión de la calidad | Esta matriz; fichas de modelo; revisión de código en pull requests |

@@ -24,6 +24,8 @@ COPY --chown=node:node backend/package.json ./
 COPY --chown=node:node backend/scripts/supervisar.cjs ./scripts/supervisar.cjs
 # db.ts busca el esquema PostgreSQL en path.join(__dirname, '../../db') → /app/db
 COPY --chown=node:node db ./db
+# Logo del ECU 911 de los PDF, los Excel y los correos (documentosControl.ts, emailService.ts → /app/assets)
+COPY --chown=node:node backend/assets ./assets
 RUN mkdir -p /app/media /app/evidencia-listas /app/logs && chown node:node /app/media /app/evidencia-listas /app/logs
 USER node
 EXPOSE 5000

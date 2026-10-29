@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ImageOff, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import api, { mensajeError } from '../../infraestructura/api';
 import type { Camara, Deteccion } from '../../dominio/tipos';
-import { colorConfianza, ESTADOS, fechaHora, hora, porcentaje } from '../../dominio/formato';
+import { colorConfianza, diaIso, ESTADOS, fechaHora, hora, porcentaje } from '../../dominio/formato';
 import { urlMedia } from '../../infraestructura/api';
 import { formatearPlaca, placaPropuesta, validarPlaca, validarTexto, valorPrecargado, validarFecha } from '../../dominio/validacion';
 import {
@@ -261,7 +261,7 @@ export const ValidarModal: React.FC<{ d: Deteccion; onCerrar: () => void; onVali
     placa: placaPropuesta(d.placa_validada || d.placa_reconocida),
     tipo_vehiculo: d.datos_permiso?.tipo_vehiculo ?? d.tipo_vehiculo ?? d.vehiculo.tipo ?? '',
     marca: valorPrecargado(d.datos_permiso?.marca ?? d.vehiculo.marca, REGLAS_VEHICULO.marca), modelo: valorPrecargado(d.datos_permiso?.modelo ?? d.vehiculo.modelo, REGLAS_VEHICULO.modelo), color: d.datos_permiso?.color ?? d.vehiculo.color ?? '',
-    observaciones: d.datos_permiso?.observaciones ?? '', fecha_inicio: d.datos_permiso?.fecha_inicio ?? '', fecha_fin: d.datos_permiso?.fecha_fin ?? '',
+    observaciones: d.datos_permiso?.observaciones ?? '', fecha_inicio: diaIso(d.datos_permiso?.fecha_inicio), fecha_fin: diaIso(d.datos_permiso?.fecha_fin),
   }));
   const [horario, setHorario] = useState<Franja[] | null>(() => leerHorarioFormulario(d.datos_permiso?.horario).horario);
   const [errorHorario, setErrorHorario] = useState<string | null>(() => d.datos_permiso?.horario_error || leerHorarioFormulario(d.datos_permiso?.horario).error);
@@ -322,8 +322,10 @@ export const ValidarModal: React.FC<{ d: Deteccion; onCerrar: () => void; onVali
           marca: permisoEncontrado.marca ?? actual.marca,
           modelo: permisoEncontrado.modelo ?? actual.modelo,
           color: permisoEncontrado.color ?? actual.color,
-          fecha_inicio: permisoEncontrado.fecha_inicio ?? actual.fecha_inicio,
-          fecha_fin: permisoEncontrado.fecha_vencimiento ?? permisoEncontrado.fecha_fin ?? actual.fecha_fin,
+          // Las fechas del permiso pueden venir con hora: los campos y la vigencia usan el día (AAAA-MM-DD)
+          fecha_inicio: permisoEncontrado.fecha_inicio !== undefined ? diaIso(permisoEncontrado.fecha_inicio) : actual.fecha_inicio,
+          fecha_fin: permisoEncontrado.fecha_vencimiento !== undefined || permisoEncontrado.fecha_fin !== undefined
+            ? diaIso(permisoEncontrado.fecha_vencimiento ?? permisoEncontrado.fecha_fin) : actual.fecha_fin,
           observaciones: permisoEncontrado.observaciones ?? actual.observaciones,
         }));
         // El motivo habitual del permiso se propone si el guardia aún no escribió otro

@@ -4,7 +4,7 @@ La gestión de permisos y las dos listas muestran una celda para el vehículo y 
 
 El backend conserva la primera foto disponible por columna de una entrada procesada cuya matrícula coincide exactamente con la del registro. Una coincidencia aproximada de la lista negra no aporta evidencia a otra placa. Las lecturas pendientes del segundo OCR, desconocidas o rechazadas no se utilizan sin confirmación del personal. La evidencia confirma una captura histórica; la decisión de acceso mantiene sus reglas de vigencia y horario.
 
-Las imágenes se copian a archivos propios de cada registro y sus rutas y fechas se guardan en `vehiculosautorizados` y `listanegra`. Eliminar el acceso o sus fotos originales no elimina estas copias. Las detecciones posteriores completan la foto que falte, sin reemplazar la primera. Editar el registro para asignar otra matrícula reinicia sus celdas para evitar presentar fotos de otro vehículo.
+Las imágenes se copian a archivos propios de cada registro y sus rutas y fechas se guardan en `listablanca` y `listanegra`. Eliminar el acceso o sus fotos originales no elimina estas copias. Las detecciones posteriores completan la foto que falte, sin reemplazar la primera. Editar el registro para asignar otra matrícula reinicia sus celdas para evitar presentar fotos de otro vehículo.
 
 El destino de las copias es independiente de la carpeta del motor. En Docker Compose se utiliza `EVIDENCIA_LISTAS_DIR=/app/evidencia-listas` y el volumen persistente `listas_evidencia`, propiedad del usuario `node`. Así el backend puede guardar evidencia aunque `/app/media` sólo sea legible. En Kubernetes se usa `/app/media/listas` dentro del PVC con `fsGroup: 1000`. En ejecución local sin esa variable se usa `media-listas`, excluido del repositorio.
 

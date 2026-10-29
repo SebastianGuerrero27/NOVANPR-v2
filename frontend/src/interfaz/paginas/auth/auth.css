@@ -187,7 +187,7 @@
   pointer-events: none;
 }
 .auth-campo-fila { display: flex; align-items: center; gap: 10px; }
-.auth-campo-fila input {
+.auth-campo-fila input, .auth-campo-fila select {
   flex: 1;
   min-width: 0;
   border: none;

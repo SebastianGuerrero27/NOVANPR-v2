@@ -8,7 +8,7 @@ export const DATOS_INGRESO_COMPLETOS_SQL = `(
   AND d.fecha_hora_ingreso IS NOT NULL
   AND EXISTS (
     SELECT 1 FROM DeteccionVehiculo registro
-    LEFT JOIN VehiculosAutorizados permiso ON permiso.id = registro.vehiculo_autorizado_id
+    LEFT JOIN ListaBlanca permiso ON permiso.id = registro.vehiculo_autorizado_id
     WHERE registro.id = d.id
       AND COALESCE(${dato('registro.persona_ingreso')}, ${dato('permiso.propietario')}) IS NOT NULL
       AND COALESCE(${dato('registro.placa_validada')}, ${dato('registro.placa_reconocida')}) IS NOT NULL

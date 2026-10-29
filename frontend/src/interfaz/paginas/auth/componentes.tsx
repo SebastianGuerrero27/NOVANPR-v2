@@ -12,6 +12,7 @@ import './auth.css';
 export interface EstadoSistema {
   configuracion_inicial_requerida: boolean;
   registro_habilitado: boolean;
+  verificacion_email_requerida?: boolean;
   smtp_configurado: boolean;
   dominios_permitidos: string[];
   unidad_institucional: string;

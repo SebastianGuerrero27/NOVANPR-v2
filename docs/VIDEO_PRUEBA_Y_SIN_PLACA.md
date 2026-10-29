@@ -1,29 +1,15 @@
-# Cámara de prueba con un video y vehículos sin placa visible
+# Calibración con el video de la garita y vehículos sin placa visible
 
-## 1. Cámara de prueba con un video grabado
+## 1. Cámara de prueba con un video grabado (retirada)
 
-**Cámaras › Cargar video** (administrador) crea una cámara a partir de un video MP4, MKV o MOV
-(por ejemplo, la descarga del NVR de la garita). El sistema la trata como una cámara real:
+Hasta el 28-10-2026, **Cámaras › Cargar video** creaba una cámara a partir de una grabación que
+MediaMTX publicaba en bucle. Esa función se retiró: el sistema en operación solo procesa el flujo
+RTSP de las cámaras registradas, y la grabación ya no se mezcla con los datos reales. Las
+calibraciones de este documento se hicieron con ella.
 
-1. El backend guarda el archivo en `VIDEOS_PRUEBA_DIR` con un nombre que genera él mismo y comprueba
-   la firma del archivo (no la extensión). Rechaza lo que supere `VIDEOS_PRUEBA_MAX_MB` (2048 MB por
-   omisión).
-2. MediaMTX (imagen `1.21.1-ffmpeg`) publica el archivo en bucle, a velocidad real y sin recodificar,
-   en la ruta `cam_<id>` de la cámara. Solo se autoriza esa publicación: usuario del motor, por RTSP,
-   hacia una cámara de video habilitada.
-3. El motor ANPR la lee como cualquier cámara. El monitoreo en vivo la muestra por WebRTC con el HUD,
-   y los pasos quedan en el historial con esa cámara.
-
-Después de cargarla, se dibujan sus **Zonas** y se asigna al motor en **Monitoreo**. Una cámara de
-video no se edita; para cambiar el video, se elimina o deshabilita y se carga otro. Si no tiene
-detecciones, al eliminarla también se borra su archivo. La conectividad se comprueba en su ruta de
-MediaMTX ("En línea" significa que el video se está publicando).
-
-La función existe solo si el backend define `VIDEOS_PRUEBA_DIR`: `docker-compose.yml` (desarrollo)
-la habilita y `docker-compose.prod.yml` no. Las grabaciones contienen placas (datos personales,
-LOPDP), así que `services/anpr/media/videos_prueba/` y `dataset/videos_garita/` están fuera de git.
-
-Prueba de punta a punta sin el navegador: `backend/scripts/camara_video_prueba/prueba_video.js`.
+Para medir el motor con grabaciones, fuera del sistema en operación, se usa
+`services/anpr/scripts/evaluar_secuencias.py` (ver `docs/PROTOCOLO_EVALUACION_SECUENCIAS.md`). Las
+grabaciones contienen placas (datos personales, LOPDP): `dataset/videos_garita/` está fuera de git.
 
 ## 2. Vehículos sin placa visible
 
@@ -118,9 +104,6 @@ Lo que queda:
 - Cada pasada se corrió una sola vez y el resultado varía entre pasadas del mismo video, porque los
   cuadros que alcanza a analizar el motor no son siempre los mismos. Las diferencias de 1 o 2
   registros entre pasadas no son concluyentes.
-
-Para repetir una pasada desde 0:00 (dentro de `anpr-backend`, ver el encabezado del script):
-`prueba_video.js alternar <id>` dos veces y luego `prueba_video.js asignar <id>`.
 
 Limitaciones: un solo video, de un día, de mañana nublada y con una cámara. Antes de dar cifras en la
 tesis hay que repetir la medición con otras condiciones (noche, lluvia, hora pico de la tarde),

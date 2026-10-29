@@ -7,9 +7,9 @@ import { config } from '../servicios/configuracion';
 import { hoyLocalSql } from '../servicios/tiempo';
 import { urlMedia } from '../servicios/media';
 
-/** Repositorio SQL Server de las listas de control (tablas VehiculosAutorizados y ListaNegra). */
+/** Repositorio PostgreSQL de las listas de control (tablas ListaBlanca y ListaNegra). */
 
-const TABLA: Record<TipoLista, 'VehiculosAutorizados' | 'ListaNegra'> = { autorizados: 'VehiculosAutorizados', alertas: 'ListaNegra' };
+const TABLA: Record<TipoLista, 'ListaBlanca' | 'ListaNegra'> = { autorizados: 'ListaBlanca', alertas: 'ListaNegra' };
 const MISMA_PLACA = "REPLACE(REPLACE(placa, '-', ''), ' ', '') = @placa";
 
 const columnasDe = (def: DefinicionLista) => [...def.campos.map(c => c.nombre), ...(def.temporal ? ['fecha_inicio', 'horario'] : [])];
@@ -55,7 +55,7 @@ const db = () => getDB();
 export const repositorioListasSql: RepositorioListas = {
   async asignarPlaca(id, placa) {
     const r = await db().request().input('id', sql.Int, id).input('placa', sql.VarChar(10), placa)
-      .query(`UPDATE VehiculosAutorizados SET placa = @placa, fecha_actualizacion = CURRENT_TIMESTAMP
+      .query(`UPDATE ListaBlanca SET placa = @placa, fecha_actualizacion = CURRENT_TIMESTAMP
         WHERE id = @id AND activo = 1 AND placa IS NULL RETURNING id`);
     return r.recordset.length > 0;
   },
@@ -93,7 +93,7 @@ export const repositorioListasSql: RepositorioListas = {
     const request = db().request().input('cedula', sql.VarChar(10), cedula);
     const exclusion = idExcluido === undefined ? '' : ' AND id <> @id';
     if (idExcluido !== undefined) request.input('id', sql.Int, idExcluido);
-    const r = await request.query(`SELECT TOP 1 id FROM VehiculosAutorizados
+    const r = await request.query(`SELECT TOP 1 id FROM ListaBlanca
       WHERE activo = 1 AND cedula = @cedula${exclusion}`);
     return r.recordset.length > 0;
   },
@@ -139,7 +139,7 @@ export const repositorioListasSql: RepositorioListas = {
 
   async retirar(def, id) {
     const r = await db().request().input('id', sql.Int, id)
-      .query(`UPDATE ${TABLA[def.tipo]} SET activo = 0, fecha_actualizacion = SYSDATETIME() OUTPUT DELETED.placa${def.temporal ? ', DELETED.propietario' : ''} WHERE id = @id AND activo = 1`);
+      .query(`UPDATE ${TABLA[def.tipo]} SET activo = 0, fecha_actualizacion = SYSDATETIME() OUTPUT DELETED.placa${def.tipo === 'autorizados' ? ', DELETED.propietario' : ''} WHERE id = @id AND activo = 1`);
     return r.recordset[0] ? r.recordset[0].placa || r.recordset[0].propietario || 'Permiso sin placa' : null;
   },
 
@@ -157,7 +157,7 @@ export const repositorioListasSql: RepositorioListas = {
     const r = await db().request().query(`
       SELECT u.id, u.nombre_completo AS nombre, u.email, r.codigo AS rol, u.estado
       FROM Usuarios u JOIN Roles r ON r.id = u.rol_id
-      WHERE r.codigo = 'GESTOR_PERMISOS' OR EXISTS (SELECT 1 FROM VehiculosAutorizados v WHERE v.registrado_por = u.id)
+      WHERE r.codigo = 'GESTOR_PERMISOS' OR EXISTS (SELECT 1 FROM ListaBlanca v WHERE v.registrado_por = u.id)
       ORDER BY u.nombre_completo`);
     return r.recordset;
   },

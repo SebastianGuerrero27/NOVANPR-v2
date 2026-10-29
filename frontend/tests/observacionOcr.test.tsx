@@ -31,7 +31,7 @@ const deteccion: DeteccionDetalle = {
   lectura_automatica: { placa: null, confianza: 0, decision: 'pendiente_revision', verificador: null,
     latencia_ms: null, modelo_detector: null, modelo_ocr: null, valida: false, evidencia: ev },
   captura: { luminancia_media: null, distancia_estimada_m: null, ancho_placa_px: null,
-    nitidez: null, velocidad_px_s: null, condicion_clima: null }, auditoria: [], pasos_anteriores: [],
+    nitidez: null, velocidad_px_s: null }, auditoria: [], pasos_anteriores: [],
 };
 
 describe('Texto general observado por OCR', () => {

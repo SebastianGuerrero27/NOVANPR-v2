@@ -24,7 +24,7 @@ it('reactivar conserva al usuario original del permiso', async () => {
 it('los indicadores del gestor se calculan solo con los permisos de su usuario', async () => {
   const hoy = new Date('2026-10-22T05:00:00Z');
   await panel.accesos({ hoy, hace7: hoy, diasAviso: 7, usuarioId: 18 });
-  const sql = query.mock.calls.map(([q]) => String(q)).filter(q => q.includes('FROM VehiculosAutorizados'));
+  const sql = query.mock.calls.map(([q]) => String(q)).filter(q => q.includes('FROM ListaBlanca'));
   expect(sql).toHaveLength(2);
   for (const q of sql) expect(q).toContain('registrado_por = @uid');
 });

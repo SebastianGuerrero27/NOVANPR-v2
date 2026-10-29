@@ -90,9 +90,8 @@ export interface ResumenHistorial {
   sin_lectura: number;
   /** Placas distintas leídas o confirmadas */
   placas: number;
-  /** Por origen: cámara en vivo, video de prueba y registro manual */
+  /** Por origen: cámara en vivo y registro manual */
   camara: number;
-  video_prueba: number;
   manuales: number;
   primero: Date | string | null;
   ultimo: Date | string | null;
@@ -168,8 +167,20 @@ export interface PuertoEvidenciaManual {
   guardar(camaraId: number, t: number): Promise<string | null>;
 }
 
+/** Encabezado del reporte PDF de Registro de Salidas. */
+export interface InfoReporteSalidas {
+  generado: Date;
+  zona: string;
+  /** Período consultado (null = sin límite) */
+  desde: Date | null;
+  hasta: Date | null;
+  /** Texto buscado en la consulta, si lo hubo */
+  buscar: string | null;
+  elaboradoPor: string;
+}
+
 export interface DependenciasDetecciones {
-  pdfRegistros?: (filas: Fila[], generado: Date, zona: string) => Promise<Buffer>;
+  pdfRegistros?: (filas: Fila[], info: InfoReporteSalidas) => Promise<Buffer>;
   repositorio: RepositorioDetecciones;
   listas: PuertoListasDetecciones;
   /** Representación de una fila para la API (imágenes firmadas y motivo de revisión) */
@@ -549,13 +560,15 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       return (await d.repositorio.recientes(leerLimite(limite), texto || null)).map(x => d.presentar(x));
     },
 
-    /** CSV del historial con los mismos filtros; la exportación queda en la auditoría. */
+    /** Reporte PDF de Registro de Salidas (solo registros completos con salida); queda en la auditoría. */
     async exportarPdf(consulta: Entrada, actor: Actor) {
       const f = filtros({ ...consulta, cerrados: 'si', completos: 'si' });
       const filas = await d.repositorio.exportar(f);
       if (!d.pdfRegistros) throw new Error('Generador PDF no configurado.');
       const ahora = d.tiempo.ahora();
-      const contenido = await d.pdfRegistros(filas, ahora, d.tiempo.zona);
+      const contenido = await d.pdfRegistros(filas, {
+        generado: ahora, zona: d.tiempo.zona, desde: f.desde, hasta: f.hasta, buscar: f.buscar ?? null, elaboradoPor: actor.nombre,
+      });
       await d.auditoria.operacion(actor, 'EXPORTACION', 'deteccion', null, `PDF · ${filas.length} registros con salida · ${JSON.stringify(consulta).substring(0, 300)}`);
       return { nombre: `registros_${ahora.toISOString().slice(0, 10)}.pdf`, contenido };
     },

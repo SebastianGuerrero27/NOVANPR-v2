@@ -14,11 +14,11 @@ const fila = (extra: Record<string, unknown> = {}) => ({ id: 10, placa_reconocid
 
 function base(placa = 'PBA1234') {
   const listas: Record<string, Registro[]> = {
-    vehiculosautorizados: [{ id: 7, placa, ruta_evidencia_vehiculo: null, ruta_evidencia_placa: null }],
+    listablanca: [{ id: 7, placa, ruta_evidencia_vehiculo: null, ruta_evidencia_placa: null }],
     listanegra: [{ id: 8, placa, ruta_evidencia_vehiculo: null, ruta_evidencia_placa: null }],
   };
   const query = jest.fn(async (sql: string, args: any[] = []) => {
-    const tabla = sql.includes('vehiculosautorizados') ? 'vehiculosautorizados' : 'listanegra';
+    const tabla = sql.includes('listablanca') ? 'listablanca' : 'listanegra';
     if (sql.includes('SELECT id,')) return { rows: listas[tabla].filter(r => r.placa === args[0]
       && (!r.ruta_evidencia_vehiculo || !r.ruta_evidencia_placa)) };
     if (sql.includes('UPDATE ')) {
@@ -46,7 +46,7 @@ afterEach(async () => { await fs.promises.rm(directorio, { recursive: true, forc
 it('conserva copias independientes para ambas listas y la fecha del paso, sin sustituir la primera foto', async () => {
   const db = base(); const avisar = jest.fn();
   await conservarEvidenciaListas(db as any, fila(), { directorios: [directorio], directorioDestino: directorio, alGuardar: avisar });
-  const primera = { ...db.listas.vehiculosautorizados[0] };
+  const primera = { ...db.listas.listablanca[0] };
   for (const r of Object.values(db.listas).flat()) {
     expect(r.ruta_evidencia_vehiculo).toContain('lista_');
     expect(r.ruta_evidencia_placa).not.toBe(r.ruta_evidencia_vehiculo);
@@ -55,7 +55,7 @@ it('conserva copias independientes para ambas listas y la fecha del paso, sin su
   }
   await fs.promises.writeFile(path.join(directorio, 'vehiculo.jpg'), 'otro paso');
   await conservarEvidenciaListas(db as any, fila({ fecha_hora_ingreso: '2026-10-29T12:00:00Z' }), { directorios: [directorio], directorioDestino: directorio, alGuardar: avisar });
-  expect(db.listas.vehiculosautorizados[0]).toEqual(primera);
+  expect(db.listas.listablanca[0]).toEqual(primera);
   expect(await fs.promises.readFile(primera.ruta_evidencia_vehiculo!, 'utf8')).toBe('foto de vehículo');
   expect(avisar.mock.calls).toEqual([['autorizado'], ['lista_negra']]);
   expect(db.query.mock.calls.find(([sql]) => sql.includes('SELECT id,'))?.[0]).toContain('FOR UPDATE');
@@ -76,11 +76,11 @@ it('borrar la detección y sus archivos originales conserva las fotos propias de
 it('una foto entera no cuenta como recorte; completa solo la columna pendiente cuando llega la placa', async () => {
   const db = base();
   await conservarEvidenciaListas(db as any, fila({ ruta_imagen_placa: 'vehiculo.jpg' }), { directorios: [directorio], directorioDestino: directorio });
-  const primera = db.listas.vehiculosautorizados[0].ruta_evidencia_vehiculo;
-  expect(db.listas.vehiculosautorizados[0].ruta_evidencia_placa).toBeNull();
+  const primera = db.listas.listablanca[0].ruta_evidencia_vehiculo;
+  expect(db.listas.listablanca[0].ruta_evidencia_placa).toBeNull();
   await conservarEvidenciaListas(db as any, fila(), { directorios: [directorio], directorioDestino: directorio });
-  expect(db.listas.vehiculosautorizados[0].ruta_evidencia_vehiculo).toBe(primera);
-  expect(db.listas.vehiculosautorizados[0].ruta_evidencia_placa).toEqual(expect.any(String));
+  expect(db.listas.listablanca[0].ruta_evidencia_vehiculo).toBe(primera);
+  expect(db.listas.listablanca[0].ruta_evidencia_placa).toEqual(expect.any(String));
 });
 
 it('no guarda un archivo ausente ni asocia una alerta aproximada a otra matrícula', async () => {
@@ -89,7 +89,7 @@ it('no guarda un archivo ausente ni asocia una alerta aproximada a otra matrícu
   expect(db.listas.listanegra[0].ruta_evidencia_vehiculo).toBeNull();
   const exacta = base();
   await conservarEvidenciaListas(exacta as any, fila({ ruta_imagen_ingreso: 'ausente.jpg', ruta_imagen_placa: null }), { directorios: [directorio], directorioDestino: directorio });
-  expect(exacta.listas.vehiculosautorizados[0].ruta_evidencia_vehiculo).toBeNull();
+  expect(exacta.listas.listablanca[0].ruta_evidencia_vehiculo).toBeNull();
   const seleccion = db.query.mock.calls.find(([sql]) => sql.includes('SELECT id,'));
   expect(seleccion?.[0]).toContain("UPPER(REPLACE(REPLACE(placa, '-', ''), ' ', '')) = $1");
   expect(seleccion?.[1]).toEqual(['PBA1234']);
@@ -107,14 +107,14 @@ it.each([{ segundo_ocr_pendiente: true }, JSON.stringify({ segundo_ocr_pendiente
   await conservarEvidenciaListas(db as any, fila({ evidencia_lectura: evidencia }), { directorios: [directorio], directorioDestino: directorio });
   expect(db.connect).not.toHaveBeenCalled();
   await conservarEvidenciaListas(db as any, fila({ evidencia_lectura: { formato: true, lecturas: 3 } }), { directorios: [directorio], directorioDestino: directorio });
-  expect(db.listas.vehiculosautorizados[0].ruta_evidencia_vehiculo).toEqual(expect.any(String));
+  expect(db.listas.listablanca[0].ruta_evidencia_vehiculo).toEqual(expect.any(String));
 });
 
 it('la confirmación manual permite conservar fotos aunque el veredicto automático esté pendiente', async () => {
   const db = base();
   await conservarEvidenciaListas(db as any, fila({ validado_manualmente: true, lectura_valida: null,
     evidencia_lectura: { segundo_ocr_pendiente: true } }), { directorios: [directorio], directorioDestino: directorio });
-  expect(db.listas.vehiculosautorizados[0].ruta_evidencia_vehiculo).toEqual(expect.any(String));
+  expect(db.listas.listablanca[0].ruta_evidencia_vehiculo).toEqual(expect.any(String));
 });
 
 it('si falla la escritura SQL revierte y borra las copias incompletas', async () => {

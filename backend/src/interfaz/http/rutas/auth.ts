@@ -81,11 +81,12 @@ router.post('/login', controladorAuth('AUTH login', 'Error interno al iniciar se
 }));
 
 router.post('/registro', controladorAuth('AUTH registro', 'No se pudo completar el registro.', async (req, res) => {
-  const { enviado } = await auth.registrar(req.body, visitanteDe(req));
+  const resultado = await auth.registrar(req.body, visitanteDe(req));
   res.status(201).json({
-    message: enviado
-      ? 'Cuenta creada. Revise su correo y siga el enlace para activarla.'
-      : 'Cuenta creada, pero no se pudo enviar el correo de verificación. Solicite un nuevo enlace.',
+    ...resultado,
+    message: !resultado.verificacion_email_requerida ? 'Cuenta creada y activa. Ya puede iniciar sesión.'
+      : resultado.enviado ? 'Cuenta creada. Revise su correo y siga el enlace para activarla.'
+        : 'Cuenta creada, pero no se pudo enviar el correo de verificación. Solicite un nuevo enlace.',
   });
 }));
 
@@ -98,10 +99,12 @@ router.get('/verificar-email', controladorAuth('AUTH verificar email', 'No se pu
   });
 }));
 
-router.post('/reenviar-verificacion', respuestaGenerica(
-  'Si la cuenta existe y está pendiente de verificación, recibirá un nuevo enlace.',
-  req => auth.reenviarVerificacion(req.body?.email),
-));
+router.post('/reenviar-verificacion', async (req, res) => {
+  await auth.reenviarVerificacion(req.body?.email).catch(() => undefined);
+  res.json({ message: auth.verificacionEmailRequerida()
+    ? 'Si la cuenta existe y está pendiente de verificación, recibirá un nuevo enlace.'
+    : 'La verificación por correo está temporalmente desactivada. Puede iniciar sesión con su contraseña.' });
+});
 
 router.post('/olvide-password', respuestaGenerica(
   'Si el correo pertenece a una cuenta activa, recibirá un enlace para restablecer la contraseña.',

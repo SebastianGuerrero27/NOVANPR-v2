@@ -9,7 +9,7 @@ import { repositorioSolicitudesSql } from '../../infraestructura/persistencia/so
 const entrada = { placa: 'ABC1234', propietario: 'Ana Pérez', cedula: '0102030405', institucion: 'ECU 911', cargo: 'Analista', departamento: 'Soporte', motivo: 'Reunión de trabajo', observaciones: 'Visita programada', tipo_vehiculo: 'Camioneta' };
 it('las longitudes del permiso coinciden con las columnas PostgreSQL', () => {
   const esquema = fs.readFileSync(path.resolve(__dirname, '../../../../db/postgresql/esquema.sql'), 'utf8');
-  const tabla = esquema.split('CREATE TABLE IF NOT EXISTS "vehiculosautorizados" (')[1].split('\n);')[0];
+  const tabla = esquema.split('CREATE TABLE IF NOT EXISTS "listablanca" (')[1].split('\n);')[0];
   for (const campo of LISTA_BLANCA.campos) expect(tabla).toMatch(new RegExp(`\\b${campo.nombre} varchar\\(${campo.max}\\)`));
 });
 it('alta y edición de solicitudes conservan cédula, institución, cargo y observaciones', async () => {

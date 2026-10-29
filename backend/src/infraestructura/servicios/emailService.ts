@@ -10,37 +10,79 @@ import path from 'path';
  *     servidores internos con certificado autofirmado).
  *   - Nunca se envían contraseñas por correo: solo enlaces de un solo uso.
  *
- * Sin SMTP_USER / SMTP_PASSWORD (desarrollo) el mensaje se escribe en la consola del
- * backend, incluido el enlace, para poder completar los flujos sin servidor de correo.
+ * Cuenta SMTP: la que el administrador guarda en Configuración (tabla ConfiguracionCorreo,
+ * contraseña cifrada; la carga infraestructura/persistencia/configuracionCorreoSql.ts) y, si
+ * no hay una habilitada, la de las variables SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD y
+ * SMTP_FROM. Sin ninguna (desarrollo) el mensaje se escribe en la consola del backend, incluido
+ * el enlace, para poder completar los flujos sin servidor de correo.
  */
 
+/** Cuenta con la que sale el correo y de dónde viene. */
+export interface CuentaSmtp {
+  servidor: string;
+  puerto: number;
+  usuario: string;
+  clave: string;
+  remitenteNombre: string;
+  remitenteCorreo: string;
+  origen: 'sistema' | 'entorno';
+}
+
+let guardada: CuentaSmtp | null = null;
 let transporter: Transporter | null = null;
 let configKey = '';
 
+/** Cuenta definida en Configuración; null (sin fila o deshabilitada) deja regir las variables SMTP_*. */
+export function fijarCuentaGuardada(cuenta: CuentaSmtp | null): void {
+  guardada = cuenta;
+}
+
+/** Cuenta de las variables SMTP_* del servidor (null si faltan el usuario o la contraseña). */
+export function cuentaDelServidor(): CuentaSmtp | null {
+  const usuario = (process.env.SMTP_USER || '').trim();
+  const clave = (process.env.SMTP_PASSWORD || '').replace(/\s+/g, '');
+  if (!usuario || !clave) return null;
+  return {
+    servidor: (process.env.SMTP_HOST || 'smtp.gmail.com').trim(),
+    puerto: parseInt(process.env.SMTP_PORT || '587', 10),
+    usuario, clave,
+    remitenteNombre: 'Sistema ANPR · ECU 911',
+    remitenteCorreo: process.env.SMTP_FROM?.match(/[^<\s]+@[^>\s]+/)?.[0] || usuario,
+    origen: 'entorno',
+  };
+}
+
+export const cuentaVigente = (): CuentaSmtp | null => guardada ?? cuentaDelServidor();
+
 function smtpConfigurado(): boolean {
-  return Boolean((process.env.SMTP_USER || '').trim() && (process.env.SMTP_PASSWORD || '').trim());
+  return cuentaVigente() !== null;
+}
+
+function crearTransporte(c: CuentaSmtp): Transporter {
+  return nodemailer.createTransport({
+    host: c.servidor,
+    port: c.puerto,
+    secure: c.puerto === 465,
+    auth: { user: c.usuario, pass: c.clave },
+    tls: { rejectUnauthorized: process.env.SMTP_TLS_INSECURE !== 'true' },
+    // Un servidor que no responde no debe dejar colgados la prueba ni los envíos
+    connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000,
+  });
 }
 
 function getTransporter(): Transporter | null {
-  if (!smtpConfigurado()) return null;
-  const host = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = (process.env.SMTP_USER || '').trim();
-  const pass = (process.env.SMTP_PASSWORD || '').replace(/\s+/g, '');
-  const key = `${host}:${port}:${user}:${pass}`;
+  const c = cuentaVigente();
+  if (!c) return null;
+  const key = `${c.origen}:${c.servidor}:${c.puerto}:${c.usuario}:${c.clave}`;
   if (transporter && configKey === key) return transporter;
-
-  transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-    tls: { rejectUnauthorized: process.env.SMTP_TLS_INSECURE !== 'true' },
-  });
+  transporter?.close();
+  transporter = crearTransporte(c);
   configKey = key;
-  console.log(`[EMAIL] Transporte SMTP configurado: ${host}:${port} (${user})`);
+  console.log(`[EMAIL] Transporte SMTP configurado: ${c.servidor}:${c.puerto} (${c.usuario}, ${c.origen === 'sistema' ? 'Configuración' : 'variables SMTP_*'})`);
   return transporter;
 }
+
+const remitenteDe = (c: CuentaSmtp) => `"${c.remitenteNombre}" <${c.remitenteCorreo}>`;
 
 function logoAdjunto(): SendMailOptions['attachments'] {
   const candidatos = [
@@ -109,14 +151,14 @@ function textoPlano(c: Contenido): string {
 
 async function enviar(para: string, asunto: string, c: Contenido): Promise<boolean> {
   const t = getTransporter();
-  if (!t) {
+  const cuenta = cuentaVigente();
+  if (!t || !cuenta) {
     console.log(`\n[EMAIL · modo desarrollo sin SMTP] Para: ${para}\n  Asunto: ${asunto}\n${textoPlano(c)}\n`);
     return true;
   }
-  const remitente = (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim();
   try {
     await t.sendMail({
-      from: `"Sistema ANPR · ECU 911" <${remitente}>`,
+      from: remitenteDe(cuenta),
       to: para,
       subject: asunto,
       html: plantilla(c),
@@ -131,8 +173,42 @@ async function enviar(para: string, asunto: string, c: Contenido): Promise<boole
   }
 }
 
+/**
+ * Correo de prueba con la cuenta vigente, con un transporte nuevo (no el compartido): el error
+ * del servidor vuelve al administrador para que corrija la cuenta.
+ */
+async function probar(para: string, nombre: string): Promise<{ ok: boolean; error?: string }> {
+  const cuenta = cuentaVigente();
+  if (!cuenta) return { ok: false, error: 'No hay correo saliente configurado.' };
+  const t = crearTransporte(cuenta);
+  const c: Contenido = {
+    etiqueta: 'Prueba de correo',
+    titulo: 'El correo saliente funciona',
+    parrafos: [
+      `Estimado/a <strong>${escapar(nombre)}</strong>:`,
+      'Este mensaje confirma que el Sistema ANPR puede enviar correos: verificación de cuentas, recuperación de contraseñas y alarmas escaladas.',
+      `Servidor <strong>${escapar(cuenta.servidor)}:${cuenta.puerto}</strong> · cuenta <strong>${escapar(cuenta.usuario)}</strong>.`,
+    ],
+    nota: 'Lo envió un administrador desde Configuración › Correo saliente.',
+  };
+  try {
+    await t.sendMail({
+      from: remitenteDe(cuenta), to: para, subject: 'Prueba de correo · Sistema ANPR ECU 911',
+      html: plantilla(c), text: textoPlano(c), attachments: logoAdjunto(),
+      headers: { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'OOF, AutoReply' },
+    });
+    return { ok: true };
+  } catch (error: any) {
+    console.error(`[EMAIL] Prueba fallida (${cuenta.servidor}:${cuenta.puerto}): ${error.message}`);
+    return { ok: false, error: String(error?.message ?? error) };
+  } finally {
+    t.close();
+  }
+}
+
 export const emailService = {
   smtpConfigurado,
+  probar,
 
   verificacionCuenta(email: string, nombre: string, enlace: string, horas: number) {
     return enviar(email, 'Verifique su correo · Sistema ANPR ECU 911', {

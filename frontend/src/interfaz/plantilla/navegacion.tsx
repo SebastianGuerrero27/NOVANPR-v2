@@ -86,25 +86,26 @@ export function menuPara(puede: (p: Permiso) => boolean): GrupoMenu[] {
 
 /**
  * Barra de pestañas estilo IDE bajo el encabezado (como en vigilance-heart): accesos directos a
- * las vistas de uso diario. Cada pestaña aparece solo si el rol puede abrir esa vista (su entrada
- * del menú, con el mismo permiso que exige la API).
+ * las vistas de uso diario, en el mismo orden que el menú lateral. Cada pestaña aparece solo si el
+ * rol puede abrir esa vista (su entrada del menú, con el mismo permiso que exige la API).
  */
-const PESTANAS: { ruta: string; etiqueta: string }[] = [
-  { ruta: '/', etiqueta: 'Dashboard' },
-  { ruta: '/monitoreo', etiqueta: 'Gestión de Accesos' },
-  { ruta: '/camaras', etiqueta: 'Cámaras' },
-  { ruta: '/listas/autorizados', etiqueta: 'Lista blanca' },
-  { ruta: '/listas/alertas', etiqueta: 'Lista negra' },
-  { ruta: '/detecciones', etiqueta: 'Registro de Salidas' },
-  { ruta: '/historial', etiqueta: 'Historial' },
-  { ruta: '/solicitudes', etiqueta: 'Gestión de Permisos' },
-  { ruta: '/reportes', etiqueta: 'Reportes' },
-  { ruta: '/usuarios', etiqueta: 'Usuarios' },
-];
+const PESTANAS: Record<string, string> = {
+  '/': 'Dashboard',
+  '/monitoreo': 'Gestión de Accesos',
+  '/camaras': 'Cámaras',
+  '/listas/autorizados': 'Lista blanca',
+  '/listas/alertas': 'Lista negra',
+  '/solicitudes': 'Gestión de Permisos',
+  '/detecciones': 'Registro de Salidas',
+  '/historial': 'Historial',
+  '/reportes': 'Reportes',
+  '/usuarios': 'Usuarios',
+};
 
 export function pestanasPara(puede: (p: Permiso) => boolean): { ruta: string; etiqueta: string }[] {
-  const disponibles = new Set(menuPara(puede).flatMap(g => g.items.map(i => i.ruta)));
-  const pestanas = PESTANAS.filter(p => disponibles.has(p.ruta));
+  // El orden lo da el menú lateral: las pestañas nunca quedan en otro orden que sus módulos
+  const pestanas = menuPara(puede).flatMap(g => g.items)
+    .filter(i => PESTANAS[i.ruta]).map(i => ({ ruta: i.ruta, etiqueta: PESTANAS[i.ruta] }));
   // Con una sola vista (gestor de permisos) la barra no aporta nada
   return pestanas.length > 1 ? pestanas : [];
 }

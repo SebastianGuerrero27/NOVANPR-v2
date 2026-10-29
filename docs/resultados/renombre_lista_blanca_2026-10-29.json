@@ -1,0 +1,186 @@
+{
+  "fecha_local": "2026-10-29",
+  "tabla": "public.listablanca",
+  "tabla_anterior_existe": false,
+  "conserva_datos_columnas_oid_fk_indices_secuencia": true,
+  "antes": {
+    "oid": 16581,
+    "base": "ANPR_ECU911",
+    "esquema": "public",
+    "filas": 4,
+    "huella_filas": "9051077b864559b437b10c66175b52d5",
+    "columnas_sha256": "c91de17073c045b5412ae591f2dff77f50437c413a06c1562245a65d0ad1cd0f",
+    "referencias": [
+      {
+        "oid": 16625,
+        "conrelid": 16600,
+        "confrelid": 16581,
+        "conkey": [
+          10
+        ],
+        "confkey": [
+          1
+        ],
+        "confupdtype": "a",
+        "confdeltype": "a"
+      },
+      {
+        "oid": 16721,
+        "conrelid": 16694,
+        "confrelid": 16581,
+        "conkey": [
+          21
+        ],
+        "confkey": [
+          1
+        ],
+        "confupdtype": "a",
+        "confdeltype": "a"
+      }
+    ],
+    "indices": [
+      {
+        "indexrelid": 16590,
+        "indisunique": true,
+        "indisprimary": true,
+        "indkey": "1"
+      },
+      {
+        "indexrelid": 16592,
+        "indisunique": true,
+        "indisprimary": false,
+        "indkey": "2"
+      },
+      {
+        "indexrelid": 16769,
+        "indisunique": false,
+        "indisprimary": false,
+        "indkey": "2 6"
+      },
+      {
+        "indexrelid": 73743,
+        "indisunique": true,
+        "indisprimary": false,
+        "indkey": "19"
+      }
+    ],
+    "secuencia": "public.vehiculosautorizados_id_seq"
+  },
+  "despues": {
+    "oid": 16581,
+    "base": "ANPR_ECU911",
+    "esquema": "public",
+    "filas": 4,
+    "huella_filas": "9051077b864559b437b10c66175b52d5",
+    "columnas_sha256": "c91de17073c045b5412ae591f2dff77f50437c413a06c1562245a65d0ad1cd0f",
+    "referencias": [
+      {
+        "oid": 16625,
+        "conrelid": 16600,
+        "confrelid": 16581,
+        "conkey": [
+          10
+        ],
+        "confkey": [
+          1
+        ],
+        "confupdtype": "a",
+        "confdeltype": "a"
+      },
+      {
+        "oid": 16721,
+        "conrelid": 16694,
+        "confrelid": 16581,
+        "conkey": [
+          21
+        ],
+        "confkey": [
+          1
+        ],
+        "confupdtype": "a",
+        "confdeltype": "a"
+      }
+    ],
+    "indices": [
+      {
+        "indexrelid": 16590,
+        "indisunique": true,
+        "indisprimary": true,
+        "indkey": "1"
+      },
+      {
+        "indexrelid": 16592,
+        "indisunique": true,
+        "indisprimary": false,
+        "indkey": "2"
+      },
+      {
+        "indexrelid": 16769,
+        "indisunique": false,
+        "indisprimary": false,
+        "indkey": "2 6"
+      },
+      {
+        "indexrelid": 73743,
+        "indisunique": true,
+        "indisprimary": false,
+        "indkey": "19"
+      }
+    ],
+    "secuencia": "public.vehiculosautorizados_id_seq"
+  },
+  "rutas_despues": {
+    "/api/vehiculos-autorizados": {
+      "http": 200,
+      "registros": 0
+    },
+    "/api/vehiculos-autorizados/mis-permisos": {
+      "http": 200,
+      "registros": 0
+    },
+    "/api/blacklist": {
+      "http": 200,
+      "registros": 0
+    },
+    "/api/detecciones?pagina=1&tamano=1": {
+      "http": 200
+    },
+    "/api/panel/accesos": {
+      "http": 200
+    },
+    "/api/solicitudes-acceso": {
+      "http": 200,
+      "registros": 0
+    }
+  },
+  "consulta_proveedor": false,
+  "verificaciones": {
+    "compilacion_backend": "aprobada",
+    "contrato_migracion": {
+      "aprobadas": 3
+    },
+    "backend_focal": {
+      "aprobadas": 67
+    },
+    "frontend_compatibilidad": {
+      "aprobadas": 2
+    },
+    "integracion_general": {
+      "aprobadas": 61,
+      "fallidas": 5,
+      "causas": [
+        "Expectativas anteriores de permisos de Guardia en escritura de listas y acceso al panel",
+        "Ruta base de reportes ausente antes del renombre"
+      ],
+      "reglas_no_modificadas": true
+    },
+    "sql_real_aislado": "renombre_lista_blanca_aislado_2026-10-29.json",
+    "respaldo_previo": "C:/Users/ASUS/.codex/backups/anpr/2026-10-29/",
+    "servicios_healthy": [
+      "backend",
+      "frontend",
+      "anpr",
+      "db"
+    ]
+  }
+}

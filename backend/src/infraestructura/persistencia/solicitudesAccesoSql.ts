@@ -11,7 +11,7 @@ const SELECT = `
          ur.nombre_completo AS resolutor_nombre,
          CAST(CASE WHEN EXISTS (SELECT 1 FROM ListaNegra l WHERE l.activo = 1
               AND REPLACE(REPLACE(l.placa, '-', ''), ' ', '') = s.placa) THEN 1 ELSE 0 END AS BIT) AS en_lista_alertas,
-         (SELECT TOP 1 v.id FROM VehiculosAutorizados v WHERE v.activo = 1
+         (SELECT TOP 1 v.id FROM ListaBlanca v WHERE v.activo = 1
               AND REPLACE(REPLACE(v.placa, '-', ''), ' ', '') = s.placa) AS permiso_actual_id
   FROM SolicitudesAcceso s
   JOIN Usuarios us ON us.id = s.solicitado_por

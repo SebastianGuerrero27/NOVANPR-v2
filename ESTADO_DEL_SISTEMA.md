@@ -10,7 +10,7 @@ Este documento sustituye el estado del 14 de octubre. La comprobación del despl
 
 La instalación local funciona con **cinco servicios**: frontend, backend, motor ANPR, PostgreSQL y MediaMTX. Los cuatro primeros tienen estado `healthy`; MediaMTX está en ejecución y no tiene healthcheck configurado. La API respondió HTTP 200 en `/health/ready`, la interfaz en `/healthz` y el motor indicó cámara conectada. Son comprobaciones de disponibilidad puntual.
 
-La fuente activa es un **video de prueba en bucle** publicado mediante MediaMTX. Que el motor reciba RTSP no acredita todavía una prueba presencial con la cámara de la garita institucional.
+El 28-10-2026 se retiró el **video de prueba en bucle** que publicaba MediaMTX, con sus pasos y su archivo: el sistema procesa solo el flujo RTSP de las cámaras registradas y quedó sin cámaras, listo para registrar la cámara Hikvision de la garita. La precisión medida con ese video está en `docs/resultados/evaluacion_garita_punta_a_punta_2026-10-28.json`; falta la prueba presencial con la cámara institucional.
 
 Frontend y backend están compilados. El frontend se sirve con Nginx; el motor ejecuta Uvicorn sin `--reload`. No se monta su código fuente para recarga automática. La composición utilizada es `docker-compose.yml` más `docker-compose.produccion-local.yml`, proyecto `anpr`.
 
@@ -105,11 +105,15 @@ Sin evidencia se muestra **Vehículo aún no ha ingresado** o **Placa aún no in
 
 Las copias se guardan en el volumen `anpr_listas_evidencia`, montado en `/app/evidencia-listas`, con propietario y usuario de escritura 1000. Son independientes de la carpeta del motor y sobreviven a la eliminación del acceso y sus archivos originales. Cambiar la matrícula del registro reinicia sus evidencias para no mostrar fotos de otro vehículo. En el despliegue verificado se recuperaron **seis fotos** del historial y se comprobó su entrega HTTP 200. Detalles en [evidencia de permisos y listas](docs/EVIDENCIA_PERMISOS_LISTAS.md).
 
+**Registro actualizado el 29 de octubre de 2026:** se reemplazó Cargo opcional por el selector Guardia / Gestor de permisos. La verificación por correo está desactivada: las cuentas se crean activas, sin enlaces ni envío de correo y con `email_verificado=false`. La política es reversible desde Configuración. [Detalle del registro](docs/REGISTRO_ROLES_SIN_CORREO.md).
+
 ## 8. Persistencia y seguridad implementada
+
+**Cambio verificado el 29 de octubre de 2026:** la tabla de permisos ahora es `public.listablanca`; se conservaron los datos y dependencias. La base, el esquema y los contratos del frontend no cambian. Véase [renombre de lista blanca](docs/RENOMBRE_LISTA_BLANCA.md).
 
 La base activa es **PostgreSQL 17**. El esquema está en `db/postgresql/esquema.sql`; el backend aplica inicialización y migraciones idempotentes, incluidas las de campos del permiso y evidencia de listas. Los scripts antiguos de SQL Server permanecen como antecedentes y compatibilidad: no significan que SQL Server esté en ejecución.
 
-Tablas centrales: `DeteccionVehiculo`, `VehiculosAutorizados`, `ListaNegra`, `SolicitudesAcceso`, `Camaras`, `Usuarios`, `Notificaciones` y auditorías. Se conservan lectura original, validaciones, observaciones OCR, datos de permiso y fechas de ingreso/salida. La ficha del ingreso y un permiso de lista blanca son entidades distintas.
+Tablas centrales: `DeteccionVehiculo`, `ListaBlanca`, `ListaNegra`, `SolicitudesAcceso`, `Camaras`, `Usuarios`, `Notificaciones` y auditorías. Se conservan lectura original, validaciones, observaciones OCR, datos de permiso y fechas de ingreso/salida. La ficha del ingreso y un permiso de lista blanca son entidades distintas.
 
 La aplicación incorpora autenticación JWT, comprobación de cuenta vigente, RBAC, token del servicio ANPR, enlaces de imágenes firmados y cifrado de credenciales de cámaras. Las claves no se incluyen en este documento ni en los resultados públicos. Estas medidas no constituyen una auditoría integral de seguridad ni una certificación.
 

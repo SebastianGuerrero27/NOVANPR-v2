@@ -37,7 +37,7 @@ router.get('/resumen', controlador(CONTEXTO, 'No se pudo consultar el resumen.',
 
 router.post('/', requierePermiso('solicitudes:crear'), controlador(CONTEXTO, 'No se pudo registrar la solicitud.', async (req, res) => {
   const solicitud = await solicitudes.crear(req.body, actorDe(req));
-  res.status(201).json({ message: 'Solicitud enviada al gestor de accesos.', solicitud });
+  res.status(201).json({ message: 'Solicitud enviada al gestor de permisos.', solicitud });
 }));
 
 router.put('/:id(\\d+)', requierePermiso('solicitudes:crear'), controlador(CONTEXTO, 'No se pudo actualizar la solicitud.', async (req, res) => {
