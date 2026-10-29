@@ -53,7 +53,7 @@ const Acceso: React.FC = () => {
   if (estado && !estado.registro_habilitado && modo === 'registro') return <Navigate to="/login" replace />;
 
   const dominios = estado?.dominios_permitidos;
-  const ejemploCorreo = `usuario@${dominios?.[0] ?? 'ecu911.gob.ec'}`;
+  const ejemploCorreo = `usuario@${dominios?.[0] ?? 'correo.com'}`;
   const cambiarModo = (m: 'login' | 'registro') => navigate(m === 'registro' ? '/registro' : '/login', { replace: true });
 
   const enviarLogin = async (e: React.FormEvent) => {
@@ -139,7 +139,7 @@ const Acceso: React.FC = () => {
             {motivoCierre && !errorLogin && <Aviso tipo="advertencia">{motivoCierre}</Aviso>}
             {errorLogin && <Aviso tipo="error">{errorLogin}</Aviso>}
 
-            <Campo id="login-email" etiqueta="Correo electrónico institucional*" type="email" name="email" maxLength={150}
+            <Campo id="login-email" etiqueta="Correo electrónico*" type="email" name="email" maxLength={150}
               placeholder={ejemploCorreo} value={email} onChange={e => setEmail(e.target.value)} disabled={cargandoLogin}
               autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
               icono={<Mail size={20} />} autoFocus={modo === 'login'} />
@@ -218,12 +218,12 @@ const Acceso: React.FC = () => {
                   disabled={cargandoRegistro} maxLength={REGLAS_USUARIO.cargo.max} autoComplete="organization-title"
                   icono={<Briefcase size={20} />} error={tocado('cargo') ? erroresRegistro.cargo : null} />
 
-                <Campo id="reg-email" etiqueta="Correo electrónico institucional*" type="email" placeholder={ejemploCorreo}
+                <Campo id="reg-email" etiqueta="Correo electrónico*" type="email" placeholder={ejemploCorreo}
                   value={reg.email} onChange={campoReg('email', v => v.replace(/\s/g, ''))} onBlur={tocar('email')}
                   disabled={cargandoRegistro} maxLength={150} aria-required
                   autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
                   icono={<Mail size={20} />} error={tocado('email') ? errorCorreoRegistro : null}
-                  exito={reg.email && !errorCorreoRegistro ? 'Correo con dominio autorizado' : null} />
+                  exito={reg.email && !errorCorreoRegistro ? (dominios?.length ? 'Correo con dominio autorizado' : 'Correo válido') : null} />
 
                 <ParPassword prefijo="reg" password={reg.password} confirmar={reg.confirmar} deshabilitado={cargandoRegistro}
                   onPassword={v => setReg(r => ({ ...r, password: v }))} onConfirmar={v => setReg(r => ({ ...r, confirmar: v }))} />

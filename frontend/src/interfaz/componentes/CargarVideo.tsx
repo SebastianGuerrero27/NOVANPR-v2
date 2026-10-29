@@ -62,7 +62,7 @@ export const CargarVideo: React.FC<{ onCerrar: () => void; onCargada: (c: Camara
 
   const mb = archivo ? (archivo.size / 1048576).toLocaleString('es-EC', { maximumFractionDigits: 1 }) : null;
   return (
-    <Modal titulo="Cargar video de prueba" subtitulo="El video se procesa como si fuera la cámara: motor ANPR, monitoreo en vivo y registros"
+    <Modal titulo="Cargar video de prueba" subtitulo="El video se procesa como si fuera la cámara: motor ANPR, Gestión de Accesos y registros"
       onCerrar={onCerrar} bloquear={subiendo}
       pie={<>
         <button className="btn btn-secondary" onClick={onCerrar} disabled={subiendo}>Cancelar</button>
@@ -91,7 +91,7 @@ export const CargarVideo: React.FC<{ onCerrar: () => void; onCargada: (c: Camara
           <span style={{ width: `${progreso ?? 0}%` }} /></div>}
         <Aviso tipo="info">
           Se reproduce en bucle a su velocidad real y sin recodificar. Después de cargarlo, dibuje sus <b>Zonas</b> y asígnelo al
-          motor en <b>Monitoreo</b>. Los registros que genere quedan en el historial como los de una cámara real.
+          motor en <b>Gestión de Accesos</b>. Los registros que genere quedan en el historial como los de una cámara real.
         </Aviso>
         {error && <Aviso tipo="error">{error}</Aviso>}
       </div>

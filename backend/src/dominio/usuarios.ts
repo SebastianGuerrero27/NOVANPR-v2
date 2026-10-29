@@ -55,8 +55,8 @@ export function normalizarCorreo(valor: unknown): string {
 }
 
 /**
- * Correo de una cuenta nueva: formato válido (dominio/validacion.ts) y de un dominio
- * institucional permitido. La lista viene de la configuración del sistema; vacía = cualquiera.
+ * Correo de una cuenta nueva: formato válido (dominio/validacion.ts) y, si se configuró una lista,
+ * de un dominio permitido. La lista viene de la configuración del sistema; vacía = cualquiera.
  */
 export function validarCorreoInstitucional(valor: unknown, dominios: readonly string[]): Validado<string> {
   const r = validarEmail(valor, 'Correo electrónico');
@@ -95,9 +95,10 @@ export interface DatosAltaUsuario {
   nombre_completo: string;
   cargo: string | null;
   rol: Rol;
+  password?: string;
 }
 
-/** Alta por el administrador (la contraseña la define la persona con el enlace que recibe). */
+/** Alta por el administrador; la contraseña es opcional y, si no llega, se usa invitación por correo. */
 export function leerAltaUsuario(entrada: Entrada, dominios: readonly string[]): Validado<DatosAltaUsuario> {
   const b = entrada ?? {};
   const nombre = textoObligatorio(b.nombre_completo, REGLA_NOMBRE);
@@ -108,7 +109,16 @@ export function leerAltaUsuario(entrada: Entrada, dominios: readonly string[]): 
   if (!cargo.ok) return cargo;
   const rol = validarRol(b.rol);
   if (!rol.ok) return rol;
-  return { ok: true, valor: { email: email.valor, nombre_completo: nombre.valor, cargo: cargo.valor, rol: rol.valor } };
+  let password: string | undefined;
+  if (b.password !== undefined && b.password !== '') {
+    const p = validarPassword(b.password);
+    if (!p.ok) return p;
+    password = p.valor;
+  }
+  return {
+    ok: true,
+    valor: { email: email.valor, nombre_completo: nombre.valor, cargo: cargo.valor, rol: rol.valor, ...(password ? { password } : {}) },
+  };
 }
 
 export interface DatosRegistro {

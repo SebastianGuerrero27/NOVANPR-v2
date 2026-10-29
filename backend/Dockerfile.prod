@@ -1,9 +1,9 @@
 # Imagen de producción del backend (la usa el CD). Contexto de construcción: raíz del repositorio,
 # porque el backend carga db/postgresql/esquema.sql al arrancar.
 #   docker build -f backend/Dockerfile.prod -t anpr-backend .
-# El Dockerfile de desarrollo (backend/Dockerfile, ts-node-dev) sigue siendo el de docker compose.
+# El Dockerfile de desarrollo mantiene la recarga de archivos con el vigilante nativo de Node.
 
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY backend/package*.json ./
 RUN npm ci
@@ -11,20 +11,22 @@ COPY backend/tsconfig.json ./
 COPY backend/src ./src
 RUN npm run build && npm prune --omit=dev
 
-FROM node:20-alpine
+FROM node:24-alpine
 ENV NODE_ENV=production \
     PORT=5000 \
     DOCKER_CONTAINER=true \
-    MEDIA_DIR=/app/media
+    MEDIA_DIR=/app/media \
+    EVIDENCIA_LISTAS_DIR=/app/evidencia-listas
 WORKDIR /app
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node backend/package.json ./
+COPY --chown=node:node backend/scripts/supervisar.cjs ./scripts/supervisar.cjs
 # db.ts busca el esquema PostgreSQL en path.join(__dirname, '../../db') → /app/db
 COPY --chown=node:node db ./db
-RUN mkdir -p /app/media /app/logs && chown node:node /app/media /app/logs
+RUN mkdir -p /app/media /app/evidencia-listas /app/logs && chown node:node /app/media /app/evidencia-listas /app/logs
 USER node
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD wget -qO- http://127.0.0.1:5000/health > /dev/null || exit 1
-CMD ["node", "dist/index.js"]
+CMD ["node", "scripts/supervisar.cjs"]

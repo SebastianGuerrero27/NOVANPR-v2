@@ -40,12 +40,13 @@ Solo existen **tres roles** (migración `db/migration_v6_tres_roles.sql`: `OPERA
 | `listas:ver` — consultar lista blanca y lista de alertas | ✓ | ✓ | ✓ |
 | `solicitudes:crear` — solicitar la autorización de una placa | ✓ | | ✓ |
 | `padron:gestionar` — permisos de placa (vigencia, horario, categoría) | | ✓ | ✓ |
+| `padron:supervisar` — permisos de todos los usuarios, incluidos los retirados (Permisos por usuario) | | | ✓ |
 | `solicitudes:resolver` — aprobar o rechazar solicitudes | | ✓ | ✓ |
 | `avisos:garita` — aviso a pantalla completa con protocolo | ✓ | | ✓ |
 | `avisos:acceso` — accesos denegados/restringidos, reincidencias | ✓ | | ✓ |
 | `avisos:seguridad` — placas en lista de alertas | ✓ | | ✓ |
 | `avisos:padron` — permisos de placa otorgados | ✓ | | ✓ |
-| `accesos:excepcion`, `alertas:gestionar`, `avisos:sistema`, `alarmas:escalamiento`, `reportes:ver`, `evaluacion:ver`, `camaras:operar`, `detecciones:eliminar`, `camaras:gestionar`, `usuarios:gestionar`, `auditoria:ver`, `configuracion:gestionar`, `propietario:consultar` | | | ✓ |
+| `accesos:excepcion`, `alertas:gestionar`, `avisos:sistema`, `alarmas:escalamiento`, `reportes:ver`, `camaras:operar`, `detecciones:eliminar`, `camaras:gestionar`, `usuarios:gestionar`, `auditoria:ver`, `configuracion:gestionar`, `propietario:consultar` | | | ✓ |
 
 ### Flujo de notificaciones de permisos
 

@@ -1,11 +1,10 @@
 import { type Actor, errorConflicto, errorNoDisponible, errorNoEncontrado, errorValidacion } from './comun';
-import { CATALOGO, type ConsultaBandeja, type EstadoEnBandeja, leerConsultaBandeja, leerDiasMetricas, puedeEliminarse } from '../dominio/notificaciones';
+import { CATALOGO, type ConsultaBandeja, type EstadoEnBandeja, leerConsultaBandeja, puedeEliminarse } from '../dominio/notificaciones';
 import { leerSuscripcionPush, type SuscripcionPush } from '../dominio/suscripcionPush';
 
 /**
  * Bandeja de notificaciones de la sesión (cada usuario ve solo las suyas), reconocimiento (ACK)
- * de alarmas, canal Web Push del navegador y métricas del canal para la evaluación científica
- * (ISA-18.2: tiempo de reconocimiento por prioridad, tasa de alarmas por hora y avalanchas).
+ * de alarmas y canal Web Push del navegador.
  *
  * La creación, el agrupamiento y el escalamiento de las notificaciones están en
  * infraestructura/servicios/notificaciones.ts (los usan la detección y las tareas programadas).
@@ -48,7 +47,6 @@ export interface RepositorioNotificaciones {
   eliminarSuscripcion(usuarioId: number, endpoint: string): Promise<void>;
   suscripciones(usuarioId: number): Promise<SuscripcionGuardada[]>;
   eliminarSuscripciones(ids: number[]): Promise<void>;
-  metricas(dias: number): Promise<{ porSeveridad: Fila[]; tta: Fila[]; avalanchas?: Fila }>;
 }
 
 export interface MensajePush {
@@ -103,9 +101,15 @@ export function casosNotificaciones(d: DependenciasNotificaciones) {
       return resumen(actor);
     },
 
+    /**
+     * Botón "Atendida": registra la atención (queda en la alarma para los demás destinatarios y la
+     * trazabilidad) y la quita de la bandeja de quien la atendió, sin que tenga que eliminarla.
+     */
     async reconocer(actor: Actor, id: number) {
       const reconocidas = await d.repositorio.reconocer(actor.id, { id });
-      return { reconocidas, ...(await resumen(actor)) };
+      const archivada = await d.repositorio.eliminar(actor.id, id);
+      if (archivada) d.eventos.aUsuario(actor.id, 'notificacion:eliminada', { ids: [id] });
+      return { reconocidas, archivada, ...(await resumen(actor)) };
     },
 
     /** Botón "Enterado" del aviso de garita: reconoce las alarmas de un paso vehicular. */
@@ -171,30 +175,6 @@ export function casosNotificaciones(d: DependenciasNotificaciones) {
       return { message: `Prueba enviada a ${r.enviados} ${r.enviados === 1 ? 'equipo' : 'equipos'}.`, ...r };
     },
 
-    /**
-     * Tiempo de reconocimiento (TTA) por prioridad (mediana y p95), tasa de alarmas por hora y
-     * ventanas de avalancha (> 10 alarmas críticas o altas en 10 min, ISA-18.2).
-     */
-    async metricas(consulta: { dias?: unknown }) {
-      const dias = leerDiasMetricas(consulta.dias);
-      if (!dias.ok) throw errorValidacion(dias.error);
-      const r = await d.repositorio.metricas(dias.valor);
-      const filas = r.porSeveridad.map(f => {
-        const t = r.tta.find(x => x.severidad === f.severidad);
-        return {
-          severidad: f.severidad,
-          emitidas: Number(f.emitidas), repeticiones_agrupadas: Number(f.repeticiones_agrupadas ?? 0),
-          con_ack: Number(f.con_ack), reconocidas: Number(f.reconocidas), escaladas: Number(f.escaladas),
-          tta_mediana_s: t ? Number(t.tta_mediana_s) : null, tta_p95_s: t ? Number(t.tta_p95_s) : null,
-        };
-      });
-      const total = filas.reduce((a, f) => a + f.emitidas, 0);
-      return {
-        dias: dias.valor, por_severidad: filas,
-        alarmas_por_hora: total / (dias.valor * 24),
-        ventanas_avalancha_10min: Number(r.avalanchas?.ventanas_avalancha ?? 0),
-      };
-    },
   };
 }
 

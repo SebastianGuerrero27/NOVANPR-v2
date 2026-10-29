@@ -39,6 +39,13 @@ export function fechaIsoLocal(d = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 }
 
+/** Suma `n` días a una fecha "YYYY-MM-DD" (calendario, sin zona horaria). */
+export function sumarDias(ymd: string, n: number): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Convierte "YYYY-MM-DD" (día local) al instante ISO de inicio o fin de ese día en Ecuador. */
 export function limiteDia(ymd: string, fin = false): string {
   return new Date(`${ymd}T${fin ? '23:59:59.999' : '00:00:00'}-05:00`).toISOString();

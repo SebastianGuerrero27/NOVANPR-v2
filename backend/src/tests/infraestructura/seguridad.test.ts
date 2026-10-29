@@ -2,11 +2,16 @@ import { dominiosPermitidos, generarToken, hashToken } from '../../infraestructu
 
 describe('seguridad de cuentas', () => {
   const dominiosOriginales = process.env.ALLOWED_EMAIL_DOMAINS;
-  afterEach(() => { process.env.ALLOWED_EMAIL_DOMAINS = dominiosOriginales; });
+  afterEach(() => {
+    if (dominiosOriginales === undefined) delete process.env.ALLOWED_EMAIL_DOMAINS;
+    else process.env.ALLOWED_EMAIL_DOMAINS = dominiosOriginales;
+  });
 
   it('dominios de correo configurables (por defecto solo ecu911.gob.ec)', () => {
     delete process.env.ALLOWED_EMAIL_DOMAINS;
     expect(dominiosPermitidos()).toEqual(['ecu911.gob.ec']);
+    process.env.ALLOWED_EMAIL_DOMAINS = '';
+    expect(dominiosPermitidos()).toEqual([]);
   });
 
   it('tokens de un solo uso: se guarda solo el hash SHA-256', () => {

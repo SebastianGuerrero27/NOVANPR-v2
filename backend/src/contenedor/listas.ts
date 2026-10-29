@@ -3,6 +3,8 @@ import { describirHorario } from '../dominio/horario';
 import { auditoriaSql, eventosSocket } from '../infraestructura/adaptadores';
 import { repositorioListasSql } from '../infraestructura/persistencia/listasSql';
 import { notificarPermisoOtorgado } from '../infraestructura/servicios/avisosAcceso';
+import { leerHojaCalculo } from '../infraestructura/servicios/hojaCalculo';
+import { eliminarEvidenciaListas } from '../infraestructura/servicios/evidenciaListas';
 
 /**
  * Raíz de composición (un archivo por módulo en src/contenedor/): el único lugar donde los
@@ -14,10 +16,25 @@ export const listas = casosListas({
   auditoria: auditoriaSql,
   eventos: eventosSocket,
   describirHorario,
+  leerHoja: leerHojaCalculo,
+  evidencia: { eliminar: eliminarEvidenciaListas },
   avisos: {
     registroAgregado(def, registro, actor) {
       // Vehículo agregado a la lista blanca: la garita recibe la notificación
-      if (def.tipo === 'autorizados') void notificarPermisoOtorgado(registro as any, { id: actor.id, nombre: actor.nombre });
+      if (def.tipo === 'autorizados') return notificarPermisoOtorgado(registro as any, { id: actor.id, nombre: actor.nombre });
     },
   },
 });
+
+/**
+ * Retiro automático de los permisos vencidos: al arrancar y cada hora (seguro con varias
+ * instancias: el UPDATE solo toma los que siguen activos).
+ */
+export function iniciarRetiroPermisosVencidos(): void {
+  if (process.env.NODE_ENV === 'test' || process.env.TAREAS_PROGRAMADAS === 'false') return;
+  const retirar = () => listas.retirarVencidos()
+    .then(n => { if (n) console.log(`[LISTAS] ${n} ${n === 1 ? 'permiso vencido retirado' : 'permisos vencidos retirados'} de la lista blanca.`); })
+    .catch(e => console.warn('[LISTAS] Retiro de permisos vencidos:', (e as Error).message));
+  setTimeout(retirar, 20_000).unref();
+  setInterval(retirar, 60 * 60 * 1000).unref();
+}

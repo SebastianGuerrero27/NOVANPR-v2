@@ -44,6 +44,7 @@ Thumbs.db
 *.swo
 
 # Temporary Media / Captures
+**/media-listas/
 media/*.jpg
 media/*.png
 media/*.jpeg

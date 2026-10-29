@@ -1,4 +1,4 @@
-import { leerFiltroEvaluacion, leerPeriodoReporte, validarFechaHora } from '../../dominio/periodo';
+import { leerPeriodoReporte, validarFechaHora } from '../../dominio/periodo';
 
 const OMISION = { desde: new Date('2026-09-29T05:00:00Z'), hasta: new Date('2026-10-05T15:00:00Z') };
 
@@ -37,30 +37,5 @@ describe('Período · reporte consolidado', () => {
     [{ camara: '0' }, 'Cámara: mínimo 1.'],
   ])('rechaza %p', (consulta, error) => {
     expect(leerPeriodoReporte(consulta, OMISION)).toEqual({ ok: false, error });
-  });
-});
-
-describe('Período · evaluación del sistema', () => {
-  it('días inclusivos: el final se cuenta hasta las 23:59:59', () => {
-    const r = leerFiltroEvaluacion({ desde: '2026-10-01', hasta: '2026-10-03', camara_id: '2' });
-    expect(r).toEqual({
-      ok: true,
-      valor: {
-        desde: '2026-10-01', hasta: '2026-10-03', inicio: new Date('2026-10-01T00:00:00Z'),
-        fin: new Date('2026-10-03T23:59:59'), camaraId: 2,
-      },
-    });
-  });
-
-  it('sin filtro: todo el historial', () => {
-    expect(leerFiltroEvaluacion({})).toEqual({ ok: true, valor: { desde: null, hasta: null, inicio: null, fin: null, camaraId: null } });
-  });
-
-  it.each([
-    [{ desde: '2026-10-05', hasta: '2026-10-01' }, 'La fecha inicial no puede ser posterior a la final.'],
-    [{ desde: '01/10/2026' }, 'Fecha inicial: formato AAAA-MM-DD.'],
-    [{ camara_id: '1.5' }, 'Cámara: solo números enteros.'],
-  ])('rechaza %p', (consulta, error) => {
-    expect(leerFiltroEvaluacion(consulta)).toEqual({ ok: false, error });
   });
 });

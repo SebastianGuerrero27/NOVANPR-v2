@@ -35,7 +35,10 @@ export const ItemNotificacion: React.FC<{ n: Notificacion; compacto?: boolean; o
   const ack = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setEnviando(true);
-    try { await reconocer(n.id); } catch (err) { notificar('error', 'No se pudo registrar la atención', mensajeError(err)); } finally { setEnviando(false); }
+    try {
+      await reconocer(n.id);
+      notificar('exito', 'Alarma atendida', 'Se quitó de su bandeja; la atención queda registrada en la alarma.');
+    } catch (err) { notificar('error', 'No se pudo registrar la atención', mensajeError(err)); } finally { setEnviando(false); }
   };
   const quitar = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -76,7 +79,7 @@ export const ItemNotificacion: React.FC<{ n: Notificacion; compacto?: boolean; o
 
 /** Campana del encabezado: contador de no leídas y alarmas pendientes, y bandeja desplegable. */
 export const CampanaNotificaciones: React.FC = () => {
-  const { items, noLeidas, pendientes, revisadas, marcarTodas } = useCentroNotificaciones();
+  const { items, noLeidas, pendientes, revisadas, marcarTodas, recargar } = useCentroNotificaciones();
   const navigate = useNavigate();
   const [abierto, setAbierto] = useState(false);
   const [confirmarLimpieza, setConfirmarLimpieza] = useState(false);
@@ -95,7 +98,10 @@ export const CampanaNotificaciones: React.FC = () => {
   const etiqueta = `${noLeidas} sin leer${pendientes ? ` · ${pendientes} pendientes de atención` : ''}`;
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button className={`btn btn-ghost btn-sm btn-icono campana${pendientes > 0 ? ' con-pendientes' : ''}`} onClick={() => setAbierto(a => !a)}
+      <button className={`btn btn-ghost btn-sm btn-icono campana${pendientes > 0 ? ' con-pendientes' : ''}`} onClick={() => {
+        if (!abierto) void recargar();
+        setAbierto(a => !a);
+      }}
         aria-expanded={abierto} aria-haspopup="dialog" aria-label={`Notificaciones: ${etiqueta}`} title={`Notificaciones · ${etiqueta}`}>
         <Icono size={18} />
         {noLeidas > 0 && <span className={`campana-contador${pendientes > 0 ? ' urgente' : ''}`}>{noLeidas > 99 ? '99+' : noLeidas}</span>}

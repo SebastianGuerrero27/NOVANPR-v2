@@ -153,3 +153,31 @@ def test_un_cuadro_vacio_o_corrupto_no_se_entrega():
     finally:
         fuente.release()
 
+
+def test_la_espera_entre_reintentos_no_desborda_con_la_camara_caida_por_horas():
+    from app.infraestructura.video_source import espera_reintento
+    assert [espera_reintento(i) for i in (1, 2, 3, 4, 5)] == [1.5, 3.0, 6.0, 10.0, 10.0]
+    assert espera_reintento(5000) == 10.0
+
+
+def test_el_decodificador_rtsp_usa_un_hilo_para_no_atrasar_los_cuadros(monkeypatch):
+    """Con un hilo por núcleo el decodificador retenía ~370 ms de cuadros y la caja del HUD quedaba
+    detrás de la placa; se abre con un hilo (configurable con RTSP_HILOS_DECODIFICADOR)."""
+    import cv2
+    from app.infraestructura import video_source
+    pedidos = []
+
+    class Captura:
+        def __init__(self, url, api, params):
+            pedidos.append(dict(zip(params[::2], params[1::2])))
+
+        def isOpened(self):
+            return True
+
+        def set(self, *_):
+            return True
+
+    monkeypatch.setattr(video_source.cv2, "VideoCapture", Captura)
+    assert _abrir_rtsp("rtsp://camara/flujo", abrir_ms=1000, leer_ms=1000) is not None
+    assert pedidos[0][cv2.CAP_PROP_N_THREADS] == video_source.HILOS_DECODIFICADOR_RTSP == 1
+

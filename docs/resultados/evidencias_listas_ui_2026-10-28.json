@@ -1,0 +1,60 @@
+{
+  "fecha": "2026-10-28",
+  "origen": "http://localhost:3000",
+  "datos": "Todas las respuestas personales e imágenes son fixtures artificiales interceptadas; ninguna escritura en API real.",
+  "casos": [
+    {
+      "vista": "blanca",
+      "pendientesIndependientes": true,
+      "capturadasVerdes": [
+        "rgb(236, 253, 243)",
+        "rgb(236, 253, 243)"
+      ],
+      "zoomAmbasFotos": true,
+      "zoom130porciento": true,
+      "editarFotosPersistidas": true,
+      "escapeMantieneFormulario": true,
+      "cambiarPlacaOcultaEvidenciaAnterior": true,
+      "botonesConsultaPagada": 0
+    },
+    {
+      "vista": "negra",
+      "pendientesIndependientes": true,
+      "capturadasVerdes": [
+        "rgb(236, 253, 243)",
+        "rgb(236, 253, 243)"
+      ],
+      "zoomAmbasFotos": true,
+      "zoom130porciento": true,
+      "editarFotosPersistidas": true,
+      "escapeMantieneFormulario": true,
+      "cambiarPlacaOcultaEvidenciaAnterior": true,
+      "botonesConsultaPagada": 0
+    },
+    {
+      "vista": "gestor",
+      "pendientesIndependientes": true,
+      "capturadasVerdes": [
+        "rgb(236, 253, 243)",
+        "rgb(236, 253, 243)"
+      ],
+      "zoomAmbasFotos": true,
+      "zoom130porciento": true,
+      "editarFotosPersistidas": true,
+      "escapeMantieneFormulario": true,
+      "cambiarPlacaOcultaEvidenciaAnterior": true,
+      "botonesConsultaPagada": 0
+    }
+  ],
+  "erroresPagina": [],
+  "erroresConsola": [],
+  "consultasExternas": [],
+  "escriturasAPI": [],
+  "bundles": {
+    "entry": {
+      "ruta": "/assets/index-Dx7bZ2Ae.js",
+      "sha256": "9c17b7c87a88ae3e119ee2893ab62c648dca0d4ebbed239697765a47fc3aea9a"
+    }
+  },
+  "exito": true
+}

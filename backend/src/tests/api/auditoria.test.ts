@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import auditoriaRoutes from '../../interfaz/http/rutas/auditoria';
 
 const mockAuditadas: Record<string, unknown>[] = [];
+const mockConsultas: string[] = [];
 
 jest.mock('../../infraestructura/db', () => {
   const fila = {
@@ -20,6 +21,7 @@ jest.mock('../../infraestructura/db', () => {
     const r: any = {
       input: (nombre: string, a: unknown, b?: unknown) => { entradas[nombre] = b === undefined ? a : b; return r; },
       query: async (texto: string) => {
+        mockConsultas.push(texto);
         if (/FROM Usuarios u JOIN Roles r ON r\.id = u\.rol_id WHERE u\.id = @id/.test(texto)) {
           const codigo = ({ 1: 'ADMIN', 3: 'GUARDIA', 4: 'GESTOR_PERMISOS' } as Record<number, string>)[Number(entradas.id)];
           return { recordset: codigo ? [{ estado: 'activo', bloqueado: 0, bloqueado_hasta: null, codigo }] : [] };
@@ -82,6 +84,23 @@ describe('API · auditoría', () => {
     expect(no.body).toEqual({ error: 'Registro de auditoría no encontrado.' });
     await request(app).get('/api/auditoria/sistema/7').set('Authorization', token('Admin')).expect(404);
     await request(app).get('/api/auditoria/operaciones/abc').set('Authorization', token('Admin')).expect(404);
+  });
+
+  it('descartes del motor y consultas de propietario: su propia tabla, con la fecha del evento como `fecha`', async () => {
+    mockConsultas.length = 0;
+    await request(app).get('/api/auditoria?fuente=descartes&desde=2026-10-01T00:00:00Z').set('Authorization', token('Admin')).expect(200);
+    const pagina = mockConsultas.find(q => /LIMIT @tamano OFFSET @offset/.test(q)) ?? '';
+    expect(pagina).toMatch(/fecha_registro AS fecha[\s\S]*FROM AuditoriaDescartes/);
+    expect(pagina).toMatch(/fecha_registro >= @desde/);
+    expect(pagina).toMatch(/ORDER BY fecha_registro DESC/);
+
+    const csv = await request(app).get('/api/auditoria/exportar?fuente=descartes').set('Authorization', token('Admin')).expect(200);
+    expect(csv.text.slice(1).split('\r\n')[0])
+      .toBe('"id","fecha","tracking_id","motivo","texto_candidato","confianza","fuente","camara_id"');
+
+    mockConsultas.length = 0;
+    await request(app).get('/api/auditoria/propietario/7').set('Authorization', token('Admin')).expect(200);
+    expect(mockConsultas.some(q => /FROM AuditoriaConsultaPropietario WHERE id = @id/.test(q))).toBe(true);
   });
 
   it('retención: 400 si el plazo no es un entero entre 365 y 3650 días', async () => {

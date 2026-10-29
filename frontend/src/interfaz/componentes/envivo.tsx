@@ -32,6 +32,8 @@ interface PistaMotor {
   caja: PistaHud['caja'];
   puntos?: Punto[] | null;
   velocidad?: [number, number];
+  /** Segundos desde el cuadro en que vale la caja hasta el envío */
+  edad?: number;
   confianza?: number;
   placa?: string | null;
   parcial?: string | null;
@@ -46,6 +48,7 @@ function pistasDelMotor(lista: PistaMotor[] | undefined): PistaHud[] {
     caja: p.caja,
     puntos: p.puntos ?? null,
     velocidad: p.velocidad ?? [0, 0],
+    edad: p.edad ?? 0,
     confianza: p.confianza ?? 0,
     placa: p.placa ?? null,
     parcial: p.parcial ?? null,
@@ -105,7 +108,7 @@ const Superposicion: React.FC<{ estado: Estado; mensaje?: string | null; pausado
 
 const Insignias: React.FC<{ stats: EstadisticasVideo | null; etiqueta: string; ajustada: boolean }> = ({ stats, etiqueta, ajustada }) => (
   <>
-    <span className="insignia" style={{ position: 'absolute', left: 10, top: 10, background: 'rgba(185,28,28,0.92)', borderColor: 'transparent', color: '#fff' }}>
+    <span className="insignia al-pasar" style={{ position: 'absolute', left: 10, top: 10, background: 'rgba(185,28,28,0.92)', borderColor: 'transparent', color: '#fff' }}>
       <Radio size={12} /> {etiqueta}
     </span>
     {stats && (
@@ -135,7 +138,7 @@ export const ReproductorWebRTC: React.FC<{
   capa?: React.ReactNode;
   /** El reproductor toma la proporción del flujo en lugar de 16:9 (ver proporcionReproductor) */
   adaptarProporcion?: boolean;
-}> = ({ obtener, pausado = false, claveReinicio, etiqueta = 'EN VIVO · WebRTC', onFallo, onEstadisticas, mostrarHud = false, capa, adaptarProporcion = false }) => {
+}> = ({ obtener, pausado = false, claveReinicio, etiqueta = 'EN VIVO', onFallo, onEstadisticas, mostrarHud = false, capa, adaptarProporcion = false }) => {
   const visible = usePaginaVisible();
   const video = useRef<HTMLVideoElement>(null);
   const lienzo = useRef<HTMLCanvasElement>(null);
@@ -159,6 +162,8 @@ export const ReproductorWebRTC: React.FC<{
   useEffect(() => {
     if (!activo) { setEstado(pausado ? 'pausado' : 'oculto'); setStats(null); return; }
     let cerrado = false;
+    let fallido = false;
+    const negociacion = new AbortController();
     let sesion: SesionWhep | null = null;
     let ws: WebSocket | null = null;
     let timerStats: number | undefined;
@@ -174,7 +179,13 @@ export const ReproductorWebRTC: React.FC<{
     };
 
     const fallar = (texto: string) => {
-      if (cerrado) return;
+      // Una perdida ICE puede anunciar disconnected y failed para el mismo intento.
+      if (cerrado || fallido) return;
+      fallido = true;
+      window.clearTimeout(vigilancia);
+      window.clearInterval(timerStats);
+      ws?.close();
+      sesion?.cerrar();
       fallos.current += 1;
       setMensaje(texto);
       if (fallos.current >= 3 && onFallo) { setEstado('error'); onFallo(texto); return; }
@@ -196,6 +207,16 @@ export const ReproductorWebRTC: React.FC<{
       revisarAspecto();
       redibujar();
     };
+    const alRecibirVideo = () => {
+      if (cerrado || fallido) return;
+      fallos.current = 0;
+      setEstado('en_vivo');
+      setMensaje(null);
+      window.clearTimeout(vigilancia);
+      alCambiarCuadro();
+    };
+    // El primer cuadro puede llegar antes de que resuelva conectarWhep.
+    v.onloadeddata = alRecibirVideo;
     v.addEventListener('resize', alCambiarCuadro);
     const ro = new ResizeObserver(redibujar);
     ro.observe(v);
@@ -205,7 +226,7 @@ export const ReproductorWebRTC: React.FC<{
       try {
         const { whep, pistasWs } = await obtener();
         if (cerrado) return;
-        sesion = await conectarWhep(v, whep);
+        sesion = await conectarWhep(v, whep, negociacion.signal);
         if (cerrado) { sesion.cerrar(); return; }
         const medir = crearMedidor(sesion.pc);
         sesion.pc.addEventListener('connectionstatechange', () => {
@@ -214,11 +235,13 @@ export const ReproductorWebRTC: React.FC<{
         });
         // Si no llega ningún cuadro en 10 s, la cámara no está enviando video
         vigilancia = window.setTimeout(() => { if (!v.videoWidth) fallar('La cámara no está enviando video (sin señal).'); }, 10000);
-        v.onloadeddata = () => { fallos.current = 0; setEstado('en_vivo'); setMensaje(null); window.clearTimeout(vigilancia); alCambiarCuadro(); };
+        if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && v.videoWidth) alRecibirVideo();
         timerStats = window.setInterval(async () => {
           const s = await medir().catch(() => null);
+          if (cerrado || fallido) return;
           setStats(s);
           onEstadisticas?.(s);
+          hud.fijarRetardoVideo(s?.latencia_ms != null ? s.latencia_ms / 1000 : null);
         }, 2000);
         if (mostrarHud && pistasWs) {
           ws = new WebSocket(pistasWs);
@@ -241,6 +264,7 @@ export const ReproductorWebRTC: React.FC<{
 
     return () => {
       cerrado = true;
+      negociacion.abort();
       window.clearTimeout(reintento);
       window.clearTimeout(vigilancia);
       window.clearInterval(timerStats);
@@ -257,12 +281,14 @@ export const ReproductorWebRTC: React.FC<{
 
   const proporcion = proporcionReproductor(ajuste, aspectoFuente, adaptarProporcion);
   return (
-    <div ref={contenedor} style={{ position: 'relative', aspectRatio: String(proporcion), background: '#050b16', borderRadius: 10, overflow: 'hidden',
+    <div ref={contenedor} className="reproductor" style={{ position: 'relative', aspectRatio: String(proporcion), background: '#050b16', borderRadius: 10, overflow: 'hidden',
       ...(adaptarProporcion ? { width: `min(100%, calc(${ALTO_MAXIMO_ADAPTADO} * ${proporcion}))`, margin: '0 auto' } : { width: '100%' }) }}>
       <video ref={video} muted playsInline autoPlay style={{ width: '100%', height: '100%', objectFit: ajuste ? 'fill' : 'contain', display: 'block' }} />
       <canvas ref={lienzo} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', display: mostrarHud ? 'block' : 'none' }} />
       {capa && area && estado === 'en_vivo' && (
-        <div style={{ position: 'absolute', left: area.x, top: area.y, width: area.w, height: area.h }}>{capa}</div>
+        <div style={adaptarProporcion
+          ? { position: 'absolute', inset: 0 }
+          : { position: 'absolute', left: area.x, top: area.y, width: area.w, height: area.h }}>{capa}</div>
       )}
       <Superposicion estado={estado} mensaje={mensaje} pausado={pausado} />
       {estado === 'en_vivo' && !capa && <Insignias stats={stats} etiqueta={etiqueta} ajustada={ajuste !== null} />}
@@ -359,7 +385,7 @@ export const ReproductorPrueba: React.FC<{ titulo: string; camaraId?: number; rt
             <span className="texto-secundario">El motor analiza el principal; el navegador muestra el secundario.</span>
           </div>
         )}
-        <ReproductorWebRTC obtener={obtener} etiqueta="PRUEBA · WebRTC" onEstadisticas={setStats} claveReinicio={canal}
+        <ReproductorWebRTC obtener={obtener} etiqueta="PRUEBA" onEstadisticas={setStats} claveReinicio={canal}
           onFallo={m => setError(m)} />
         <div className="grid-3" style={{ gap: 10 }}>
           <div className="tarjeta" style={{ padding: 12 }}>

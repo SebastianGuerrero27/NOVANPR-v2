@@ -28,9 +28,9 @@ const SelectorMotivo: React.FC<{ valor: string; onCambiar: (v: string) => void; 
       <span className="etiqueta-campo">Motivo (queda registrado en la auditoría)*</span>
       <div className="fila" style={{ gap: 6 }}>
         {MOTIVOS.map(m => (
-          <button key={m} type="button" className={`btn btn-sm ${!otro && valor === m ? 'btn-navy' : 'btn-secondary'}`} onClick={() => { setOtro(false); onCambiar(m); }}>{m}</button>
+          <button key={m} type="button" className="btn btn-sm btn-secondary btn-opcion" aria-pressed={!otro && valor === m} onClick={() => { setOtro(false); onCambiar(m); }}>{m}</button>
         ))}
-        <button type="button" className={`btn btn-sm ${otro ? 'btn-navy' : 'btn-secondary'}`} onClick={() => { setOtro(true); onCambiar(''); }}>Otro…</button>
+        <button type="button" className="btn btn-sm btn-secondary btn-opcion" aria-pressed={otro} onClick={() => { setOtro(true); onCambiar(''); }}>Otro…</button>
       </div>
       {otro && (
         <CampoTexto id="motivo-eliminar" etiqueta="Describa el motivo" multilinea autoFocus valor={valor} onCambiar={onCambiar}
@@ -114,7 +114,7 @@ export const EliminarVarios: React.FC<{
       <div className="pila" style={{ gap: 14 }}>
         <Aviso tipo="error">
           Se eliminarán <b>{numero(total)} {total === 1 ? 'registro' : 'registros'}</b> de ingreso con sus fotografías de evidencia. Esta acción
-          no se puede deshacer y afecta los reportes y la evaluación del sistema.
+          no se puede deshacer y afecta los reportes y el historial de registros.
         </Aviso>
         <SelectorMotivo valor={motivo} onCambiar={setMotivo} minimo={5} />
         <div className="campo">

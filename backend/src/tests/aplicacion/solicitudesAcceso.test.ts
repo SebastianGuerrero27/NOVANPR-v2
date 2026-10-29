@@ -65,6 +65,22 @@ const fallo = async (p: Promise<unknown>) => {
 };
 
 describe('Casos de uso · solicitudes de acceso', () => {
+  it('la aprobación vincula el permiso y espera el aviso persistente al guardia antes de responder', async () => {
+    const { casos, listas, repositorio, avisos } = preparar();
+    let completar!: () => void;
+    avisos.notificar.mockImplementation(() => new Promise<void>(resolve => { completar = resolve; }));
+    let respondio = false;
+    const aprobacion = casos.aprobar(12, { version: 1 }, GESTOR).then(() => { respondio = true; });
+    await new Promise(resolve => setImmediate(resolve));
+    expect(repositorio.vincularPermiso).toHaveBeenCalledWith(12, 77);
+    expect(listas.anunciarAlta).toHaveBeenCalled();
+    expect(avisos.notificar).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'solicitud.resuelta', destinatarios: { usuarios: [GUARDIA.id] } }));
+    expect(respondio).toBe(false);
+    completar();
+    await aprobacion;
+    expect(respondio).toBe(true);
+  });
+
   it('crear: valida con las reglas de la lista blanca, registra, audita, difunde y avisa al gestor', async () => {
     const { casos, repositorio, auditoria, eventos, avisos } = preparar();
     await casos.crear(CUERPO, GUARDIA);

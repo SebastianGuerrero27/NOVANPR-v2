@@ -1,6 +1,6 @@
 import { describirHorario, type Horario } from './horario';
 import { CATEGORIAS_PERMISO, leerRegistroLista, LISTA_BLANCA, type RegistroLista } from './listas';
-import { type ReglaTexto, type Validado, validarEntero, validarTexto } from './validacion';
+import { type ReglaTexto, type Validado, validarEntero, validarTexto, validarPlaca } from './validacion';
 
 /**
  * Solicitudes de acceso (dominio puro).
@@ -45,6 +45,8 @@ export interface DatosSolicitud {
  */
 export function leerSolicitud(entrada: Record<string, unknown> | null | undefined, deteccionActual: number | null = null): Validado<DatosSolicitud> {
   const b = entrada ?? {};
+  const placa = validarPlaca(b.placa);
+  if (!placa.ok) return placa;
   const registro = leerRegistroLista(LISTA_BLANCA, { ...b, fecha_vencimiento: b.fecha_fin, categoria: b.categoria || 'VISITANTE' });
   if (!registro.ok) return registro;
   const motivo = validarTexto(b.motivo, REGLA_MOTIVO);
@@ -60,6 +62,10 @@ export function leerSolicitud(entrada: Record<string, unknown> | null | undefine
 /** Lo que la aprobación toma de la solicitud guardada para conceder el permiso. */
 export interface SolicitudAprobable {
   id: number;
+  cedula?: string | null;
+  institucion?: string | null;
+  cargo?: string | null;
+  observaciones?: string | null;
   placa: string;
   propietario: string;
   departamento: string | null;
@@ -84,13 +90,18 @@ export function datosAprobacion(s: SolicitudAprobable, ajustes: unknown): Valida
   const datos = {
     placa: s.placa,
     propietario: a.propietario ?? s.propietario,
+    cedula: a.cedula ?? s.cedula,
+    institucion: a.institucion ?? s.institucion,
+    cargo: a.cargo ?? s.cargo,
     departamento: a.departamento ?? s.departamento,
     categoria: a.categoria ?? s.categoria,
     tipo_vehiculo: a.tipo_vehiculo ?? s.vehiculo.tipo,
     marca: a.marca ?? s.vehiculo.marca,
     modelo: a.modelo ?? s.vehiculo.modelo,
     color: a.color ?? s.vehiculo.color,
-    observaciones: a.observaciones ?? `Solicitud #${s.id}: ${s.motivo}`.substring(0, 255),
+    observaciones: a.observaciones ?? s.observaciones ?? `Solicitud #${s.id}: ${s.motivo}`.substring(0, 255),
+    // El motivo de la solicitud queda como motivo de ingreso del permiso (la garita no lo reescribe cada día)
+    motivo_ingreso: a.motivo_ingreso ?? (s.motivo ? String(s.motivo).substring(0, 300) : null),
     fecha_inicio: a.fecha_inicio !== undefined ? a.fecha_inicio : s.fecha_inicio,
     fecha_vencimiento: a.fecha_fin !== undefined ? a.fecha_fin : s.fecha_fin,
     horario: a.horario !== undefined ? a.horario : s.horario,
@@ -116,6 +127,10 @@ export function cambiosSolicitud(anterior: SolicitudAprobable & { deteccion_id: 
   const pares: [string, unknown, unknown][] = [
     ['placa', anterior.placa, nueva.registro.placa],
     ['propietario', anterior.propietario, d.propietario],
+    ['cedula', anterior.cedula, d.cedula],
+    ['institucion', anterior.institucion, d.institucion],
+    ['cargo', anterior.cargo, d.cargo],
+    ['observaciones', anterior.observaciones, d.observaciones],
     ['departamento', anterior.departamento, d.departamento],
     ['categoria', anterior.categoria, d.categoria],
     ['motivo', anterior.motivo, nueva.motivo],

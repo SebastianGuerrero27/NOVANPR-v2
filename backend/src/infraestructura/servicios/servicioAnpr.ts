@@ -65,6 +65,31 @@ export async function estadoServicioAnpr(): Promise<EstadoAnpr> {
   }
 }
 
+/** CPU del proceso del motor ANPR en % de la capacidad total del equipo (null si no responde). */
+export async function cpuMotorAnpr(): Promise<number | null> {
+  try {
+    const s = await llamar('/status', {}, 2500);
+    const valor = s?.cpu?.uso_pct;
+    return typeof valor === 'number' && Number.isFinite(valor) ? valor : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Miniaturas de los últimos 30 s de la cámara que procesa el motor (foto del registro manual). */
+export function historialAnpr(): Promise<{ camara_id: number; cuadros: { t: number; miniatura: string }[] }> {
+  return llamar('/api/historial', {}, 5000);
+}
+
+/** Guarda como foto de evidencia el cuadro del historial a la hora `t`: su ruta /media/…, o null. */
+export async function guardarCuadroAnpr(t: number): Promise<string | null> {
+  try {
+    return (await llamar('/api/historial/guardar', { method: 'POST', body: JSON.stringify({ t }) }, 5000)).ruta ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export type Punto = [number, number];
 
 export function cambiarCamaraAnpr(camara: { id: number; nombre: string; rtsp_url: string; roi?: Punto[] | null; exclusiones?: Punto[][] },

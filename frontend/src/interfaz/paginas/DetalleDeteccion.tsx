@@ -1,54 +1,24 @@
 import React, { useState } from 'react';
+import { ObservacionOcr } from '../componentes/ObservacionOcr';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, Clock, Edit3, FileCheck2, FileSearch, MinusCircle, ShieldAlert, ShieldCheck, Trash2, UserSearch, XCircle } from 'lucide-react';
-import api, { mensajeError, respuestaError } from '../../infraestructura/api';
+import { ArrowLeft, CheckCircle2, Clock, Edit3, FileCheck2, FileSearch, MinusCircle, ShieldAlert, ShieldCheck, XCircle } from 'lucide-react';
+import api from '../../infraestructura/api';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta } from '../../aplicacion/hooks';
 import type { Deteccion, DeteccionDetalle, EvidenciaLectura, EvidenciaSinPlaca } from '../../dominio/tipos';
 import { esEvidenciaSinPlaca, MOTIVO_SIN_PLACA } from '../../dominio/evidencia';
 import { colorConfianza, ESTADOS, fechaHora, NIVELES_ALERTA, numero, porcentaje, relativo } from '../../dominio/formato';
-import { formatearPlaca, validarTexto } from '../../dominio/validacion';
-import { REGLA_MOTIVO_CONSULTA } from '../../dominio/reglas';
-import { Aviso, Cargando, InsigniaEstado, Modal, Tarjeta, Vacio } from '../componentes/ui';
-import { CampoTexto } from '../componentes/campos';
+import { formatearPlaca } from '../../dominio/validacion';
+import { Aviso, Cargando, InsigniaEstado, Tarjeta, Vacio } from '../componentes/ui';
 import { DatosIngresoModal, describirVehiculo, ImagenEvidencia, PlacaFoto, ValidarModal } from '../componentes/deteccion';
 import { VisorZoom } from '../componentes/ZoomDual';
 import { useNotificar } from '../componentes/Notificaciones';
 import { FormularioLista } from '../componentes/FormularioLista';
-import { EliminarUno } from '../componentes/EliminarDetecciones';
 import { FormularioSolicitud } from '../componentes/FormularioSolicitud';
+import { EvidenciaRegistro } from '../componentes/EvidenciaRegistro';
 
 const DECISION: Record<string, string> = { ...Object.fromEntries(Object.entries(ESTADOS).map(([k, v]) => [k, v.etiqueta])), manual: 'Registro manual' };
-
-const ConsultaPropietario: React.FC<{ d: DeteccionDetalle; onCerrar: () => void }> = ({ d, onCerrar }) => {
-  const [motivo, setMotivo] = useState(d.estado_validacion === 'alerta' ? 'Verificación de vehículo con alerta en el acceso' : '');
-  const [resultado, setResultado] = useState<{ tipo: 'exito' | 'error' | 'advertencia'; texto: string } | null>(null);
-  const [enviando, setEnviando] = useState(false);
-  const consultar = async () => {
-    setEnviando(true);
-    try {
-      const r = await api.post('/propietario/consulta', { placa: d.placa, motivo: motivo.trim(), deteccion_id: d.id });
-      setResultado({ tipo: 'exito', texto: `${r.data.nombre}${r.data.identificacion ? ` (${r.data.identificacion})` : ''} · fuente: ${r.data.fuente}` });
-    } catch (e) {
-      setResultado({ tipo: respuestaError(e)?.status === 503 ? 'advertencia' : 'error', texto: mensajeError(e) });
-    } finally {
-      setEnviando(false);
-    }
-  };
-  return (
-    <Modal titulo="Consulta del propietario" subtitulo={`Placa ${formatearPlaca(d.placa)}`} onCerrar={onCerrar} tamano="estrecho"
-      pie={<><button className="btn btn-secondary" onClick={onCerrar}>Cerrar</button>
-        <button className="btn btn-navy" disabled={!validarTexto(motivo, REGLA_MOTIVO_CONSULTA).ok || enviando} onClick={consultar}>Consultar</button></>}>
-      <div className="pila" style={{ gap: 12 }}>
-        <Aviso tipo="info">Solo mediante el servicio web oficial (convenio DINARDAP / ANT). Cada consulta, con su motivo, queda registrada.</Aviso>
-        <CampoTexto id="prop-motivo" etiqueta="Motivo de la consulta*" valor={motivo} onCambiar={setMotivo} multilinea
-          regla={REGLA_MOTIVO_CONSULTA} ayuda="Base legal de la consulta: entre 10 y 255 caracteres." />
-        {resultado && <Aviso tipo={resultado.tipo}>{resultado.texto}</Aviso>}
-      </div>
-    </Modal>
-  );
-};
 
 /**
  * Evidencias independientes con que el motor decide si una lectura es válida (y por tanto
@@ -131,23 +101,20 @@ const DetalleDeteccion: React.FC = () => {
   const notificar = useNotificar();
   const { puede } = useAuth();
   const { datos: d, cargando, error, recargar } = useConsulta<DeteccionDetalle>(() => api.get(`/detecciones/${id}`).then(r => r.data), [id]);
-  const [validar, setValidar] = useState(false);
   const [excepcion, setExcepcion] = useState(false);
   const [solicitar, setSolicitar] = useState(false);
-  const [eliminar, setEliminar] = useState(false);
-  const [propietario, setPropietario] = useState(false);
   const [datosIngreso, setDatosIngreso] = useState(false);
   const [lista, setLista] = useState<'autorizados' | 'alertas' | null>(null);
   const [zoom, setZoom] = useState(false);
 
   useEvento<Deteccion>('deteccion:actualizada', x => { if (String(x.id) === id) recargar(true); });
-  useEvento<{ id: number }>('deteccion:eliminada', x => { if (String(x.id) === id) navigate('/detecciones', { replace: true }); });
+  useEvento<{ id: number }>('deteccion:eliminada', x => { if (String(x.id) === id) navigate('/historial', { replace: true }); });
   useReconexion(() => recargar(true));
 
   if (cargando && !d) return <div className="pagina"><Cargando alto={400} /></div>;
   if (error || !d) {
     return <div className="pagina"><Tarjeta><Vacio titulo="No se encontró el ingreso" texto={error ?? undefined} icono={<FileSearch size={22} />}
-      accion={<Link to="/detecciones" className="btn btn-secondary">Volver al registro</Link>} /></Tarjeta></div>;
+      accion={<Link to="/historial" className="btn btn-secondary">Volver al historial</Link>} /></Tarjeta></div>;
   }
 
   const la = d.lectura_automatica;
@@ -157,9 +124,8 @@ const DetalleDeteccion: React.FC = () => {
   return (
     <div className="pagina">
       <div className="fila" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-        <button className="btn btn-ghost" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/detecciones'))}><ArrowLeft size={16} /> Volver</button>
+        <button className="btn btn-ghost" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/historial'))}><ArrowLeft size={16} /> Volver</button>
         <div className="fila">
-          {!procesando && <button className="btn btn-navy" onClick={() => setValidar(true)}><Edit3 size={15} /> {d.validado_manualmente ? 'Corregir placa' : 'Validar placa'}</button>}
           {puede('accesos:excepcion') && d.placa && d.restriccion_acceso && d.estado_validacion !== 'autorizado' && (
             <button className="btn btn-exito" onClick={() => setExcepcion(true)}><Clock size={15} /> Autorizar por excepción</button>
           )}
@@ -172,8 +138,6 @@ const DetalleDeteccion: React.FC = () => {
           {puede('alertas:gestionar') && d.placa && !d.alerta && (
             <button className="btn btn-secondary" onClick={() => setLista('alertas')}><ShieldAlert size={15} /> Agregar alerta</button>
           )}
-          {puede('propietario:consultar') && d.placa && <button className="btn btn-secondary" onClick={() => setPropietario(true)}><UserSearch size={15} /> Propietario</button>}
-          {puede('detecciones:eliminar') && <button className="btn btn-danger" onClick={() => setEliminar(true)}><Trash2 size={15} /> Eliminar</button>}
         </div>
       </div>
 
@@ -202,7 +166,8 @@ const DetalleDeteccion: React.FC = () => {
             </div>
           </Tarjeta>
 
-          <Tarjeta titulo="Lectura automática y verificación" subtitulo="Datos conservados para la evaluación del sistema">
+          <Tarjeta titulo="Lectura automática y verificación" subtitulo="Evidencias conservadas para la trazabilidad del registro">
+            <ObservacionOcr evidencia={la.evidencia} />
             <dl className="definiciones">
               <dt>Lectura OCR</dt><dd>{la.placa ? <span className="mono">{la.placa}</span> : 'Sin lectura'}{la.confianza !== null && ` · confianza ${porcentaje(la.confianza)}`}</dd>
               <dt>Segunda lectura</dt><dd>{la.verificador ? <span className="mono">{la.verificador}</span> : '—'}</dd>
@@ -232,10 +197,12 @@ const DetalleDeteccion: React.FC = () => {
 
           <Tarjeta titulo={`Pasos anteriores${d.placa ? ` de ${formatearPlaca(d.placa)}` : ''}`} sinPadding>
             {d.pasos_anteriores.length === 0 ? <Vacio titulo="Sin pasos anteriores" texto={d.placa ? 'Es el primer registro de esta placa.' : 'Sin placa para relacionar.'} /> : (
-              <div className="tabla-contenedor"><table className="tabla"><thead><tr><th>Fecha</th><th>Estado</th><th>Cámara</th></tr></thead><tbody>
+              <div className="tabla-contenedor"><table className="tabla"><thead><tr><th>Fecha</th><th>Evidencia y placa</th><th>Tipo</th><th>Marca</th><th>Modelo</th><th>Estado</th><th>Cámara</th></tr></thead><tbody>
                 {d.pasos_anteriores.map(p => (
                   <tr key={p.id} className="clic" onClick={() => navigate(`/detecciones/${p.id}`)}>
-                    <td>{fechaHora(p.fecha_hora_ingreso)}</td><td><InsigniaEstado estado={p.estado_validacion} /></td><td>{p.camara?.nombre ?? '—'}</td>
+                    <td>{fechaHora(p.fecha_hora_ingreso)}</td><td className="nowrap"><EvidenciaRegistro registro={p} /></td>
+                    <td>{p.tipo_vehiculo || p.vehiculo.tipo || '—'}</td><td>{p.vehiculo.marca || '—'}</td><td>{p.vehiculo.modelo || '—'}</td>
+                    <td><InsigniaEstado estado={p.estado_validacion} /></td><td>{p.camara?.nombre ?? '—'}</td>
                   </tr>
                 ))}
               </tbody></table></div>
@@ -246,7 +213,7 @@ const DetalleDeteccion: React.FC = () => {
         <div className="pila">
           <Tarjeta>
             <div className="pila" style={{ gap: 12, alignItems: 'flex-start' }}>
-              <PlacaFoto d={d} grande alto={90} onClick={() => setZoom(true)} />
+              <PlacaFoto d={d} grande alto={90} mostrarObservacion={false} onClick={() => setZoom(true)} />
               <InsigniaEstado estado={d.estado_validacion} procesando={procesando} />
               <dl className="definiciones" style={{ width: '100%' }}>
                 <dt>{d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'}</dt><dd>{fechaHora(d.fecha_hora_ingreso)} <span className="texto-secundario">({relativo(d.fecha_hora_ingreso)})</span></dd>
@@ -280,17 +247,14 @@ const DetalleDeteccion: React.FC = () => {
         </div>
       </div>
 
-      {validar && <ValidarModal d={d} onCerrar={() => setValidar(false)} onValidada={() => recargar(true)} />}
       {excepcion && <ValidarModal d={d} excepcion onCerrar={() => setExcepcion(false)} onValidada={() => recargar(true)} />}
       {solicitar && d.placa && (
-        <FormularioSolicitud inicial={{ placa: d.placa, marca: d.vehiculo.marca, modelo: d.vehiculo.modelo, color: d.vehiculo.color, deteccion_id: d.id }}
+        <FormularioSolicitud deteccion={d} inicial={{ ...d.datos_permiso, placa: d.placa, marca: d.vehiculo.marca, modelo: d.vehiculo.modelo, color: d.vehiculo.color, deteccion_id: d.id }}
           onCerrar={() => setSolicitar(false)} onEnviada={s => { setSolicitar(false); notificar('exito', `Solicitud #${s.id} enviada`, 'El gestor de permisos fue notificado.'); }} />
       )}
-      {propietario && <ConsultaPropietario d={d} onCerrar={() => setPropietario(false)} />}
       {datosIngreso && <DatosIngresoModal d={d} onCerrar={() => setDatosIngreso(false)} onGuardado={() => recargar(true)} />}
-      {lista && d.placa && <FormularioLista tipo={lista} inicial={{ placa: d.placa, marca: d.vehiculo.marca, modelo: d.vehiculo.modelo, color: d.vehiculo.color }}
+      {lista && d.placa && <FormularioLista tipo={lista} deteccion={d} inicial={{ ...d.datos_permiso, placa: d.placa, propietario: d.persona_ingreso || d.autorizado?.propietario, tipo_vehiculo: d.tipo_vehiculo || d.vehiculo.tipo, marca: d.vehiculo.marca, modelo: d.vehiculo.modelo, color: d.vehiculo.color, observaciones: d.motivo_ingreso }}
         onCerrar={() => setLista(null)} onGuardado={() => { setLista(null); notificar('exito', lista === 'autorizados' ? 'Vehículo autorizado' : 'Alerta registrada', 'Aplica a los próximos ingresos de la placa.'); }} />}
-      {eliminar && <EliminarUno d={d} onCerrar={() => setEliminar(false)} onEliminada={() => navigate('/detecciones', { replace: true })} />}
       {zoom && <VisorZoom d={d} onCerrar={() => setZoom(false)} />}
     </div>
   );

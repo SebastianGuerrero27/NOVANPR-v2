@@ -155,6 +155,42 @@ class TestDetectionPipelineDI(unittest.TestCase):
         info = self.pipeline.get_track_info(tid)
         self.assertEqual(info.get("plate"), "PSY0589")
 
+    def test_el_hud_deja_de_dibujar_la_placa_que_el_detector_ya_no_ve(self):
+        """A 3 análisis por segundo, la caja se dibuja hasta 0,5 s después de la última detección
+        (antes: 4 análisis, 1,3 s de una caja quieta sobre el pavimento al salir el vehículo); la
+        pista sigue en el seguimiento por si la placa reaparece."""
+        def analizar():
+            # Paso del Kalman de 1/3 s, como en el portátil sin GPU
+            self.pipeline._paso_kalman_s, self.pipeline._ultimo_paso_kalman = 1 / 3, None
+            return self.pipeline.detect_and_track(self.frame)
+
+        tid = analizar()[0].tracking_id
+        self.pipeline.update_track_plate(tid, "PBA1234", confidence=0.9)
+        analizar()
+        self.assertEqual([o.tracking_id for o in self.pipeline._current_overlays], [tid])
+        self.mock_det.set_detections([])
+        analizar()  # 0,33 s sin verla: aún se dibuja
+        self.assertEqual(len(self.pipeline._current_overlays), 1)
+        rois = analizar()  # 0,67 s: ya no se dibuja, pero sigue en seguimiento
+        self.assertEqual(self.pipeline._current_overlays, [])
+        self.assertEqual([r.tracking_id for r in rois], [tid])
+
+    def test_un_solo_analisis_sin_ver_la_placa_no_oculta_la_caja(self):
+        """Tras una escena quieta el paso del Kalman puede durar 1 s: una sola detección fallida no
+        debe ocultar la caja (solo dos seguidas y más de 0,5 s)."""
+        def analizar():
+            self.pipeline._paso_kalman_s, self.pipeline._ultimo_paso_kalman = 1.0, None
+            return self.pipeline.detect_and_track(self.frame)
+
+        tid = analizar()[0].tracking_id
+        self.pipeline.update_track_plate(tid, "PBA1234", confidence=0.9)
+        analizar()
+        self.mock_det.set_detections([])
+        analizar()
+        self.assertEqual([o.tracking_id for o in self.pipeline._current_overlays], [tid])
+        analizar()
+        self.assertEqual(self.pipeline._current_overlays, [])
+
     def test_clear_all_tracks(self):
         """Verifica que clear_all_tracks reinicie toda la memoria de tracking y consenso."""
         self.pipeline.detect_and_track(self.frame)
@@ -163,6 +199,68 @@ class TestDetectionPipelineDI(unittest.TestCase):
         self.pipeline.clear_all_tracks()
         self.assertEqual(len(self.pipeline._trackers), 0)
         self.assertEqual(self.pipeline.get_track_info(1), {})
+
+    def test_retirar_un_rotulo_limpia_su_hud_y_no_afecta_a_otras_placas(self):
+        tid = self.pipeline.detect_and_track(self.frame)[0].tracking_id
+        self.pipeline.update_track_plate(tid, "QIH6060", 0.99, "leida")
+        self.pipeline.update_track_plate(tid + 100, "PBA1234", 0.97, "leida")
+        self.pipeline.detect_and_track(self.frame)
+        self.assertTrue(any(o.tracking_id == tid for o in self.pipeline._current_overlays))
+
+        self.pipeline.retirar_lectura(tid)
+
+        self.assertFalse(any(o.tracking_id == tid for o in self.pipeline._current_overlays))
+        info = self.pipeline.get_track_info(tid)
+        self.assertEqual((info["plate"], info["confidence"], info["lecturas"]), ("", 0.0, 0))
+        self.assertTrue(info["texto_no_matricula"])
+        self.assertEqual(dict(self.pipeline.conteo_lecturas(tid)), {})
+        self.assertEqual(self.pipeline.get_track_info(tid + 100)["plate"], "PBA1234")
+
+    def test_una_lectura_rapida_tardia_no_reintroduce_el_rotulo_tras_retirarlo(self):
+        tid = self.pipeline.detect_and_track(self.frame)[0].tracking_id
+        self.pipeline.update_track_plate(tid, "QIH6060", 0.99, "leida")
+        self.pipeline.retirar_lectura(tid)
+        self.pipeline.fijar_estado_backend(tid, "pendiente_revision")
+        self.pipeline.update_track_plate(tid, "QIH6060", 0.99, "leida")
+        self.pipeline.detect_and_track(self.frame)
+
+        info = self.pipeline.get_track_info(tid)
+        self.assertEqual(info["plate"], "")
+        self.assertEqual(info["status"], "pendiente_revision")
+        self.assertEqual(self.pipeline._track_plates[tid]["votes"], {})
+        self.assertFalse(any(o.tracking_id == tid for o in self.pipeline._current_overlays))
+
+    def test_retirar_lectura_tambien_limpia_el_consenso_de_una_pista_recien_terminada(self):
+        self.pipeline.update_track_plate(42, "QIH6060", 0.99, "leida")
+        entry = self.pipeline._track_plates.pop(42)
+        self.pipeline._retirados[42] = (0.0, entry, None)
+
+        self.pipeline.retirar_lectura(42)
+        self.pipeline.update_track_plate(42, "QIH6060", 0.99, "leida")
+
+        self.assertEqual(self.pipeline.get_track_info(42)["plate"], "")
+        self.assertEqual(dict(self.pipeline.conteo_lecturas(42)), {})
+        self.assertEqual(self.pipeline._retirados[42][1]["plate"], "")
+
+    def test_un_hud_en_construccion_no_republica_la_lectura_que_acaba_de_retirarse(self):
+        """Reproduce el orden de la carrera sin hilos ni temporizadores: retiro antes del commit."""
+        from unittest.mock import patch
+        from app.aplicacion import detector as modulo_detector
+
+        tid = self.pipeline.detect_and_track(self.frame)[0].tracking_id
+        self.pipeline.update_track_plate(tid, "QIH6060", 0.99, "leida")
+        construir = modulo_detector.VisualOverlayBox
+
+        def retirar_antes_del_commit(**datos):
+            overlay = construir(**datos)
+            self.pipeline.retirar_lectura(datos["tracking_id"])
+            return overlay
+
+        with patch.object(modulo_detector, "VisualOverlayBox", side_effect=retirar_antes_del_commit):
+            self.pipeline.detect_and_track(self.frame)
+
+        self.assertTrue(self.pipeline.get_track_info(tid)["texto_no_matricula"])
+        self.assertEqual(self.pipeline._current_overlays, [])
 
     def test_pista_leida_muestra_la_placa_y_luego_el_estado_del_backend(self):
         tid = self.pipeline.detect_and_track(self.frame)[0].tracking_id

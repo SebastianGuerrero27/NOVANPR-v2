@@ -40,6 +40,8 @@ export const PERMISOS = {
   // Listas de control
   'listas:ver': 'Consultar el padrón de autorizados y la lista de alertas',
   'padron:gestionar': 'Alta, edición y retiro de permisos de placa (vigencias, horarios, categoría)',
+  'padron:supervisar': 'Consultar y gestionar los permisos otorgados por todos los usuarios, incluidos los retirados',
+  'alertas:restringir': 'Agregar o reactivar placas en la lista negra',
   'alertas:gestionar': 'Alta, edición y retiro de placas en la lista de alertas',
   'accesos:excepcion': 'Autorizar excepcionalmente un ingreso fuera del horario o la vigencia del permiso',
   // Solicitudes de acceso
@@ -54,7 +56,6 @@ export const PERMISOS = {
   'alarmas:escalamiento': 'Recibir alarmas no atendidas escaladas',
   // Análisis
   'reportes:ver': 'Reportes por período y cámara',
-  'evaluacion:ver': 'Métricas científicas del reconocimiento',
   // Infraestructura y administración
   'camaras:operar': 'Cambiar la cámara que procesa el motor y su región de interés',
   'camaras:gestionar': 'Alta, edición y diagnóstico de cámaras',
@@ -71,7 +72,7 @@ export const MATRIZ: Record<Rol, readonly Permiso[]> = {
   // Punto de control: monitorea, valida lecturas, consulta la lista blanca y solicita accesos.
   // Recibe los avisos de garita y la notificación de cada permiso otorgado.
   Guardia: [
-    'operacion:monitorear', 'detecciones:validar', 'listas:ver', 'solicitudes:crear',
+    'operacion:monitorear', 'detecciones:validar', 'listas:ver', 'padron:gestionar', 'alertas:gestionar', 'solicitudes:crear', 'alertas:restringir',
     'avisos:garita', 'avisos:acceso', 'avisos:seguridad', 'avisos:padron',
   ],
   // Una sola vista (gestión de permisos), sin monitoreo: concede permisos de placa y resuelve

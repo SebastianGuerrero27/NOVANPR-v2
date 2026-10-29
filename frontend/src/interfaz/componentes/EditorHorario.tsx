@@ -1,6 +1,8 @@
 import React from 'react';
 import { Clock, Plus, Trash2 } from 'lucide-react';
 import type { Franja } from '../../dominio/tipos';
+import { leerHorarioFormulario } from '../../dominio/horario';
+export { horarioValido } from '../../dominio/horario';
 
 /**
  * Editor de franjas horarias de un permiso de placa. Días ISO 8601 (1 = lunes … 7 = domingo);
@@ -21,12 +23,14 @@ const PRESETS: { etiqueta: string; valor: Franja[] | null }[] = [
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-export function horarioValido(h: Franja[] | null): boolean {
-  return !h || h.every(f => f.dias.length > 0 && HHMM.test(f.desde) && HHMM.test(f.hasta) && f.desde !== f.hasta);
-}
+/** El horario actual coincide con un preset (mismas franjas, días y horas): ese botón queda seleccionado. */
+const mismoHorario = (a: Franja[], b: Franja[]) => JSON.stringify(a.map(f => [[...f.dias].sort(), f.desde, f.hasta]))
+  === JSON.stringify(b.map(f => [[...f.dias].sort(), f.desde, f.hasta]));
 
-export const EditorHorario: React.FC<{ valor: Franja[] | null; onCambiar: (h: Franja[] | null) => void; deshabilitado?: boolean }> = ({ valor, onCambiar, deshabilitado }) => {
-  const franjas = valor ?? [];
+export const EditorHorario: React.FC<{ valor: Franja[] | null; onCambiar: (h: Franja[] | null) => void; deshabilitado?: boolean; restriccion?: boolean; errorGuardado?: string | null }> = ({ valor, onCambiar, deshabilitado, restriccion = false, errorGuardado }) => {
+  const interpretado = leerHorarioFormulario(valor);
+  const franjas = interpretado.horario ?? [];
+  const error = errorGuardado || interpretado.error;
   const cambiar = (i: number, f: Partial<Franja>) => onCambiar(franjas.map((x, j) => (j === i ? { ...x, ...f } : x)));
   const alternarDia = (i: number, dia: number) => {
     const dias = franjas[i].dias.includes(dia) ? franjas[i].dias.filter(d => d !== dia) : [...franjas[i].dias, dia].sort((a, b) => a - b);
@@ -41,13 +45,13 @@ export const EditorHorario: React.FC<{ valor: Franja[] | null; onCambiar: (h: Fr
     <div className="pila" style={{ gap: 8 }}>
       <div className="horario-presets">
         {PRESETS.map(p => (
-          <button key={p.etiqueta} type="button" className="btn btn-ghost btn-sm" disabled={deshabilitado}
-            style={{ border: '1px solid var(--border)' }} onClick={() => onCambiar(p.valor ? p.valor.map(f => ({ ...f, dias: [...f.dias] })) : null)}>
+          <button key={p.etiqueta} type="button" className="btn btn-secondary btn-sm btn-opcion" disabled={deshabilitado}
+            aria-pressed={!error && mismoHorario(franjas, p.valor ?? [])} onClick={() => onCambiar(p.valor ? p.valor.map(f => ({ ...f, dias: [...f.dias] })) : null)}>
             {p.etiqueta}
           </button>
         ))}
       </div>
-      {franjas.length === 0 && <span className="texto-secundario"><Clock size={13} style={{ verticalAlign: -2 }} /> Sin restricción horaria: el permiso es válido las 24 horas, todos los días de su vigencia.</span>}
+      {!error && franjas.length === 0 && <span className="texto-secundario"><Clock size={13} style={{ verticalAlign: -2 }} /> {restriccion ? 'Sin restricción horaria: la alerta se aplica las 24 horas, todos los días de su vigencia.' : 'Sin restricción horaria: el permiso es válido las 24 horas, todos los días de su vigencia.'}</span>}
       {franjas.map((f, i) => (
         <div key={i} className="horario-franja">
           <div className="horario-dias" role="group" aria-label={`Días de la franja ${i + 1}`}>
@@ -73,7 +77,7 @@ export const EditorHorario: React.FC<{ valor: Franja[] | null; onCambiar: (h: Fr
           <Plus size={14} /> Agregar franja
         </button>
       )}
-      {!horarioValido(valor) && <span className="ayuda" style={{ color: 'var(--alerta)' }}>Cada franja necesita al menos un día y horas distintas.</span>}
+      {error && <span className="ayuda" role="alert" style={{ color: 'var(--alerta)' }}>{error}</span>}
     </div>
   );
 };

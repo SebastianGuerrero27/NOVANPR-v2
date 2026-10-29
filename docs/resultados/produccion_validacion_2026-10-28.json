@@ -1,0 +1,48 @@
+{
+  "fecha_local": "2026-10-28",
+  "alcance": "Despliegue local en modo producción",
+  "frontend": {
+    "html": "index-D12wOW0q.js",
+    "salud_http": 200,
+    "compilacion_tipos": "aprobada",
+    "smoke_formulario": "docs/resultados/produccion_formulario_2026-10-28.json"
+  },
+  "backend": {
+    "salud_http": 200,
+    "imagen": "anpr-backend:produccion"
+  },
+  "motor": {
+    "imagen": "anpr-motor:produccion",
+    "salud": "healthy",
+    "recarga_codigo": false,
+    "codigo_montado": false,
+    "camara_conectada": true,
+    "ocr_caso": {
+      "matricula": null,
+      "observacion": "HAVAL / ambacar",
+      "confianza_texto_modelo": 0.98753,
+      "dentro_presupuesto": true
+    }
+  },
+  "proveedor_vehiculos": {
+    "comprobacion": "Una consulta diagnóstica con la misma placa del último fallo",
+    "http_externo": 402,
+    "codigo": "payment_required",
+    "causa": "Saldo de créditos agotado",
+    "datos_personales_incluidos": false,
+    "creditos_comprados": false
+  },
+  "limites": [
+    "El estado local gratuito no comprueba el proveedor externo.",
+    "No se certifica disponibilidad prolongada ni publicación en Internet.",
+    "El origen de globals-front.js no se ha identificado; no figura en recursos de la aplicación."
+  ],
+  "video_bundle_desplegado": {
+    "reporte": "docs/resultados/webrtc_postdespliegue_2026-10-28.json",
+    "ciclos": 3,
+    "resolucion": "1920x1080",
+    "post_201": 3,
+    "delete_200": 3,
+    "errores_pagina_consola_promesas": 0
+  }
+}

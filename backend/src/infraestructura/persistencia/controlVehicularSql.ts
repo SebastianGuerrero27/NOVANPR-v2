@@ -13,7 +13,7 @@ export const repositorioControlVehicularSql: RepositorioControlVehicular = {
       .input('desde', sql.DateTime, desde).input('hasta', sql.DateTime, hasta).input('camara', sql.Int, camara)
       .query(`
         SELECT TOP 20000 d.id, COALESCE(d.tipo_movimiento, 'ingreso') AS tipo_movimiento, d.fecha_hora_ingreso,
-               COALESCE(d.placa_validada, d.placa_reconocida) AS placa, d.persona_ingreso, d.motivo_ingreso,
+               COALESCE(d.placa_validada, d.placa_reconocida) AS placa, d.persona_ingreso, COALESCE(NULLIF(d.motivo_ingreso, ''), v.motivo_ingreso) AS motivo_ingreso,
                d.tipo_vehiculo, d.vehiculo_tipo, d.vehiculo_marca, d.estado_validacion, d.evidencia_lectura,
                v.propietario, v.tipo_vehiculo AS autorizado_tipo, v.marca AS autorizado_marca, a.motivo AS alerta_motivo
         FROM DeteccionVehiculo d

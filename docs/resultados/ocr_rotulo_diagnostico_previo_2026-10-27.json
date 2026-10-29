@@ -1,0 +1,34 @@
+{
+  "alcance": "Diagnóstico previo a corregir la confianza del agente; un solo rótulo de desarrollo, sin evidencia de generalización.",
+  "captura_utc": "2026-10-28T00:39:31Z",
+  "imagen": {
+    "archivo_externo": "anpr_ocr_caso.png",
+    "sha256": "1de5723dfb3033096fc5a2b4deef9670f4712e2d2d3df535ff6b2392e2fd3684",
+    "ancho": 146,
+    "alto": 96,
+    "tipo": "texto",
+    "texto_visible": "HAVAL / ambacar"
+  },
+  "entorno": {
+    "python": "3.12.15",
+    "maquina": "x86_64",
+    "kernel": "6.6.87.2-microsoft-standard-WSL2",
+    "nucleos_logicos": 20,
+    "hilos_por_motor_solicitados": 2,
+    "carga_concurrente": "Motor ANPR en vivo y servicios activos; no es una medición de CPU libre.",
+    "sha_fuente_agente": null,
+    "limitacion_reproducibilidad": "La captura diagnóstica inicial no registró hash de fuentes/modelos. El nuevo evaluar_ocr_selectivo.py sí lo hace; este JSON conserva observaciones previas, no sustituye una línea base versionada."
+  },
+  "geometria": {"caracteres": 7, "puntaje": 0.693, "valida": true, "bordes_hallados": 4, "mediana_ms_5_lecturas_calientes": 27.81},
+  "ocr_especializado": {"modelo": "cct-s-v2-global-model", "texto": "01110601", "confianza": 0.6561, "mediana_ms_5_lecturas_calientes": 194.45, "carga_ms": 980.29},
+  "agente_sin_rectificador_aprendido": {
+    "fast": {"texto": "OII-1060", "crudo": "0111060", "confianza": 1.0, "estado": "procesado", "ms_una_lectura": 164.57},
+    "deep": {"texto": "OII-1060", "crudo": "0111060", "confianza": 1.0, "estado": "procesado", "ms_una_lectura": 140.01}
+  },
+  "verificador": {
+    "modelo": "PP-OCRv6 medium (openvino)", "carga_ms": 6684.3,
+    "textos_crudos": ["ambacar", "HAVAL"], "confianzas": [0.99662, 0.98753], "ms_una_lectura_cruda": 1098.02,
+    "salida_seleccionada": {"plate": "", "confidence": 0.0, "within_budget": true, "raw": "", "elapsed_ms": 639.26398600006}
+  },
+  "interpretacion": "No se reprodujo QIH-6060 exacta. Se reprodujo la misma clase de fallo con OII-1060 y confianza sintáctica 1.0. La geometría por sí sola no separó el rótulo; el OCR general leyó sus palabras y la selección de placa perdió esa evidencia."
+}

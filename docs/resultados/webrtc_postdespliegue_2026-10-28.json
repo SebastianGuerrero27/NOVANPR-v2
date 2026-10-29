@@ -1,0 +1,67 @@
+{
+  "fecha_local": "2026-10-28",
+  "alcance": "Componente ReproductorWebRTC del bundle servido despues del despliegue. React del propio bundle y renderer ReactDOM de la misma version instalada, servicios y video reales. Sin simulacion de WebRTC.",
+  "navegador": "156.0.4314.42",
+  "bundles": {
+    "envivo": {
+      "archivo": "/assets/envivo-2r4dR9A3.js",
+      "sha256": "f7a209d333f4dbd79313130bf8be00e5d0eb6c57abb2467ce0e4bb4b5ef5b463"
+    },
+    "index": {
+      "archivo": "/assets/index-D12wOW0q.js",
+      "sha256": "17c47cef847f4279ac31d5711367752acff1d2bdf6d1123c60fd757f3e7286a4"
+    }
+  },
+  "ciclos": [
+    {
+      "ancho": 1920,
+      "alto": 1080,
+      "cuadros": 8,
+      "en_vivo": true
+    },
+    {
+      "ancho": 1920,
+      "alto": 1080,
+      "cuadros": 11,
+      "en_vivo": true
+    },
+    {
+      "ancho": 1920,
+      "alto": 1080,
+      "cuadros": 8,
+      "en_vivo": true
+    }
+  ],
+  "fallos": [],
+  "errores_async": [],
+  "respuestas": [
+    {
+      "metodo": "POST",
+      "estado": 201
+    },
+    {
+      "metodo": "DELETE",
+      "estado": 200
+    },
+    {
+      "metodo": "POST",
+      "estado": 201
+    },
+    {
+      "metodo": "DELETE",
+      "estado": 200
+    },
+    {
+      "metodo": "POST",
+      "estado": 201
+    },
+    {
+      "metodo": "DELETE",
+      "estado": 200
+    }
+  ],
+  "errores_pagina": [],
+  "errores_consola": [],
+  "credenciales_omitidas": true,
+  "correcto": true
+}

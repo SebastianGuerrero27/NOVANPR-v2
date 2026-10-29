@@ -1,0 +1,52 @@
+{
+  "fecha": "2026-10-28",
+  "pruebas_postgresql": {
+    "lectura_provisional_no_confirma": true,
+    "exacta_en_ambas_listas": true,
+    "aproximada_no_asocia_fotos": true,
+    "estados_independientes": true,
+    "conserva_primera_foto": true,
+    "completa_recorte_tardio": true,
+    "copias_sobreviven_originales": true
+  },
+  "api_retirada": {
+    "consultar-persona": 410,
+    "consultar-vehiculo": 410,
+    "estado-consulta-vehiculo": 410
+  },
+  "evidencia_produccion": {
+    "vehiculos-autorizados": {
+      "registros": 3,
+      "fotos_guardadas": 2,
+      "fotos_verificadas_http200": 2
+    },
+    "blacklist": {
+      "registros": 4,
+      "fotos_guardadas": 4,
+      "fotos_verificadas_http200": 4
+    },
+    "vehiculos-autorizados/mis-permisos": {
+      "registros": 2,
+      "fotos_guardadas": 2,
+      "fotos_verificadas_http200": 2
+    }
+  },
+  "migracion_columnas": 8,
+  "escrituras_datos_reales": 0,
+  "comprobaciones": {
+    "frontend_health": 200,
+    "backend_health": 200,
+    "frontend_bundle": "/assets/index-Dx7bZ2Ae.js",
+    "pruebas_backend": "21 de evidencias/SQL + 67 de detecciones + 4 de rutas retiradas",
+    "pruebas_frontend": "8 de evidencias + 4 de validación + 9 de ingreso manual",
+    "interfaz": "evidencias_listas_ui_2026-10-28.json",
+    "almacenamiento": {
+      "volumen": "anpr_listas_evidencia",
+      "propietario": 1000,
+      "usuario": 1000,
+      "fotos_recuperadas": 6,
+      "lectura_desde_otro_contenedor": true,
+      "origen_motor_solo_lectura_requerida": true
+    }
+  }
+}

@@ -1,0 +1,718 @@
+{
+  "protocolo": {
+    "unidad": "recorte",
+    "nota_conjunto": "Prueba de regresión de desarrollo: 10 recortes reales del piloto con una sola matrícula presente en entrenamiento y un rótulo reportado por el usuario. NO es holdout ni prueba de generalización o estado del arte.",
+    "latencia": "secuencial; excluye carga y calentamiento",
+    "ablacion": "agente_mas_verificador_sin_veto vs selector_texto_observado aísla la regla nueva; ambos comparten las mismas inferencias.",
+    "repeticiones_tiempo_por_recorte": 1,
+    "calentamientos": 2,
+    "anotacion_texto_usada_para_decidir": false,
+    "rectificador_aprendido_habilitado": false,
+    "limitaciones": [
+      "No mide autorización, detector, consenso temporal ni latencia de evento completo.",
+      "El selector de recortes no sustituye las evidencias E1–E5 del motor.",
+      "Sin positivos o negativos, su métrica es null; un único caso no demuestra generalización.",
+      "No se controla carga concurrente del equipo: registrar otras cargas antes de comparar tiempos."
+    ]
+  },
+  "entorno": {
+    "utc": "2026-10-28T00:53:31.840082+00:00",
+    "python": "3.12.15",
+    "sistema": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900H",
+    "nucleos_logicos": 20,
+    "cpu_cgroup_max": "max 100000",
+    "hilos_solicitados_por_motor": 2,
+    "semilla": 0,
+    "paquetes": {
+      "numpy": "2.5.3",
+      "opencv-python": "4.11.0.86",
+      "onnxruntime": "1.30.0",
+      "openvino": "2026.4.1",
+      "rapidocr": "3.9.2",
+      "fast-plate-ocr": "1.1.0",
+      "ultralytics": "8.4.174"
+    }
+  },
+  "carga_modelos_ms": 5294.5663460000105,
+  "manifest": {
+    "archivo": "/tmp/ocr_smoke/manifest.csv",
+    "sha256": "36843275945b13e5383d1db593907e31763ff1400b1362bbc4833462ab0de007"
+  },
+  "fuentes": [
+    {
+      "archivo": "scripts/evaluar_ocr_selectivo.py",
+      "sha256": "9878fbd93a18e504f4be3ec808e35c2c7c04b592c00570bbc2981fee104f1752"
+    },
+    {
+      "archivo": "app/aplicacion/plate_agent.py",
+      "sha256": "0bdcbfa6b2b76ac5d3f8c6b07027fa16e38eec0649546a94a807547994f702ce"
+    },
+    {
+      "archivo": "app/infraestructura/ocr_engine.py",
+      "sha256": "48e28072708bc268a200b66d20956afb72a474aa1f31d499e541cf53c53c94fa"
+    },
+    {
+      "archivo": "app/infraestructura/ocr_verifier.py",
+      "sha256": "69b8f57934eb95d45cb667a7b1d6d011f2d91900fc02f926c0261c60f886535d"
+    },
+    {
+      "archivo": "app/dominio/texto_observado.py",
+      "sha256": "aaf0d4f215cdbd33c47b60e583d84813d0288b1e26ec7a4017ad6e937f9389f3"
+    },
+    {
+      "archivo": "app/dominio/plate_parser.py",
+      "sha256": "4f7decc599ede0d12de5b6726e027ba144b224ee6415282723dae211ad55316a"
+    }
+  ],
+  "modelos": [
+    {
+      "archivo": "/root/.cache/fast-plate-ocr/cct-s-v2-global-model/cct_s_v2_global.onnx",
+      "sha256": "384bbbd2cea3ef54761d3df70822ef3a349ee1a112aeafddbe0e3ba06bc6e47b",
+      "bytes": 5262230
+    },
+    {
+      "archivo": "/usr/local/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_medium.onnx",
+      "sha256": "92078b7355007ccfffcd4c8cd441a3afd4538904d06881b29a155e1e679907c2",
+      "bytes": 62119454
+    },
+    {
+      "archivo": "/usr/local/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_medium.onnx",
+      "sha256": "eef444829dbbe18d7fea59a3f6eb75647518d2b3a9568d27c92e42940204894b",
+      "bytes": 76629984
+    },
+    {
+      "archivo": "/usr/local/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+      "sha256": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
+      "bytes": 585532
+    }
+  ],
+  "metricas": {
+    "agente_actual": {
+      "casos": 11,
+      "positivos": 10,
+      "negativos": 1,
+      "aceptados": 11,
+      "falsas_aceptaciones_negativos": 1,
+      "tasa_falsa_aceptacion_negativos": 1.0,
+      "exactitud_bruta_positivos": 0.9,
+      "exactitud_aceptada_positivos": 0.9,
+      "exactitud_condicional_aceptadas_positivos": 0.9,
+      "cobertura_positivos": 1.0,
+      "cobertura_global": 1.0,
+      "riesgo_selectivo_global": 0.18181818181818182,
+      "cer_propuesta_positivos": 0.016666666666666666,
+      "cer_salida_positivos": 0.016666666666666666,
+      "latencia_ms": {
+        "muestras": 11,
+        "p50": 85.53945599987856,
+        "p95": 98.57190399998217
+      }
+    },
+    "agente_mas_verificador_sin_veto": {
+      "casos": 11,
+      "positivos": 10,
+      "negativos": 1,
+      "aceptados": 11,
+      "falsas_aceptaciones_negativos": 1,
+      "tasa_falsa_aceptacion_negativos": 1.0,
+      "exactitud_bruta_positivos": 1.0,
+      "exactitud_aceptada_positivos": 1.0,
+      "exactitud_condicional_aceptadas_positivos": 1.0,
+      "cobertura_positivos": 1.0,
+      "cobertura_global": 1.0,
+      "riesgo_selectivo_global": 0.09090909090909091,
+      "cer_propuesta_positivos": 0.0,
+      "cer_salida_positivos": 0.0,
+      "latencia_ms": {
+        "muestras": 11,
+        "p50": 440.03404299974136,
+        "p95": 865.576735500099
+      }
+    },
+    "selector_texto_observado": {
+      "casos": 11,
+      "positivos": 10,
+      "negativos": 1,
+      "aceptados": 10,
+      "falsas_aceptaciones_negativos": 0,
+      "tasa_falsa_aceptacion_negativos": 0.0,
+      "exactitud_bruta_positivos": 1.0,
+      "exactitud_aceptada_positivos": 1.0,
+      "exactitud_condicional_aceptadas_positivos": 1.0,
+      "cobertura_positivos": 1.0,
+      "cobertura_global": 0.9090909090909091,
+      "riesgo_selectivo_global": 0.0,
+      "cer_propuesta_positivos": 0.0,
+      "cer_salida_positivos": 0.0,
+      "latencia_ms": {
+        "muestras": 11,
+        "p50": 440.0488139999652,
+        "p95": 865.7601415000045
+      }
+    }
+  },
+  "predicciones": [
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_221758_48_5460.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "f495277938a345ecc1db1ae054bea9a12035732b96b4b258eb533159db16d371",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY5899",
+          "aceptada": true,
+          "latencia_ms": 90.9552849998363,
+          "texto_crudo": "PSY5899",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            90.9552849998363
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 475.2810499999214,
+          "texto_crudo": "PSY5899",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99958,
+          "motivo": "verificador",
+          "latencias_ms": [
+            475.2810499999214
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 475.2965919997223,
+          "texto_crudo": "PSY5899",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99958,
+          "motivo": "verificador",
+          "latencias_ms": [
+            475.2965919997223
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_221809_48_7229.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "74a731f56d40a79538f6a2cb63347725ce39c313561472ce93954a889e40e598",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 85.83916199995656,
+          "texto_crudo": "PSY589",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            85.83916199995656
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 424.5891020000272,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.9998,
+          "motivo": "verificador",
+          "latencias_ms": [
+            424.5891020000272
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 424.6193869998933,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.9998,
+          "motivo": "verificador",
+          "latencias_ms": [
+            424.6193869998933
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_221815_40_3396.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "dcd59990da42508c1054879b497bb896db02aa926ed09939cb86df91795a3378",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 106.18852300012804,
+          "texto_crudo": "PSY589",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            106.18852300012804
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 474.60169100031635,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99975,
+          "motivo": "verificador",
+          "latencias_ms": [
+            474.60169100031635
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 474.6143520001169,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99975,
+          "motivo": "verificador",
+          "latencias_ms": [
+            474.6143520001169
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_222143_24_1964.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "da874c1fda879fca7bccd69e6f1e73e835145dec896c49e81f01b76446b87c9b",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 85.73789599995507,
+          "texto_crudo": "PSY589",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            85.73789599995507
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 812.424996000118,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99994,
+          "motivo": "verificador",
+          "latencias_ms": [
+            812.424996000118
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 812.439415999961,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99994,
+          "motivo": "verificador",
+          "latencias_ms": [
+            812.439415999961
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_225619_161_6555.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "8d2d0b0a320918692ed86833231470d0e7ab07d884eef38ec19b19c7fadba9c3",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 78.12934399998994,
+          "texto_crudo": "PSY589",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            78.12934399998994
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 736.1943979999523,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99976,
+          "motivo": "verificador",
+          "latencias_ms": [
+            736.1943979999523
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 736.2078839996684,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99976,
+          "motivo": "verificador",
+          "latencias_ms": [
+            736.2078839996684
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_225619_166_6349.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "d892f82f144fb40090dfb1dfc8c586ccf26c721279e49d133cea1daaf0a93000",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 73.11316799996348,
+          "texto_crudo": "PSY589",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            73.11316799996348
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 433.5104910001064,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99942,
+          "motivo": "verificador",
+          "latencias_ms": [
+            433.5104910001064
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 433.5327110002254,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99942,
+          "motivo": "verificador",
+          "latencias_ms": [
+            433.5327110002254
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_225624_153_9050.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "3537c18bd6609ce1345ff4a523f7845f01faa3fae4518f111605ff87efbc36f4",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 81.25461400004497,
+          "texto_crudo": "PSY589",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            81.25461400004497
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 409.6078889997443,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99985,
+          "motivo": "verificador",
+          "latencias_ms": [
+            409.6078889997443
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 409.62107599989395,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99985,
+          "motivo": "verificador",
+          "latencias_ms": [
+            409.62107599989395
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_225628_152_6704.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "70e313ab9ea03fc0e62d2acb1c5113857e91ff246ad2f053baafd0c801bc1a6d",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 70.69097500016142,
+          "texto_crudo": "PSY589",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            70.69097500016142
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 418.01849000012226,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99973,
+          "motivo": "verificador",
+          "latencias_ms": [
+            418.01849000012226
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 418.04707600022084,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99973,
+          "motivo": "verificador",
+          "latencias_ms": [
+            418.04707600022084
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_225633_150_325.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "2314de55e520d90c5d59ad55ff112dd53e9d2506fab537c463deaf046d72be7d",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 72.16754499995659,
+          "texto_crudo": "PSY589",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            72.16754499995659
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 396.6334619999543,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99983,
+          "motivo": "verificador",
+          "latencias_ms": [
+            396.6334619999543
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 396.64794600003006,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99983,
+          "motivo": "verificador",
+          "latencias_ms": [
+            396.64794600003006
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "dataset/ocr/real/images/val/20260914_ingreso_20260914_225637_149_5715.jpg",
+        "placa": "PSY589",
+        "tipo": "placa",
+        "texto_observado": "",
+        "grupo": "piloto_misma_matricula_en_train_NO_GENERALIZACION"
+      },
+      "imagen_sha256": "a479623a89095353fb3c5b3caf4e7314da41cb6cdc7c8041bc471584750e1184",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 85.53945599987856,
+          "texto_crudo": "PSY589",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            85.53945599987856
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 440.03404299974136,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99978,
+          "motivo": "verificador",
+          "latencias_ms": [
+            440.03404299974136
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "PSY589",
+          "aceptada": true,
+          "latencia_ms": 440.0488139999652,
+          "texto_crudo": "PSY589",
+          "texto_observado": "PSY-589",
+          "confianza_texto": 0.99978,
+          "motivo": "verificador",
+          "latencias_ms": [
+            440.0488139999652
+          ],
+          "prediccion_estable": true
+        }
+      }
+    },
+    {
+      "caso": {
+        "archivo": "services/anpr/tests/fixtures/ocr/anpr_ocr_caso.png",
+        "placa": "",
+        "tipo": "texto",
+        "texto_observado": "HAVAL / ambacar",
+        "grupo": "desarrollo_rotulo"
+      },
+      "imagen_sha256": "1de5723dfb3033096fc5a2b4deef9670f4712e2d2d3df535ff6b2392e2fd3684",
+      "metodos": {
+        "agente_actual": {
+          "propuesta": "OII1060",
+          "aceptada": true,
+          "latencia_ms": 87.14276400041854,
+          "texto_crudo": "0111060",
+          "texto_observado": "",
+          "confianza_texto": 0.0,
+          "motivo": "procesado",
+          "latencias_ms": [
+            87.14276400041854
+          ],
+          "prediccion_estable": true
+        },
+        "agente_mas_verificador_sin_veto": {
+          "propuesta": "OII1060",
+          "aceptada": true,
+          "latencia_ms": 918.7284750000799,
+          "texto_crudo": "0111060",
+          "texto_observado": "HAVAL / ambacar",
+          "confianza_texto": 0.98753,
+          "motivo": "agente_sin_confirmacion",
+          "latencias_ms": [
+            918.7284750000799
+          ],
+          "prediccion_estable": true
+        },
+        "selector_texto_observado": {
+          "propuesta": "OII1060",
+          "aceptada": false,
+          "latencia_ms": 919.0808670000479,
+          "texto_crudo": "0111060",
+          "texto_observado": "HAVAL / ambacar",
+          "confianza_texto": 0.98753,
+          "motivo": "texto_no_matricula",
+          "latencias_ms": [
+            919.0808670000479
+          ],
+          "prediccion_estable": true
+        }
+      }
+    }
+  ]
+}

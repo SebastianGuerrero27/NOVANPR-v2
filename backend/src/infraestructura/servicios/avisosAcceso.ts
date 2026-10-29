@@ -35,7 +35,7 @@ export interface ContextoPermiso {
   propietario?: string | null;
   /** Usuario que otorgó (o reactivó) el permiso */
   registrado_por?: number | null;
-  horario?: string | null;
+  horario?: Parameters<typeof describirHorario>[0];
   fecha_inicio?: Date | string | null;
   fecha_vencimiento?: Date | string | null;
 }
@@ -135,7 +135,7 @@ async function notificarLlegada(d: PasoNotificable, permiso?: ContextoPermiso | 
     deteccionId: d.id,
     origen: new Date(d.fecha_hora_ingreso),
     datos: { deteccion_id: d.id, placa: d.placa },
-    claveDedup: `llegada:${d.placa}`,
+    claveDedup: `llegada:${permiso?.registrado_por ?? 0}:${d.placa}`,
     destinatarios: {
       permiso: 'avisos:garita',
       usuarios: permiso?.registrado_por ? [permiso.registrado_por] : [],
@@ -145,13 +145,13 @@ async function notificarLlegada(d: PasoNotificable, permiso?: ContextoPermiso | 
 
 export interface PermisoOtorgado {
   id: number;
-  placa: string;
+  placa: string | null;
   propietario: string;
   marca?: string | null;
   modelo?: string | null;
   color?: string | null;
   fecha_vencimiento?: Date | string | null;
-  horario?: string | null;
+  horario?: Parameters<typeof describirHorario>[0];
 }
 
 /**
@@ -159,15 +159,17 @@ export interface PermisoOtorgado {
  * garita para que sepa que el vehículo podrá ingresar. Quien lo otorgó no se lo notifica a sí mismo.
  */
 export async function notificarPermisoOtorgado(p: PermisoOtorgado, autor: { id: number; nombre: string }): Promise<void> {
-  const vehiculo = [[p.marca, p.modelo].filter(Boolean).join(' '), p.color].filter(Boolean).join(' ');
-  const vigencia = [p.fecha_vencimiento ? `vigente hasta ${fechaCorta(p.fecha_vencimiento)}` : 'sin vencimiento',
-    p.horario ? describirHorario(p.horario) : ''].filter(Boolean).join(' · ');
   try {
+    const vehiculo = [[p.marca, p.modelo].filter(Boolean).join(' '), p.color].filter(Boolean).join(' ');
+    const vigencia = [p.fecha_vencimiento ? `vigente hasta ${fechaCorta(p.fecha_vencimiento)}` : 'sin vencimiento',
+      p.horario ? describirHorario(p.horario) : ''].filter(Boolean).join(' · ');
     await notificar({
       tipo: 'padron.permiso_otorgado',
-      titulo: `Agregado a la lista blanca · ${p.placa}`,
-      mensaje: `Se ha otorgado permiso a ${p.propietario} con vehículo${vehiculo ? ` ${vehiculo}` : ''} de placa ${p.placa} · ${vigencia} · por ${autor.nombre}`,
-      enlace: enlaceListaBlanca(p.placa),
+      titulo: `Agregado a la lista blanca · ${p.placa || p.propietario}`,
+      mensaje: p.placa
+        ? `Se ha otorgado permiso a ${p.propietario} con vehículo${vehiculo ? ` ${vehiculo}` : ''} de placa ${p.placa} · ${vigencia} · por ${autor.nombre}`
+        : `Permiso por nombre para ${p.propietario} · pendiente de placa. Verifique su identidad y complete la placa al llegar. ${vigencia} · por ${autor.nombre}`,
+      enlace: enlaceListaBlanca(p.placa || p.propietario),
       datos: { vehiculo_autorizado_id: p.id, placa: p.placa },
       destinatarios: { excluir: [autor.id] },
     });

@@ -40,7 +40,7 @@ router.get('/exportar', controlador(CONTEXTO, 'No se pudo exportar la auditoría
   res.send(`${BOM_UTF8}${contenido}`);
 }));
 
-router.get('/:fuente(operaciones|cuentas|accesos)/:id(\\d+)', controlador(CONTEXTO, 'No se pudo consultar el registro de auditoría.', async (req, res) => {
+router.get('/:fuente(operaciones|cuentas|accesos|descartes|propietario)/:id(\\d+)', controlador(CONTEXTO, 'No se pudo consultar el registro de auditoría.', async (req, res) => {
   res.json(await auditoria.obtener(req.params.fuente, req.params.id));
 }));
 

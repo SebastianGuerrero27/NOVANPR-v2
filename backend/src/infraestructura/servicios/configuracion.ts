@@ -34,7 +34,7 @@ export const DEFINICIONES: Definicion[] = [
   {
     clave: 'dominios_correo', tipo: 'lista', grupo: 'Acceso y cuentas',
     etiqueta: 'Dominios de correo permitidos',
-    descripcion: 'Solo se aceptan cuentas con estos dominios, separados por coma.',
+    descripcion: 'Dominios permitidos separados por coma. Déjelo vacío para aceptar cualquier correo válido.',
     env: 'ALLOWED_EMAIL_DOMAINS', omision: 'ecu911.gob.ec',
   },
   {

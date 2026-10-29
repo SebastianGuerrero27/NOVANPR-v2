@@ -11,8 +11,10 @@ import type { EvidenciaLectura, EvidenciaSinPlaca } from './tipos';
 export const MOTIVO_SIN_PLACA: Record<string, string> = {
   vehiculo_sin_placa: 'El motor vio un vehículo en la zona de interés sin ninguna placa a la vista.',
   placa_no_leida: 'El motor vio algo con forma de placa durante el paso, pero no pudo leerlo.',
+  texto_no_matricula: 'El motor leyó un rótulo y conservó su texto como observación, sin asignarlo como matrícula.',
 };
 
 /** La evidencia es la de un paso registrado sin lectura de placa (no la de una lectura). */
 export const esEvidenciaSinPlaca = (ev: EvidenciaLectura | EvidenciaSinPlaca | null | undefined): ev is EvidenciaSinPlaca =>
-  !!ev && typeof (ev as EvidenciaSinPlaca).motivo === 'string' && !('valido' in ev);
+  !!ev && 'motivo' in ev && typeof ev.motivo === 'string'
+    && (!('valido' in ev) || ev.motivo === 'texto_no_matricula');

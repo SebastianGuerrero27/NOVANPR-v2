@@ -16,8 +16,9 @@ import type { Notificacion } from '../dominio/tipos';
  * Socket.IO reconecta (recupera lo emitido mientras no hubo conexión); los eventos en vivo
  * (`notificacion:nueva | actualizada`) se fusionan por id, así que un duplicado no se muestra
  * dos veces. El reconocimiento (ACK) se registra en el backend y se difunde a todos los
- * destinatarios de la alarma. Cada persona puede quitar de su bandeja las notificaciones ya
- * revisadas (`notificacion:eliminada` sincroniza sus otras pestañas y equipos).
+ * destinatarios de la alarma; a quien la atiende se le quita de la bandeja en el mismo paso. Cada
+ * persona puede quitar de su bandeja las notificaciones ya revisadas (`notificacion:eliminada`
+ * sincroniza sus otras pestañas y equipos).
  */
 interface Ctx {
   items: Notificacion[];
@@ -144,10 +145,14 @@ export const CentroNotificacionesProvider: React.FC<{ children: React.ReactNode 
       })).catch(() => undefined);
     }
   });
+  // Solo actualiza las que están en la bandeja: el cambio de estado de una alarma atendida (y ya
+  // quitada) puede llegar después y no debe volver a mostrarla
   useEvento<Partial<Notificacion>>('notificacion:actualizada', n => {
-    setItems(actuales => fusionar(actuales, [n]));
+    setItems(actuales => (actuales.some(x => x.id === n.id) ? fusionar(actuales, [n]) : actuales));
     resumenDiferido();
   });
+  // El padrón puede cambiar antes de que esta pestaña reciba su aviso individual.
+  useEvento('listas:actualizadas', () => { void recargar(); });
   // Quitadas desde otra pestaña o equipo de la misma cuenta
   useEvento<{ ids: number[] }>('notificacion:eliminada', ({ ids }) => {
     const quitar = new Set(ids);
@@ -167,9 +172,10 @@ export const CentroNotificacionesProvider: React.FC<{ children: React.ReactNode 
     setResumen(resumenDe(data));
   }, []);
 
+  // "Atendida": el servidor la quita de la bandeja propia (archivada); ya no hay que eliminarla a mano
   const reconocer = useCallback(async (id: number) => {
     const { data } = await api.post(`/notificaciones/${id}/reconocer`);
-    setItems(a => a.map(n => (n.id === id ? { ...n, leida: true } : n)));
+    setItems(a => (data.archivada ? a.filter(n => n.id !== id) : a.map(n => (n.id === id ? { ...n, leida: true } : n))));
     setResumen(resumenDe(data));
   }, []);
 

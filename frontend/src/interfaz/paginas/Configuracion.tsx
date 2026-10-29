@@ -23,7 +23,7 @@ interface RespuestaConfig {
 const ORIGEN: Record<Parametro['origen'], string> = { sistema: 'Definido en esta pantalla', entorno: 'Variable de entorno del servidor', omision: 'Valor por omisión' };
 
 /** Dominios de correo separados por coma (la columna admite 500 caracteres). */
-const reglaLista = (etiqueta: string): ReglaTexto => ({ etiqueta, tipo: 'libre', max: 500, requerido: true });
+const reglaLista = (etiqueta: string): ReglaTexto => ({ etiqueta, tipo: 'libre', max: 500 });
 const filtrarDominios = (v: string) => v.replace(/[^A-Za-z0-9.,@ -]/g, '');
 
 /** Dominio de correo: nombre de host válido (no una IP) con dominio de nivel superior alfabético. */
@@ -34,15 +34,15 @@ const esDominioCorreo = (d: string) => {
 
 /**
  * Error del valor escrito, con las reglas de validarParametro (backend/src/dominio/configuracion.ts):
- * enteros dentro del rango, dominios de correo válidos (sin repetir, hasta 500 caracteres) y texto
- * de 1 a 150 caracteres.
+ * enteros dentro del rango, dominios de correo válidos (sin repetir, hasta 500 caracteres; vacío
+ * acepta cualquier dominio) y texto de 1 a 150 caracteres.
  */
 function errorParametro(p: Parametro, valor: string): string | null {
   if (p.tipo === 'entero') return errorDe(validarEntero(valor, { etiqueta: p.etiqueta, min: p.min, max: p.max, requerido: true }));
   if (p.tipo === 'texto') return errorDe(validarTexto(valor, { ...REGLA_PARAMETRO_TEXTO, etiqueta: p.etiqueta }));
   if (p.tipo === 'lista') {
     const dominios = [...new Set(valor.split(',').map(x => x.trim().toLowerCase().replace(/^@/, '')).filter(Boolean))];
-    if (!dominios.length) return `${p.etiqueta}: indique al menos un dominio.`;
+    if (!dominios.length) return valor.length > 500 ? `${p.etiqueta}: máximo 500 caracteres.` : null;
     const invalido = dominios.find(d => !esDominioCorreo(d));
     if (invalido !== undefined) return `${p.etiqueta}: dominio inválido (${invalido.substring(0, 60)}).`;
     if (dominios.join(',').length > 500) return `${p.etiqueta}: máximo 500 caracteres.`;
@@ -109,7 +109,7 @@ const Configuracion: React.FC = () => {
                       <CampoTexto id={`cfg-${p.clave}`} valor={valores[p.clave] ?? ''} onCambiar={poner(p.clave)}
                         regla={p.tipo === 'lista' ? reglaLista(p.etiqueta) : { ...REGLA_PARAMETRO_TEXTO, etiqueta: p.etiqueta }}
                         error={errorParametro(p, valores[p.clave] ?? '')} filtrar={p.tipo === 'lista' ? filtrarDominios : undefined}
-                        literal={p.tipo === 'lista'} ayuda={p.tipo === 'lista' ? 'Separados por coma, p. ej. ecu911.gob.ec' : undefined} />
+                        literal={p.tipo === 'lista'} ayuda={p.tipo === 'lista' ? 'Separados por coma; vacío acepta cualquier correo válido.' : undefined} />
                     )}
                   </div>
                 </div>

@@ -9,7 +9,14 @@ export type RestriccionAcceso = 'fuera_horario' | 'no_iniciada' | 'vencida';
 export interface Franja { dias: number[]; desde: string; hasta: string }
 
 export interface Deteccion {
+  datos_permiso?: Partial<{
+    propietario: string; cedula: string; institucion: string; cargo: string; departamento: string;
+    placa: string; tipo_vehiculo: string; marca: string; modelo: string; color: string;
+    observaciones: string; fecha_inicio: string; fecha_fin: string; horario: Franja[] | null; horario_error: string;
+  }> | null;
   id: number;
+  registro_completo?: boolean;
+  datos_faltantes_registro?: string[];
   placa: string | null;
   placa_reconocida: string | null;
   placa_validada: string | null;
@@ -18,9 +25,12 @@ export interface Deteccion {
   confianza_deteccion: number | null;
   confianza_ocr: number | null;
   fecha_hora_ingreso: string;
+  fecha_hora_salida?: string | null;
   tipo_movimiento: 'ingreso' | 'salida';
   fecha_hora_procesamiento: string | null;
   fuente: string | null;
+  /** Cámara en vivo (RTSP), cámara de prueba con video cargado o registro manual del personal */
+  origen?: OrigenPaso;
   tracking_id: number | null;
   imagen_vehiculo: string | null;
   imagen_placa: string | null;
@@ -40,10 +50,22 @@ export interface Deteccion {
   motivo_revision?: string | null;
   /** Vehículo sin placa visible registrado por el motor: la evidencia es la foto */
   sin_placa?: boolean;
+  /** Texto observado por OCR; no es una matrícula ni el motivo del ingreso. */
+  evidencia_lectura?: EvidenciaTextoOcr | null;
   /** Quién ingresa y por qué (reporte de control vehicular de la garita) */
   persona_ingreso?: string | null;
   motivo_ingreso?: string | null;
   validacion: { usuario: { id: number; nombre: string; email: string } | null; fecha: string } | null;
+}
+
+export type OrigenPaso = 'camara' | 'video' | 'manual';
+
+/** Totales del historial completo con los filtros aplicados (GET /detecciones/historial/resumen). */
+export interface ResumenHistorial {
+  total: number; ingresos: number; salidas: number; con_salida: number;
+  autorizados: number; alertas: number; no_registrados: number; pendientes: number; sin_lectura: number;
+  placas: number; camara: number; video_prueba: number; manuales: number;
+  primero: string | null; ultimo: string | null;
 }
 
 export interface DeteccionDetalle extends Deteccion {
@@ -62,7 +84,14 @@ export interface DeteccionDetalle extends Deteccion {
 }
 
 /** Evidencias con que el motor decide si una lectura es válida (ver verificacion_placa.py) */
-export interface EvidenciaLectura {
+export interface EvidenciaTextoOcr {
+  observacion_ocr?: string | null;
+  confianza_texto_ocr?: number | null;
+  candidata_descartada?: string | null;
+}
+
+/** Evidencias de validez de una lectura (ver verificacion_placa.py). */
+export interface EvidenciaLectura extends EvidenciaTextoOcr {
   valido: boolean;
   formato: boolean;
   dentro_cuadro: boolean;
@@ -85,7 +114,7 @@ export interface EvidenciaLectura {
 }
 
 /** Evidencia de un paso que el motor registró sin lectura de placa (ver dominio/evidencia.ts) */
-export interface EvidenciaSinPlaca {
+export interface EvidenciaSinPlaca extends EvidenciaTextoOcr {
   /** 'vehiculo_sin_placa': no vio ninguna placa; 'placa_no_leida': vio algo con forma de placa y no pudo leerlo */
   motivo: string;
   tipo_vehiculo?: string | null;
@@ -136,6 +165,8 @@ export interface Conteos {
 }
 
 export interface ResumenPanel {
+  /** Balance del guardia: ingresos de hoy = entradas (sin salida) + salidas */
+  movimientos?: { ingresos?: number; entradas: number; salidas: number; dentro: number; registros_completos?: number; registros_acceso?: number };
   generado: string;
   hoy: Conteos & { validados: number };
   ayer_misma_hora: number;
@@ -145,7 +176,6 @@ export interface ResumenPanel {
   cola_revision: number;
   ultimas_alertas: Deteccion[];
   listas: { autorizados_vigentes: number; autorizados_por_vencer: number; autorizados_vencidos: number; alertas_vigentes: number; dias_aviso: number };
-  exactitud_ocr: { validadas: number; correctas: number };
 }
 
 /** Enlace del motor con el flujo principal de la cámara (lo informa el lector RTSP del motor). */
@@ -190,15 +220,15 @@ export interface EstadoAnpr {
 
 export interface PanelAdministracion {
   usuarios: { total: number; activos: number; pendientes: number; inactivos: number; bloqueados: number; por_rol: Record<Rol, number> };
-  accesos_24h: { exitosos: number; fallidos: number };
-  ultimos_fallidos: { fecha: string; email: string; motivo: string; ip: string }[];
-  actividad: { fecha: string; actor: string | null; accion: string; entidad: string; detalle: string | null }[];
   servicios: { base_datos: { en_linea: boolean }; anpr: EstadoAnpr; correo: { configurado: boolean } };
 }
 
 export interface RegistroLista {
+  cedula?: string | null;
+  institucion?: string | null;
+  cargo?: string | null;
   id: number;
-  placa: string;
+  placa: string | null;
   marca: string | null;
   modelo: string | null;
   color: string | null;
@@ -207,6 +237,16 @@ export interface RegistroLista {
   fecha_registro: string;
   fecha_actualizacion: string | null;
   registrado_por_email: string | null;
+  registrado_por?: number | null;
+  registrado_por_nombre?: string | null;
+  /** Motivo habitual de ingreso del permiso (lista blanca) */
+  motivo_ingreso?: string | null;
+  /** false: retirado de la lista (solo en el registro de permisos del administrador) */
+  activo?: boolean;
+  imagen_vehiculo?: string | null;
+  imagen_placa?: string | null;
+  fecha_evidencia_vehiculo?: string | null;
+  fecha_evidencia_placa?: string | null;
   vigente: boolean;
   por_vencer: boolean;
   ingresos: number;
@@ -263,22 +303,16 @@ export interface Notificacion {
   escalada: boolean;
 }
 
-export interface MetricasNotificacion {
-  dias: number;
-  por_severidad: {
-    severidad: Severidad; emitidas: number; repeticiones_agrupadas: number; con_ack: number; reconocidas: number;
-    escaladas: number; tta_mediana_s: number | null; tta_p95_s: number | null;
-  }[];
-  alarmas_por_hora: number;
-  ventanas_avalancha_10min: number;
-}
-
 // ─── Solicitudes de acceso ───────────────────────────────────────────────────
 
 export type EstadoSolicitud = 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada';
 
 export interface SolicitudAcceso {
   id: number;
+  cedula?: string | null;
+  institucion?: string | null;
+  cargo?: string | null;
+  observaciones?: string | null;
   placa: string;
   propietario: string;
   departamento: string | null;
@@ -306,7 +340,7 @@ export interface SolicitudAcceso {
 export interface PanelAccesos {
   generado: string;
   solicitudes: { pendientes: number; ultimas: { id: number; placa: string; propietario: string; categoria: string; motivo: string; fecha_solicitud: string; solicitante: string }[] };
-  padron: { vigentes: number; por_vencer: number; vencidos: number; por_iniciar: number; con_horario: number; dias_aviso: number };
+  padron: { total?: number; sin_placa?: number; vigentes: number; por_vencer: number; vencidos: number; por_iniciar: number; con_horario: number; dias_aviso: number };
   categorias: Record<string, number>;
   hoy: { sin_permiso: number; restringidos: number };
   reincidentes: { placa: string; intentos: number; ultimo: string }[];

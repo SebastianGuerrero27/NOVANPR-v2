@@ -4,13 +4,15 @@ dotenv.config();
 import { createServer } from 'http';
 import { crearApp } from './app';
 import { connectDB } from './infraestructura/db';
-import { initSocket } from './infraestructura/servicios/socket';
+import { emitEvent, initSocket } from './infraestructura/servicios/socket';
 import { iniciarSincronizacionMedios } from './infraestructura/servicios/medios';
 import { protegerCredencialesGuardadas } from './infraestructura/servicios/custodiaCredenciales';
 import { iniciarMonitorCamaras } from './infraestructura/servicios/conectividadCamaras';
 import { iniciarSincronizacionMotor } from './infraestructura/servicios/camaraMotor';
 import { iniciarWebPush } from './infraestructura/servicios/webPush';
 import { iniciarTareasProgramadas } from './infraestructura/servicios/tareasProgramadas';
+import { recuperarEvidenciasListas } from './infraestructura/servicios/evidenciaListas';
+import { iniciarRetiroPermisosVencidos } from './contenedor/listas';
 
 const app = crearApp();
 const server = createServer(app);
@@ -28,6 +30,9 @@ async function startServer() {
     iniciarSincronizacionMedios();
     iniciarSincronizacionMotor();
     iniciarTareasProgramadas();
+    iniciarRetiroPermisosVencidos();
+    void recuperarEvidenciasListas(pool, lista => emitEvent('listas:actualizadas', { lista }))
+      .catch(error => console.warn('[EVIDENCIA LISTAS] Recuperación pendiente:', error.message));
 
     server.listen(PORT, () => {
       console.log(`===================================================`);

@@ -1,0 +1,30 @@
+import { render, screen } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
+import type { Deteccion, SolicitudAcceso } from '../src/dominio/tipos';
+vi.mock('../src/infraestructura/api', () => ({ default: {}, mensajeError: String, urlMedia: (r: string) => r }));
+vi.mock('../src/aplicacion/AuthContext', () => ({ useAuth: () => ({ puede: () => false }) }));
+import { FormularioLista } from '../src/interfaz/componentes/FormularioLista';
+import { FormularioSolicitud, AprobarSolicitud } from '../src/interfaz/componentes/FormularioSolicitud';
+const etiquetas = ['Nombres y apellidos*', 'Cédula', 'Institución', 'Cargo', 'Departamento o unidad', 'Tipo de vehículo', 'Marca', 'Modelo', 'Color', 'Observaciones'];
+const campos = () => etiquetas.map(etiqueta => screen.getByLabelText(etiqueta));
+it('alta, solicitud y aprobación muestran los mismos campos y reservan la foto para el acceso', () => {
+  const gestor = render(<FormularioLista tipo="autorizados" onCerrar={vi.fn()} onGuardado={vi.fn()} />);
+  expect(campos()).toHaveLength(10);
+  expect(screen.queryByAltText('Vehículo del permiso')).not.toBeInTheDocument();
+  // El motivo habitual del permiso solo está en el alta; la solicitud pide su propio motivo
+  expect(screen.getByLabelText('Motivo de ingreso')).toBeInTheDocument();
+  const orden = [...gestor.container.querySelectorAll('label')].map(n => n.textContent).filter(n => n !== 'Motivo de ingreso');
+  gestor.unmount();
+  const d = { imagen_vehiculo: '/media/auto.jpg', imagen_placa: null } as Deteccion;
+  const solicitud = render(<FormularioSolicitud deteccion={d} onCerrar={vi.fn()} onEnviada={vi.fn()} />);
+  expect(campos()).toHaveLength(10);
+  expect(screen.getByAltText('Vehículo del permiso')).toHaveStyle({ objectFit: 'contain' });
+  expect(screen.getByLabelText('Nombres y apellidos*')).not.toHaveAttribute('autofocus');
+  const ordenSolicitud = [...solicitud.container.querySelectorAll('label')].map(n => n.textContent).filter(n => n !== 'Motivo del ingreso*');
+  expect(ordenSolicitud.map(n => n === 'Placa*' ? 'Placa (opcional)' : n)).toEqual(orden);
+  solicitud.unmount();
+  render(<AprobarSolicitud s={{ id: 1, placa: 'ABC1234', propietario: 'Ana Torres', vehiculo: {}, solicitante: { nombre: 'Guardia' }, fecha_solicitud: '2026-10-24T15:00:00Z', horario: null } as SolicitudAcceso} onCerrar={vi.fn()} onAprobada={vi.fn()} />);
+  expect(campos()).toHaveLength(10);
+  expect(screen.getByLabelText('Placa*')).toBeDisabled();
+  expect(screen.queryByAltText('Vehículo del permiso')).not.toBeInTheDocument();
+});

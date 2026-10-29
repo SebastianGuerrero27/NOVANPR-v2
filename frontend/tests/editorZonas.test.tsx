@@ -28,16 +28,42 @@ const CAMARA: Camara = {
 };
 
 describe('Editor de zonas', () => {
+  it('al guardar la región elimina exclusiones antiguas y sombrea su exterior', async () => {
+    const roi: [number, number][] = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
+    render(<EditorRoi camara={{ ...CAMARA, roi, exclusiones: [roi] }} onCerrar={() => undefined} onGuardada={() => undefined} />);
+    expect(screen.getByTestId('exterior-excluido')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /exclusión/i })).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Guardar zona/ })); });
+    expect(put).toHaveBeenCalledWith('/camaras/3/roi', { roi, exclusiones: [] });
+  });
+  it('permite dibujar un polígono hasta los bordes y muestra la mano al cerrarlo', async () => {
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    try {
+      render(<EditorRoi camara={CAMARA} onCerrar={() => undefined} onGuardada={() => undefined} />);
+      expect(screen.queryByRole('button', { name: /Zonas de exclusión/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Seleccionar \/ mover|Rectángulo/ })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Polígono/ }));
+      const superficie = screen.getByTestId('superficie-zonas');
+      fireEvent.pointerDown(superficie, { clientX: 0, clientY: 0, button: 0 });
+      fireEvent.pointerDown(superficie, { clientX: 200, clientY: 0, button: 0 });
+      fireEvent.pointerDown(superficie, { clientX: 200, clientY: 100, button: 0 });
+      fireEvent.pointerDown(superficie, { clientX: 0, clientY: 100, button: 0 });
+      fireEvent.click(screen.getByRole('button', { name: /Cerrar polígono/ }));
+      expect(screen.getByRole('button', { name: 'Mover área' })).toBeInTheDocument();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Guardar zona/ })); });
+      expect(put).toHaveBeenCalledWith('/camaras/3/roi', { roi: [[0, 0], [1, 0], [1, 1], [0, 1]], exclusiones: [] });
+    } finally { vi.unstubAllGlobals(); }
+  });
   beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 200, height: 100, x: 0, y: 0, right: 200, bottom: 100, toJSON: () => ({}) } as DOMRect);
     put.mockResolvedValue({ data: { camera: CAMARA } });
   });
   afterEach(() => { vi.restoreAllMocks(); put.mockReset(); });
 
-  it('validación previa: área de 3+ vértices o vacía; zonas completas (las vacías se ignoran)', () => {
-    expect(errorZonas([], [])).toBeNull();
-    expect(errorZonas([[0, 0], [1, 0]], [])).toMatch(/área de detección necesita al menos 3 vértices/);
-    expect(errorZonas([], [[[0, 0], [1, 0], [1, 1]], [], [[0, 0]]])).toBe('Complete la zona de exclusión 3 (mínimo 3 vértices) o bórrela.');
+  it('valida la región vacía, incompleta y con cruces', () => {
+    expect(errorZonas([])).toBeNull();
+    expect(errorZonas([[0, 0], [1, 0]])).toMatch(/zona de interés necesita al menos 3 vértices/);
+    expect(errorZonas([[0, 0], [1, 1], [1, 0], [0, 1]])).toMatch(/se cruza/);
   });
 
   it('el área de detección se puede borrar para usar el cuadro completo', async () => {
@@ -45,16 +71,16 @@ describe('Editor de zonas', () => {
     expect(screen.getByText(/3 vértices/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Borrar área/ }));
     expect(screen.getByText('Sin área: se analiza el cuadro completo.')).toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Guardar zonas/ })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Guardar zona/ })); });
     expect(put).toHaveBeenCalledWith('/camaras/3/roi', { roi: null, exclusiones: [] });
   });
 
   it('no permite guardar zonas incompletas', async () => {
     render(<EditorRoi camara={CAMARA} onCerrar={() => undefined} onGuardada={() => undefined} />);
-    fireEvent.click(screen.getByRole('button', { name: /Zonas de exclusión/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Nuevo polígono/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Polígono/ }));
     // Simular dibujo incompleto (el componente interno maneja los eventos)
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Guardar zonas/ })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Guardar zona/ })); });
     // Debería mostrar error de validación (zona incompleta)
     expect(put).not.toHaveBeenCalled();
   });

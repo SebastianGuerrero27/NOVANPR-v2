@@ -2,19 +2,20 @@ import React, { useState } from 'react';
 import { AlertTriangle, Loader2, Save, Send, ShieldCheck } from 'lucide-react';
 import api, { mensajeError } from '../../infraestructura/api';
 import { useAuth } from '../../aplicacion/AuthContext';
-import type { Franja, SolicitudAcceso } from '../../dominio/tipos';
-import { CATEGORIAS_PERMISO, fechaHora, fechaIsoLocal } from '../../dominio/formato';
+import type { Deteccion, Franja, SolicitudAcceso } from '../../dominio/tipos';
+import { fechaHora, fechaIsoLocal } from '../../dominio/formato';
 import {
   errorDe, erroresTexto, normalizarPlaca, placaPropuesta, sinErrores, validarFecha, validarPlaca, validarTexto, valorPrecargado,
 } from '../../dominio/validacion';
-import { REGLA_COMENTARIO_APROBACION, REGLAS_SOLICITUD, REGLAS_VEHICULO } from '../../dominio/reglas';
+import { REGLA_COMENTARIO_APROBACION, REGLA_OBSERVACIONES, REGLAS_LISTA_BLANCA, REGLAS_SOLICITUD, REGLAS_VEHICULO } from '../../dominio/reglas';
 import { Aviso, Modal, Placa } from './ui';
-import { CampoFecha, CampoPlaca, CampoTexto } from './campos';
-import { EditorHorario, horarioValido } from './EditorHorario';
-import { COLORES, conValorActual, MARCAS } from './FormularioLista';
-import { TIPOS_VEHICULO } from './deteccion';
+import { CampoTexto } from './campos';
+import { CamposFormularioPermiso } from './CamposFormularioPermiso';
+import { horarioValido } from './EditorHorario';
 
 export interface DatosIniciales {
+  propietario?: string; cedula?: string; institucion?: string; cargo?: string; departamento?: string;
+  observaciones?: string; fecha_inicio?: string; fecha_fin?: string; horario?: Franja[] | null;
   placa?: string | null;
   marca?: string | null;
   modelo?: string | null;
@@ -30,11 +31,12 @@ export interface DatosIniciales {
  * pendiente (PUT, mismo cuerpo que el alta): la API rechaza la edición si ya fue resuelta.
  */
 export const FormularioSolicitud: React.FC<{
-  inicial?: DatosIniciales; solicitud?: SolicitudAcceso; onCerrar: () => void; onEnviada: (s: SolicitudAcceso) => void;
-}> = ({ inicial, solicitud, onCerrar, onEnviada }) => {
+  inicial?: DatosIniciales; solicitud?: SolicitudAcceso; deteccion?: Deteccion; onCerrar: () => void; onEnviada: (s: SolicitudAcceso) => void;
+}> = ({ inicial, solicitud, deteccion, onCerrar, onEnviada }) => {
   const [f, setF] = useState(() => solicitud
     ? {
       placa: normalizarPlaca(solicitud.placa), propietario: solicitud.propietario, departamento: solicitud.departamento ?? '',
+      cedula: solicitud.cedula ?? '', institucion: solicitud.institucion ?? '', cargo: solicitud.cargo ?? '', observaciones: solicitud.observaciones ?? '',
       categoria: solicitud.categoria, motivo: solicitud.motivo,
       // Los campos de opciones no muestran error: un valor anterior a las reglas se descarta y se vuelve a elegir
       tipo_vehiculo: valorPrecargado(solicitud.vehiculo.tipo, REGLAS_VEHICULO.tipo_vehiculo),
@@ -44,28 +46,27 @@ export const FormularioSolicitud: React.FC<{
       fecha_inicio: solicitud.fecha_inicio?.slice(0, 10) ?? '', fecha_fin: solicitud.fecha_fin?.slice(0, 10) ?? '',
     }
     : {
-      placa: placaPropuesta(inicial?.placa), propietario: '', departamento: '', categoria: 'VISITANTE', motivo: '',
+      placa: placaPropuesta(inicial?.placa), propietario: inicial?.propietario ?? '', departamento: inicial?.departamento ?? '', categoria: 'VISITANTE', motivo: '',
+      cedula: inicial?.cedula ?? '', institucion: inicial?.institucion ?? '', cargo: inicial?.cargo ?? '', observaciones: inicial?.observaciones ?? '',
       // Atributos que informó la cámara: se descartan los que no cumplen la regla del campo
       tipo_vehiculo: valorPrecargado(inicial?.tipo_vehiculo, REGLAS_VEHICULO.tipo_vehiculo),
       marca: valorPrecargado(inicial?.marca, REGLAS_VEHICULO.marca),
       modelo: valorPrecargado(inicial?.modelo, REGLAS_VEHICULO.modelo),
       color: valorPrecargado(inicial?.color, REGLAS_VEHICULO.color),
-      fecha_inicio: '', fecha_fin: fechaIsoLocal(),
+      fecha_inicio: inicial?.fecha_inicio ?? '', fecha_fin: inicial?.fecha_fin ?? fechaIsoLocal(),
     });
-  const [horario, setHorario] = useState<Franja[] | null>(solicitud?.horario ?? null);
+  const [horario, setHorario] = useState<Franja[] | null>(solicitud?.horario ?? inicial?.horario ?? null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const campo = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF(x => ({ ...x, [k]: e.target.value }));
   const poner = (k: keyof typeof f) => (v: string) => setF(x => ({ ...x, [k]: v }));
-  const fechasOk = !f.fecha_inicio || !f.fecha_fin || f.fecha_inicio <= f.fecha_fin;
-  const valido = horarioValido(horario) && fechasOk && sinErrores({
+  const fechasOk = !f.fecha_fin || (f.fecha_inicio || fechaIsoLocal()) <= f.fecha_fin;
+  const valido = (!f.cedula.trim() || /^\d{10}$/.test(f.cedula.trim())) && horarioValido(horario) && fechasOk && sinErrores({
     placa: errorDe(validarPlaca(f.placa)),
-    ...erroresTexto(f, { ...REGLAS_SOLICITUD, ...REGLAS_VEHICULO }),
+    ...erroresTexto(f, { ...REGLAS_SOLICITUD, ...REGLAS_LISTA_BLANCA, ...REGLAS_VEHICULO, observaciones: REGLA_OBSERVACIONES }),
     fecha_inicio: errorDe(validarFecha(f.fecha_inicio, { etiqueta: 'Fecha de inicio' })),
     fecha_fin: errorDe(validarFecha(f.fecha_fin, { etiqueta: 'Fecha de fin' })),
   });
   // Con la placa ya escrita (edición o lectura de la cámara) el foco va al responsable
-  const [placaPrecargada] = useState(() => f.placa !== '');
 
   const enviar = async () => {
     setEnviando(true);
@@ -96,36 +97,11 @@ export const FormularioSolicitud: React.FC<{
         </button>
       </>}>
       <div className="form-grid">
-        <CampoPlaca id="s-placa" etiqueta="Placa*" valor={f.placa} onCambiar={poner('placa')} autoFocus={!placaPrecargada} />
-        <div className="campo">
-          <label htmlFor="s-cat">Categoría</label>
-          <select id="s-cat" className="select" value={f.categoria} onChange={campo('categoria')}>
-            {Object.entries(CATEGORIAS_PERMISO).map(([v, e]) => <option key={v} value={v}>{e}</option>)}
-          </select>
-        </div>
-        <CampoTexto id="s-prop" etiqueta="Conductor o responsable*" valor={f.propietario} onCambiar={poner('propietario')}
-          regla={REGLAS_SOLICITUD.propietario} autoFocus={placaPrecargada} placeholder="Nombres y apellidos / empresa" />
-        <CampoTexto id="s-dep" etiqueta="Unidad que visita" valor={f.departamento} onCambiar={poner('departamento')}
-          regla={REGLAS_SOLICITUD.departamento} placeholder="Ej.: Dirección Zonal" />
+        <CamposFormularioPermiso prefijo="s" valor={f} onCambiar={c => setF(x => ({ ...x, ...c }))} horario={horario} onHorario={setHorario} deteccion={deteccion} placaObligatoria mostrarMotivo={false}>
         <CampoTexto id="s-motivo" className="completo" etiqueta="Motivo del ingreso*" valor={f.motivo} onCambiar={poner('motivo')}
           regla={REGLAS_SOLICITUD.motivo} multilinea ayuda="Entre 5 y 300 caracteres."
           placeholder="Ej.: entrega de equipos de radio, reunión con el coordinador zonal" />
-        <CampoFecha id="s-ini" etiqueta="Desde" nombre="Fecha de inicio" valor={f.fecha_inicio} min={solicitud ? undefined : fechaIsoLocal()}
-          onCambiar={poner('fecha_inicio')} ayuda="Vacío = desde hoy." />
-        <CampoFecha id="s-fin" etiqueta="Hasta" nombre="Fecha de fin" valor={f.fecha_fin} min={f.fecha_inicio || (solicitud ? undefined : fechaIsoLocal())}
-          onCambiar={poner('fecha_fin')} error={fechasOk ? null : 'Debe ser posterior a la fecha de inicio.'}
-          ayuda="Vacío = sin vencimiento (el gestor puede ajustarlo)." />
-        <fieldset className="completo" style={{ border: '1px dashed var(--border-strong)', borderRadius: 10, padding: '10px 14px 14px' }}>
-          <legend className="etiqueta-campo" style={{ padding: '0 6px' }}>Horario solicitado (opcional)</legend>
-          <EditorHorario valor={horario} onCambiar={setHorario} />
-        </fieldset>
-        <div className="campo"><label htmlFor="s-tipo">Tipo de vehículo</label>
-          <select id="s-tipo" className="select" value={f.tipo_vehiculo} onChange={campo('tipo_vehiculo')}><option value="">—</option>{conValorActual(TIPOS_VEHICULO, f.tipo_vehiculo).map(t => <option key={t}>{t}</option>)}</select></div>
-        <div className="campo"><label htmlFor="s-marca">Marca</label>
-          <select id="s-marca" className="select" value={f.marca} onChange={campo('marca')}><option value="">—</option>{conValorActual(MARCAS, f.marca).map(m => <option key={m}>{m}</option>)}</select></div>
-        <CampoTexto id="s-modelo" etiqueta="Modelo" valor={f.modelo} onCambiar={poner('modelo')} regla={REGLAS_VEHICULO.modelo} />
-        <div className="campo"><label htmlFor="s-color">Color</label>
-          <select id="s-color" className="select" value={f.color} onChange={campo('color')}><option value="">—</option>{conValorActual(COLORES, f.color).map(c => <option key={c}>{c}</option>)}</select></div>
+        </CamposFormularioPermiso>
         {error && <div className="completo"><Aviso tipo="error">{error}</Aviso></div>}
       </div>
     </Modal>
@@ -139,15 +115,21 @@ export const FormularioSolicitud: React.FC<{
  * recibir la resolución.
  */
 export const AprobarSolicitud: React.FC<{ s: SolicitudAcceso; onCerrar: () => void; onAprobada: (mensaje: string) => void }> = ({ s, onCerrar, onAprobada }) => {
-  const [a, setA] = useState({ categoria: s.categoria, fecha_inicio: s.fecha_inicio?.slice(0, 10) ?? '', fecha_fin: s.fecha_fin?.slice(0, 10) ?? '', comentario: '' });
+  const [a, setA] = useState({ categoria: s.categoria, propietario: s.propietario, cedula: s.cedula ?? '', institucion: s.institucion ?? '', cargo: s.cargo ?? '', departamento: s.departamento ?? '',
+    tipo_vehiculo: s.vehiculo.tipo ?? '', marca: s.vehiculo.marca ?? '', modelo: s.vehiculo.modelo ?? '', color: s.vehiculo.color ?? '', observaciones: s.observaciones ?? '',
+    fecha_inicio: s.fecha_inicio?.slice(0, 10) ?? '', fecha_fin: s.fecha_fin?.slice(0, 10) ?? '', comentario: '',
+    // El motivo de la solicitud queda como motivo de ingreso del permiso (editable al aprobar)
+    motivo_ingreso: s.motivo ?? '' });
   const [horario, setHorario] = useState<Franja[] | null>(s.horario);
   const { puede } = useAuth();
   const puedeValidar = puede('detecciones:validar');
-  const [validarIngreso, setValidarIngreso] = useState(Boolean(s.deteccion_id) && puedeValidar);
+  const vehiculoCompleto = Object.entries(REGLAS_VEHICULO).every(([k, regla]) => validarTexto(a[k as keyof typeof a], { ...regla, requerido: true }).ok);
+  const [validarIngreso, setValidarIngreso] = useState(Boolean(s.deteccion_id) && puedeValidar && vehiculoCompleto);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fechasOk = !a.fecha_inicio || !a.fecha_fin || a.fecha_inicio <= a.fecha_fin;
-  const valido = horarioValido(horario) && fechasOk && sinErrores({
+  const fechasOk = !a.fecha_fin || (a.fecha_inicio || fechaIsoLocal()) <= a.fecha_fin;
+  const valido = (!validarIngreso || vehiculoCompleto) && (!a.cedula.trim() || /^\d{10}$/.test(a.cedula.trim())) && horarioValido(horario) && fechasOk && sinErrores({
+    ...erroresTexto(a, { ...REGLAS_LISTA_BLANCA, ...REGLAS_VEHICULO, observaciones: REGLA_OBSERVACIONES }),
     comentario: errorDe(validarTexto(a.comentario, REGLA_COMENTARIO_APROBACION)),
     fecha_inicio: errorDe(validarFecha(a.fecha_inicio, { etiqueta: 'Fecha de inicio' })),
     fecha_fin: errorDe(validarFecha(a.fecha_fin, { etiqueta: 'Fecha de fin' })),
@@ -159,14 +141,18 @@ export const AprobarSolicitud: React.FC<{ s: SolicitudAcceso; onCerrar: () => vo
     try {
       const r = await api.post(`/solicitudes-acceso/${s.id}/aprobar`, {
         comentario: a.comentario.trim() || undefined,
-        ajustes: { categoria: a.categoria, fecha_inicio: a.fecha_inicio || null, fecha_fin: a.fecha_fin || null, horario },
+        ajustes: { ...a, fecha_inicio: a.fecha_inicio || null, fecha_fin: a.fecha_fin || null, horario },
         // Lo que el gestor revisó: si el solicitante la editó mientras tanto, la API no la aprueba (409)
         version: s.version,
       });
       let mensaje: string = r.data.message;
       if (validarIngreso && puedeValidar && s.deteccion_id) {
         try {
-          const v = await api.post(`/detecciones/validar/${s.deteccion_id}`, { placa_validada: s.placa, observacion: `Solicitud de acceso #${s.id} aprobada` });
+          const v = await api.post(`/detecciones/validar/${s.deteccion_id}`, {
+            placa_validada: s.placa, observacion: `Solicitud de acceso #${s.id} aprobada`,
+            tipo_vehiculo: a.tipo_vehiculo, marca: a.marca, modelo: a.modelo, color: a.color,
+            persona_ingreso: a.propietario, motivo_ingreso: s.motivo,
+          });
           mensaje += v.data.deteccion?.estado_validacion === 'autorizado'
             ? ' El ingreso quedó autorizado.'
             : ' El ingreso no quedó autorizado: revise el horario o la vigencia del permiso.';
@@ -199,28 +185,16 @@ export const AprobarSolicitud: React.FC<{ s: SolicitudAcceso; onCerrar: () => vo
           <dt>Vehículo</dt><dd>{[s.vehiculo.tipo, s.vehiculo.marca, s.vehiculo.modelo, s.vehiculo.color].filter(Boolean).join(' · ') || '—'}</dd>
         </dl>
         <div className="form-grid">
-          <div className="campo">
-            <label htmlFor="a-cat">Categoría</label>
-            <select id="a-cat" className="select" value={a.categoria} onChange={e => setA({ ...a, categoria: e.target.value })}>
-              {Object.entries(CATEGORIAS_PERMISO).map(([v, e]) => <option key={v} value={v}>{e}</option>)}
-            </select>
-          </div>
-          <div className="campo" />
-          <CampoFecha id="a-ini" etiqueta="Vigente desde" nombre="Fecha de inicio" valor={a.fecha_inicio} onCambiar={v => setA({ ...a, fecha_inicio: v })} />
-          <CampoFecha id="a-fin" etiqueta="Vigente hasta" nombre="Fecha de fin" valor={a.fecha_fin} onCambiar={v => setA({ ...a, fecha_fin: v })}
-            error={fechasOk ? null : 'Debe ser posterior a la fecha de inicio.'} ayuda="Vacío = sin vencimiento." />
-          <fieldset className="completo" style={{ border: '1px dashed var(--border-strong)', borderRadius: 10, padding: '10px 14px 14px' }}>
-            <legend className="etiqueta-campo" style={{ padding: '0 6px' }}>Horario de acceso</legend>
-            <EditorHorario valor={horario} onCambiar={setHorario} />
-          </fieldset>
+          <CamposFormularioPermiso prefijo="a" valor={{ ...a, placa: s.placa }} onCambiar={c => { const { placa: _placa, ...ajustes } = c; setA(x => ({ ...x, ...ajustes })); }} horario={horario} onHorario={setHorario} placaObligatoria placaFija vehiculoObligatorio={validarIngreso} />
           <CampoTexto id="a-com" className="completo" etiqueta="Comentario para el solicitante" valor={a.comentario}
             onCambiar={v => setA({ ...a, comentario: v })} regla={REGLA_COMENTARIO_APROBACION} placeholder="Opcional" />
           {s.deteccion_id && puedeValidar && (
             <label className="completo fila" style={{ gap: 8, cursor: 'pointer' }}>
               <input type="checkbox" checked={validarIngreso} onChange={e => setValidarIngreso(e.target.checked)} />
-              <span>Validar también el ingreso #{s.deteccion_id} que originó la solicitud</span>
+              <span>Autorizar también el ingreso #{s.deteccion_id} que originó la solicitud</span>
             </label>
           )}
+          {s.deteccion_id && puedeValidar && !vehiculoCompleto && <div className="completo"><Aviso tipo="info">Puede aprobar el permiso sin autorizar el ingreso. Para autorizarlo también, complete el tipo de vehículo, marca, modelo y color.</Aviso></div>}
         </div>
         {error && <Aviso tipo="error">{error}</Aviso>}
       </div>

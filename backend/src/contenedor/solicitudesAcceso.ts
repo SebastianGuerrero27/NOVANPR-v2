@@ -14,5 +14,5 @@ export const solicitudes = casosSolicitudes({
   auditoria: auditoriaSql,
   eventos: eventosSocket,
   // notificar() nunca lanza: guarda la notificación y la entrega por Socket.IO y Web Push
-  avisos: { notificar: aviso => void notificar(aviso) },
+  avisos: { notificar: async aviso => { await notificar(aviso); } },
 });

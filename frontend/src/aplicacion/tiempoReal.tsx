@@ -29,7 +29,7 @@ export const TiempoRealProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     let conectadoAntes = false;
     const s = io(API_URL, {
       auth: { token },
-      transports: ['websocket'],
+      transports: ['polling', 'websocket'],
       reconnectionDelay: 2000,
       reconnectionDelayMax: 15000,
     });
@@ -41,7 +41,13 @@ export const TiempoRealProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     s.on('disconnect', () => setConectado(false));
     s.on('connect_error', () => setConectado(false));
     setSocket(s);
+    const reconectar = () => { if (!s.connected) s.connect(); };
+    const alVolver = () => { if (document.visibilityState === 'visible') reconectar(); };
+    window.addEventListener('online', reconectar);
+    document.addEventListener('visibilitychange', alVolver);
     return () => {
+      window.removeEventListener('online', reconectar);
+      document.removeEventListener('visibilitychange', alVolver);
       s.removeAllListeners();
       s.disconnect();
       setSocket(null);

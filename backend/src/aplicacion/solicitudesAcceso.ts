@@ -31,6 +31,10 @@ const SOLICITUD_CAMBIADA = 'La solicitud cambió mientras la revisaba: vuelva a 
 /** Solicitud tal como la entrega la API. */
 export interface SolicitudDTO {
   id: number;
+  cedula?: string | null;
+  institucion?: string | null;
+  cargo?: string | null;
+  observaciones?: string | null;
   placa: string;
   propietario: string;
   departamento: string | null;
@@ -84,7 +88,7 @@ export interface RepositorioSolicitudes {
 }
 
 /** Permiso de la lista blanca tal como lo entregan los casos de uso de listas. */
-export type PermisoDTO = Record<string, any> & { id: number; placa: string };
+export type PermisoDTO = Record<string, any> & { id: number; placa: string | null };
 
 /**
  * Lo que la aprobación usa de las listas de control: los casos de uso de listas (validar con las
@@ -97,7 +101,7 @@ export interface PuertoListas {
     Promise<{ id: number; accion: keyof typeof ACCION_APROBACION }>;
   obtener(def: DefinicionLista, id: number): Promise<PermisoDTO>;
   difundir(def: DefinicionLista): void;
-  anunciarAlta(def: DefinicionLista, registro: PermisoDTO, actor: Actor): void;
+  anunciarAlta(def: DefinicionLista, registro: PermisoDTO, actor: Actor): void | Promise<void>;
 }
 
 /** Notificación al gestor (solicitud nueva) o al solicitante (solicitud resuelta). */
@@ -111,8 +115,8 @@ export interface AvisoSolicitud {
 }
 
 export interface PuertoAvisosSolicitudes {
-  /** Sin esperar: un fallo de notificación no interrumpe la operación */
-  notificar(aviso: AvisoSolicitud): void;
+  /** Espera la bandeja persistente; el adaptador contiene los fallos de entrega. */
+  notificar(aviso: AvisoSolicitud): void | Promise<void>;
 }
 
 export interface DependenciasSolicitudes {
@@ -183,9 +187,8 @@ export function casosSolicitudes(d: DependenciasSolicitudes) {
       await sinOtraPendiente(s.registro.placa);
       const id = await d.repositorio.crear(s, actor.id);
       await d.auditoria.operacion(actor, 'SOLICITUD_CREADA', ENTIDAD, id, `${s.registro.placa} · ${s.motivo}`);
-      avisar();
       const { propietario, categoria } = s.registro.datos;
-      d.avisos.notificar({
+      await d.avisos.notificar({
         tipo: 'solicitud.nueva',
         titulo: `Solicitud de acceso · ${s.registro.placa}`,
         mensaje: `${actor.nombre} solicita autorizar a ${propietario}${categoria ? ` (${categoria.toLowerCase()})` : ''}: ${s.motivo}`,
@@ -193,6 +196,7 @@ export function casosSolicitudes(d: DependenciasSolicitudes) {
         datos: { solicitud_id: id, placa: s.registro.placa },
         destinatarios: { excluir: [actor.id] },
       });
+      avisar();
       return (await d.repositorio.obtener(id))!;
     },
 
@@ -250,11 +254,9 @@ export function casosSolicitudes(d: DependenciasSolicitudes) {
 
       await d.auditoria.operacion(actor, 'SOLICITUD_APROBADA', ENTIDAD, id,
         `${registro.placa} · ${accion} #${permisoId} · ${describirHorario(registro.horario)}${comentario ? ` · ${comentario}` : ''}`);
-      d.listas.difundir(LISTA_BLANCA);
-      avisar();
       const permiso = await d.listas.obtener(LISTA_BLANCA, permisoId);
-      d.listas.anunciarAlta(LISTA_BLANCA, permiso, actor);
-      d.avisos.notificar({
+      await d.listas.anunciarAlta(LISTA_BLANCA, permiso, actor);
+      await d.avisos.notificar({
         tipo: 'solicitud.resuelta',
         titulo: `Solicitud aprobada · ${registro.placa}`,
         mensaje: `${actor.nombre} aprobó el ingreso de ${registro.datos.propietario} (${accion}).${comentario ? ` ${comentario}` : ''}`,
@@ -262,6 +264,8 @@ export function casosSolicitudes(d: DependenciasSolicitudes) {
         datos: { solicitud_id: id, placa: registro.placa, aprobada: true },
         destinatarios: { usuarios: [reclamada.solicitado_por] },
       });
+      d.listas.difundir(LISTA_BLANCA);
+      avisar();
       return { accion, solicitud: await d.repositorio.obtener(id), permiso };
     },
 
@@ -272,8 +276,7 @@ export function casosSolicitudes(d: DependenciasSolicitudes) {
       const s = await d.repositorio.reclamar(id, actor.id, 'rechazada', motivo);
       if (!s) return rechazoDeReclamo(id, actor);
       await d.auditoria.operacion(actor, 'SOLICITUD_RECHAZADA', ENTIDAD, id, `${s.placa} · ${motivo}`);
-      avisar();
-      d.avisos.notificar({
+      await d.avisos.notificar({
         tipo: 'solicitud.resuelta',
         titulo: `Solicitud rechazada · ${s.placa}`,
         mensaje: `${actor.nombre}: ${motivo}`,
@@ -281,6 +284,7 @@ export function casosSolicitudes(d: DependenciasSolicitudes) {
         datos: { solicitud_id: id, placa: s.placa, aprobada: false },
         destinatarios: { usuarios: [s.solicitado_por] },
       });
+      avisar();
       return (await d.repositorio.obtener(id))!;
     },
 

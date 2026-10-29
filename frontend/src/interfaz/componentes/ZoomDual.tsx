@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, Camera, Car, Move, RotateCcw, ScanLine, User, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Deteccion } from '../../dominio/tipos';
 import { colorConfianza, fechaHora, porcentaje } from '../../dominio/formato';
@@ -14,7 +15,8 @@ import { InsigniaEstado, Placa } from './ui';
 const MAX = 6;
 const PASO = 0.3;
 
-const PanelZoom: React.FC<{ titulo: string; icono: React.ReactNode; ruta: string | null; alt: string }> = ({ titulo, icono, ruta, alt }) => {
+/** `recorte`: la placa recortada es pequeña; se muestra ampliada para leerla sin hacer zoom. */
+const PanelZoom: React.FC<{ titulo: string; icono: React.ReactNode; ruta: string | null; alt: string; recorte?: boolean }> = ({ titulo, icono, ruta, alt, recorte }) => {
   const [escala, setEscala] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [arrastre, setArrastre] = useState<{ x: number; y: number } | null>(null);
@@ -54,7 +56,7 @@ const PanelZoom: React.FC<{ titulo: string; icono: React.ReactNode; ruta: string
   }, [src, error]);
 
   const boton = (onClick: () => void, deshabilitado: boolean, titulo: string, icono: React.ReactNode) => (
-    <button onClick={onClick} disabled={deshabilitado} title={titulo} aria-label={titulo} className="zoom-boton">{icono}</button>
+    <button type="button" onClick={onClick} disabled={deshabilitado} title={titulo} aria-label={titulo} className="zoom-boton">{icono}</button>
   );
 
   return (
@@ -68,7 +70,7 @@ const PanelZoom: React.FC<{ titulo: string; icono: React.ReactNode; ruta: string
           {boton(() => aplicar(escala + PASO), escala >= MAX, 'Ampliar', <ZoomIn size={14} />)}
         </span>
       </header>
-      <div ref={caja} className="zoom-lienzo"
+      <div ref={caja} className={`zoom-lienzo${recorte ? ' recorte' : ''}`}
         style={{ cursor: !src || error ? 'default' : escala > 1 ? (arrastre ? 'grabbing' : 'grab') : 'zoom-in' }}
         onPointerDown={e => { if (escala > 1) { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); setArrastre({ x: e.clientX - pos.x, y: e.clientY - pos.y }); } }}
         onPointerMove={e => { if (arrastre) setPos({ x: e.clientX - arrastre.x, y: e.clientY - arrastre.y }); }}
@@ -88,25 +90,65 @@ const PanelZoom: React.FC<{ titulo: string; icono: React.ReactNode; ruta: string
   );
 };
 
-export const VisorZoom: React.FC<{ d: Deteccion; onCerrar: () => void }> = ({ d, onCerrar }) => {
+/** Las listas conservan fotos propias, sin necesitar una detección aún existente. */
+export const VisorEvidenciaFotos: React.FC<{
+  placa: string | null; imagenVehiculo: string | null; imagenPlaca: string | null;
+  onCerrar: () => void; cabecera?: React.ReactNode; metadatos?: React.ReactNode;
+}> = ({ placa, imagenVehiculo, imagenPlaca, onCerrar, cabecera, metadatos }) => {
+  const modal = useRef<HTMLDivElement>(null);
+  const cerrar = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onCerrar(); } };
+    const anterior = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    cerrar.current?.focus();
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault(); e.stopImmediatePropagation(); onCerrar();
+      } else if (e.key === 'Tab') {
+        const botones = Array.from(modal.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+        const primero = botones[0];
+        const ultimo = botones[botones.length - 1];
+        if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo?.focus(); }
+        else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero?.focus(); }
+      }
+    };
     window.addEventListener('keydown', fn, true);
-    return () => window.removeEventListener('keydown', fn, true);
+    return () => {
+      window.removeEventListener('keydown', fn, true);
+      document.body.style.overflow = overflow;
+      if (anterior?.isConnected) anterior.focus();
+    };
   }, [onCerrar]);
 
-  return (
+  return createPortal(
     <div className="zoom-fondo" onMouseDown={e => { if (e.target === e.currentTarget) onCerrar(); }}>
-      <div className="zoom-modal" role="dialog" aria-modal="true" aria-label={`Evidencia de ${d.placa ?? 'ingreso sin lectura'}`}>
+      <div ref={modal} className="zoom-modal" role="dialog" aria-modal="true" aria-label={`Evidencia de ${placa ?? 'ingreso sin lectura'}`}>
         <header className="zoom-cabecera">
+          {cabecera ?? <Placa valor={placa} grande />}
+          <button ref={cerrar} type="button" className="zoom-cerrar" onClick={onCerrar}><X size={16} /> Cerrar (Esc)</button>
+        </header>
+        {metadatos && <div className="zoom-metadatos">{metadatos}</div>}
+        <div className="zoom-paneles">
+          <PanelZoom key={`vehiculo:${imagenVehiculo}`} titulo="Captura del vehículo" icono={<Camera size={15} color="#7dd3fc" />} ruta={imagenVehiculo} alt={`Vehículo ${placa ?? ''}`} />
+          <PanelZoom key={`placa:${imagenPlaca}`} titulo="Recorte de la placa" icono={<ScanLine size={15} color="#7dd3fc" />} ruta={imagenPlaca} alt={`Placa ${placa ?? ''}`} recorte />
+        </div>
+      </div>
+    </div>, document.body,
+  );
+};
+
+export const VisorZoom: React.FC<{ d: Deteccion; onCerrar: () => void }> = ({ d, onCerrar }) => (
+  <VisorEvidenciaFotos placa={d.placa} imagenVehiculo={d.imagen_vehiculo}
+    imagenPlaca={d.imagen_placa !== d.imagen_vehiculo ? d.imagen_placa : null} onCerrar={onCerrar}
+    cabecera={
           <div className="fila" style={{ gap: 12 }}>
             <Placa valor={d.placa} grande />
             <InsigniaEstado estado={d.estado_validacion} procesando={d.estado_procesamiento === 'pendiente_ocr'} />
             {d.confianza_ocr !== null && <span className="zoom-dato"><ScanLine size={13} /> Confianza OCR <b style={{ color: colorConfianza(d.confianza_ocr) }}>{porcentaje(d.confianza_ocr)}</b></span>}
           </div>
-          <button className="zoom-cerrar" onClick={onCerrar}><X size={16} /> Cerrar (Esc)</button>
-        </header>
-        <div className="zoom-metadatos">
+    }
+    metadatos={<>
           <span><Calendar size={13} /> {fechaHora(d.fecha_hora_ingreso)}</span>
           {d.camara && <span><Camera size={13} /> {d.camara.nombre} · {d.camara.ubicacion}</span>}
           {d.autorizado && <span><User size={13} /> {d.autorizado.propietario}{d.autorizado.departamento ? ` · ${d.autorizado.departamento}` : ''}</span>}
@@ -114,12 +156,5 @@ export const VisorZoom: React.FC<{ d: Deteccion; onCerrar: () => void }> = ({ d,
           {(d.vehiculo.marca || d.vehiculo.modelo || d.vehiculo.color) && (
             <span><Car size={13} /> {[ [d.vehiculo.marca, d.vehiculo.modelo].filter(Boolean).join(' '), d.vehiculo.color ].filter(Boolean).join(' · ')}</span>
           )}
-        </div>
-        <div className="zoom-paneles">
-          <PanelZoom titulo="Captura del vehículo" icono={<Camera size={15} color="#7dd3fc" />} ruta={d.imagen_vehiculo} alt={`Vehículo ${d.placa ?? ''}`} />
-          <PanelZoom titulo="Recorte de la placa" icono={<ScanLine size={15} color="#7dd3fc" />} ruta={d.imagen_placa} alt={`Placa ${d.placa ?? ''}`} />
-        </div>
-      </div>
-    </div>
-  );
-};
+    </>} />
+);

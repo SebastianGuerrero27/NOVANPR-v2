@@ -3,6 +3,7 @@ import { NOMBRE_ROL, type Permiso, permisosDe, type Rol } from '../dominio/permi
 import {
   type DatosEdicion, describirCambios, esAdministradorActivo, type EstadoCuenta, HORAS_CUENTA_NUEVA, leerAltaUsuario,
   leerEdicionUsuario, limiteAuditoria, MINUTOS_RESTABLECIMIENTO, pierdeAdministracion, REGLA_MOTIVO_BAJA, REGLA_MOTIVO_BLOQUEO,
+  validarPassword,
 } from '../dominio/usuarios';
 import { validarTexto } from '../dominio/validacion';
 
@@ -110,6 +111,7 @@ export interface RepositorioUsuarios {
   /** Cuenta activa y con el correo verificado (la crea un administrador); devuelve el id */
   crear(c: NuevaCuenta, creadorId: number): Promise<number>;
   actualizar(id: number, c: DatosEdicion): Promise<void>;
+  cambiarPasswordAdministrativo(id: number, passwordHash: string): Promise<void>;
   bloquear(id: number): Promise<void>;
   /** Quita el bloqueo administrativo y el temporal y reinicia los intentos fallidos */
   desbloquear(id: number): Promise<void>;
@@ -127,10 +129,9 @@ export interface DependenciasUsuarios {
   auditoria: PuertoAuditoriaCuentas;
   correo: Pick<PuertoCorreoCuentas, 'definirPasswordCuentaNueva' | 'restablecerPassword'>;
   tokens: Pick<PuertoTokens, 'generar'>;
-  claves: Pick<PuertoClaves, 'inutilizable'>;
+  claves: Pick<PuertoClaves, 'cifrar' | 'inutilizable'>;
   /** Invalida la caché de estado de la cuenta y cierra sus conexiones en tiempo real */
   invalidarSesiones: (usuarioId: number) => void;
-  dominiosPermitidos: () => string[];
   /** URL pública del frontend (enlaces de los correos) */
   urlFrontend: () => string;
 }
@@ -163,18 +164,24 @@ export function casosUsuarios(d: DependenciasUsuarios) {
     },
 
     async crear(entrada: unknown, actor: Actor) {
-      const datos = leerAltaUsuario(entrada as Record<string, unknown>, d.dominiosPermitidos());
+      const datos = leerAltaUsuario(entrada as Record<string, unknown>, []);
       if (!datos.ok) throw errorValidacion(datos.error);
       const c = datos.valor;
       if (await d.repositorio.existeEmail(c.email)) throw errorConflicto('Ya existe una cuenta con ese correo.');
-      // Contraseña aleatoria inutilizable: la persona define la suya con el enlace (el administrador nunca la conoce)
-      const id = await d.repositorio.crear({ ...c, passwordHash: await d.claves.inutilizable() }, actor.id);
+      const id = await d.repositorio.crear({
+        email: c.email, nombre_completo: c.nombre_completo, cargo: c.cargo, rol: c.rol,
+        passwordHash: c.password ? await d.claves.cifrar(c.password) : await d.claves.inutilizable(),
+      }, actor.id);
+      if (c.password) {
+        await d.auditoria.cuenta(actor, 'USUARIO_CREADO', { id, email: c.email }, `Rol ${c.rol}; contraseña inicial definida`);
+        return { usuario: await releer(id), enviado: false, passwordDefinida: true };
+      }
       const { token, hash } = d.tokens.generar();
       await d.repositorio.emitirEnlaceRestablecimiento(id, hash, HORAS_CUENTA_NUEVA * 60);
       const enviado = await d.correo.definirPasswordCuentaNueva(
         c.email, c.nombre_completo, enlaceRestablecimiento(token), HORAS_CUENTA_NUEVA, NOMBRE_ROL[c.rol]);
       await d.auditoria.cuenta(actor, 'USUARIO_CREADO', { id, email: c.email }, `Rol ${c.rol}`);
-      return { usuario: await releer(id), enviado };
+      return { usuario: await releer(id), enviado, passwordDefinida: false };
     },
 
     async editar(id: number, entrada: unknown, actor: Actor) {
@@ -223,6 +230,18 @@ export function casosUsuarios(d: DependenciasUsuarios) {
       const enviado = await d.correo.restablecerPassword(u.email, u.nombre_completo, enlaceRestablecimiento(token), MINUTOS_RESTABLECIMIENTO);
       await d.auditoria.cuenta(actor, 'ENLACE_PASSWORD_ENVIADO', { id, email: u.email });
       return enviado;
+    },
+
+    async cambiarPassword(id: number, entrada: unknown, actor: Actor) {
+      if (id === actor.id) throw errorValidacion('Use «Mi perfil» para cambiar su propia contraseña.');
+      const u = await obtener(id);
+      const password = (entrada as Record<string, unknown> | null)?.password;
+      const validada = validarPassword(password);
+      if (!validada.ok) throw errorValidacion(validada.error);
+      await d.repositorio.cambiarPasswordAdministrativo(id, await d.claves.cifrar(validada.valor));
+      d.invalidarSesiones(id);
+      await d.auditoria.cuenta(actor, 'PASSWORD_ADMIN_CAMBIADO', { id, email: u.email });
+      return { message: 'Contraseña cambiada. Comuníquela al usuario por un canal seguro.' };
     },
 
     /**

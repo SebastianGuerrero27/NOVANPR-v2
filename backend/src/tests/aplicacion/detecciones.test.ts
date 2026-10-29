@@ -11,6 +11,7 @@ const GUARDIA: Actor = { id: 3, email: 'guardia@ecu911.gob.ec', nombre: 'Guardia
 const POLITICA: PoliticaAutorizacion = { criterio: 'validez_y_confianza', confianzaMinima: 0.8, fuenteConfianza: 'ocr', verificarVehiculo: true };
 const AHORA = new Date('2026-10-05T15:00:00Z');
 const PERMISO_VIGENTE: Fila = { id: 77, placa: 'PBA-1234', tipo_vehiculo: 'Automóvil', fecha_inicio: null, fecha_vencimiento: null, horario: null, color: 'Blanco' };
+const VEHICULO_VALIDACION = { tipo_vehiculo: 'Automóvil', marca: 'Toyota', modelo: 'Yaris', color: 'Blanco' };
 
 const fila = (cambios: Fila = {}): Fila => ({
   id: 15, placa_reconocida: 'PBA1234', placa_validada: null, estado_validacion: 'pendiente_revision', estado_procesamiento: 'procesado',
@@ -40,7 +41,12 @@ function preparar(opciones: { alerta?: Fila | null; permiso?: Fila | null; exist
     registrarDescarte: jest.fn().mockResolvedValue(undefined),
     contar: jest.fn().mockResolvedValue(1),
     pagina: jest.fn().mockResolvedValue([fila()]),
+    resumenHistorial: jest.fn().mockResolvedValue({
+      total: 1, ingresos: 1, salidas: 0, con_salida: 0, autorizados: 1, alertas: 0, no_registrados: 0, pendientes: 0,
+      sin_lectura: 0, placas: 1, camara: 1, video_prueba: 0, manuales: 0, primero: AHORA, ultimo: AHORA,
+    }),
     recientes: jest.fn().mockResolvedValue([fila()]),
+    registrarSalida: jest.fn().mockResolvedValue(true),
     exportar: jest.fn().mockResolvedValue([fila()]),
     historialPlaca: jest.fn().mockResolvedValue([]),
     auditoriaDe: jest.fn().mockResolvedValue([]),
@@ -52,6 +58,7 @@ function preparar(opciones: { alerta?: Fila | null; permiso?: Fila | null; exist
     eliminarFiltradas: jest.fn().mockResolvedValue([{ id: 1, ruta_imagen_ingreso: 'a.jpg', ruta_imagen_placa: null }]),
   };
   const deps = {
+    pdfRegistros: jest.fn().mockResolvedValue(Buffer.from('%PDF-prueba')),
     repositorio,
     listas: {
       alerta: jest.fn().mockResolvedValue(opciones.alerta ? { row: opciones.alerta, coincidencia: 'exacta' } : null),
@@ -62,6 +69,10 @@ function preparar(opciones: { alerta?: Fila | null; permiso?: Fila | null; exist
     compararVehiculo: jest.fn().mockReturnValue({ resultado: 'coincide', detalle: 'color coincide' }),
     avisos: { decision: jest.fn(), resolverPorDeteccion: jest.fn().mockResolvedValue(undefined) },
     evidencia: { eliminar: jest.fn().mockResolvedValue(2) },
+    evidenciaManual: {
+      cuadros: jest.fn().mockResolvedValue({ disponible: true, cuadros: [{ t: 1792634400.5, miniatura: 'AAAA' }] }),
+      guardar: jest.fn().mockResolvedValue('/media/manual_20261021_184000_500_2.jpg'),
+    },
     eventos: { emitir: jest.fn() },
     auditoria: { operacion: jest.fn().mockResolvedValue(undefined) },
     tiempo: { ahora: () => AHORA, zona: 'America/Guayaquil' },
@@ -73,6 +84,44 @@ const fallo = async (p: Promise<unknown>) => {
   try { await p; } catch (e) { return e as ErrorAplicacion; }
   throw new Error('se esperaba un error');
 };
+
+describe('Observación de un rótulo en otro track del mismo acceso', () => {
+  it('el autocompletado entrega horario como lista y conserva la señal de un dato dañado', async () => {
+    const franjas = [{ dias: [1, 2, 3], desde: '08:00', hasta: '17:00' }];
+    for (const guardado of [JSON.stringify(franjas), franjas]) {
+      const { casos } = preparar({ permiso: { ...PERMISO_VIGENTE, horario: guardado } });
+      const respuesta = await casos.buscarPlaca('PBA1234');
+      expect(respuesta.autorizado?.horario).toEqual(franjas);
+      expect(respuesta.autorizado?.horario_error).toBeUndefined();
+    }
+    const { casos } = preparar({ permiso: { ...PERMISO_VIGENTE, horario: '{malformado' } });
+    expect((await casos.buscarPlaca('PBA1234')).autorizado).toMatchObject({ horario: null, horario_error: expect.any(String) });
+  });
+
+  it.each([
+    { validado_manualmente: true, estado_validacion: 'autorizado', lectura_valida: true },
+    { validado_manualmente: false, estado_validacion: 'alerta', lectura_valida: false },
+    { validado_manualmente: false, estado_validacion: 'no_reconocido', lectura_valida: null },
+  ])('añade el texto sin sustituir la matrícula ni su decisión (%j)', async estado => {
+    const previa = { formato: true, lecturas: 3 };
+    const { casos, repositorio, listas, avisos } = preparar({ existente: fila({ ...estado,
+      placa_reconocida: 'PBA1234', evidencia_lectura: JSON.stringify(previa) }) });
+    expect(await casos.reevaluar({ ingreso_id: 15, observacion_ocr: { texto: 'HAVAL / ambacar', confianza: 0.987 } }))
+      .toMatchObject({ reevaluado: true, cambio: false });
+    expect(repositorio.guardarVeredicto).toHaveBeenCalledWith(15, estado.lectura_valida,
+      JSON.stringify({ ...previa, observacion_ocr: 'HAVAL / ambacar', confianza_texto_ocr: 0.987 }));
+    expect(repositorio.marcarNoLegible).not.toHaveBeenCalled();
+    expect(repositorio.guardarDecisionAutomatica).not.toHaveBeenCalled();
+    expect(listas.permiso).not.toHaveBeenCalled();
+    expect(avisos.decision).not.toHaveBeenCalled();
+  });
+
+  it('rechaza observaciones vacías sin modificar el acceso', async () => {
+    const { casos, repositorio } = preparar();
+    expect((await fallo(casos.reevaluar({ ingreso_id: 15, observacion_ocr: { texto: '', confianza: 0.99 } }))).tipo).toBe('validacion');
+    expect(repositorio.guardarVeredicto).not.toHaveBeenCalled();
+  });
+});
 
 describe('Detecciones · servicio ANPR', () => {
   it('fase 1: exige la imagen; reutiliza el mismo paso físico; si no, crea el ingreso pendiente de OCR y lo difunde', async () => {
@@ -310,6 +359,13 @@ describe('Detecciones · reevaluación tras el registro rápido', () => {
 });
 
 describe('Detecciones · consultas del personal', () => {
+  it('busca registros por texto y rechaza términos demasiado largos', async () => {
+    const { casos, repositorio } = preparar();
+    await casos.recientes('20', '  María Pérez  ');
+    expect(repositorio.recientes).toHaveBeenCalledWith(20, 'María Pérez');
+    expect((await fallo(casos.recientes(20, 'x'.repeat(101)))).tipo).toBe('validacion');
+  });
+
   it('historial: filtros validados (400) y paginación ajustada', async () => {
     const { casos, repositorio } = preparar();
     expect((await fallo(casos.listar({ camara: 'abc' }))).tipo).toBe('validacion');
@@ -336,6 +392,14 @@ describe('Detecciones · consultas del personal', () => {
     expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'EXPORTACION', 'deteccion', null, '1 registros · {"estado":"alerta"}');
   });
 
+  it('PDF de registros: fuerza visitas cerradas y exporta todos los filtros sin paginación', async () => {
+    const { casos, repositorio, pdfRegistros, auditoria } = preparar();
+    await casos.exportarPdf({ cerrados: 'no', completos: 'no', placa: 'PBA', pagina: 2 }, GUARDIA);
+    expect(repositorio.exportar).toHaveBeenCalledWith(expect.objectContaining({ cerrados: true, completos: true, placa: 'PBA' }));
+    expect(pdfRegistros).toHaveBeenCalledWith([fila()], AHORA, 'America/Guayaquil');
+    expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'EXPORTACION', 'deteccion', null, expect.stringContaining('PDF · 1 registros con salida'));
+  });
+
   it('CSV del historial: BOM, celdas entre comillas y fórmulas neutralizadas', () => {
     const csv = csvDetecciones([{ ...fila(), propietario: '=HYPERLINK("http://malicioso")', confianza_ocr: 0.953 } as unknown as FilaExportacion]);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
@@ -345,6 +409,40 @@ describe('Detecciones · consultas del personal', () => {
 });
 
 describe('Detecciones · acciones del personal', () => {
+  it('registra una sola hora de salida en el ingreso y la difunde', async () => {
+    const { casos, repositorio, auditoria, eventos } = preparar({
+      existente: fila({ tipo_movimiento: 'ingreso', placa_reconocida: 'PBA1234', persona_ingreso: 'Ana Torres', tipo_vehiculo: 'SUV', vehiculo_marca: 'Mazda', motivo_ingreso: 'Reunión' }),
+    });
+    const respuesta = await casos.registrarSalida(15, GUARDIA);
+    expect(repositorio.registrarSalida).toHaveBeenCalledWith(15);
+    expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'REGISTRO_SALIDA', 'deteccion', 15, expect.stringContaining('PBA1234'));
+    expect(eventos.emitir).toHaveBeenCalledWith('deteccion:actualizada', expect.objectContaining({ id: 15 }));
+    expect(respuesta.message).toBe('Hora de salida registrada.');
+  });
+
+  it('rechaza registrar salida en movimientos de salida, ingresos cerrados o inexistentes', async () => {
+    const salida = preparar({ existente: fila({ tipo_movimiento: 'salida' }) });
+    expect((await fallo(salida.casos.registrarSalida(15, GUARDIA))).tipo).toBe('validacion');
+    const cerrado = preparar({ existente: fila({ fecha_hora_salida: AHORA }) });
+    expect((await fallo(cerrado.casos.registrarSalida(15, GUARDIA))).tipo).toBe('validacion');
+    const inexistente = preparar({ existente: null });
+    expect((await fallo(inexistente.casos.registrarSalida(15, GUARDIA))).tipo).toBe('no_encontrado');
+  });
+  it.each(['persona_ingreso', 'placa_reconocida', 'tipo_vehiculo', 'vehiculo_marca', 'motivo_ingreso', 'fecha_hora_ingreso'])('bloquea la salida si falta %s, sin escribir ni auditar una salida', async campo => {
+    const completa = fila({ tipo_movimiento: 'ingreso', placa_reconocida: 'PBA1234', persona_ingreso: 'Ana Torres', tipo_vehiculo: 'SUV', vehiculo_marca: 'Mazda', motivo_ingreso: 'Reunión' });
+    const { casos, repositorio, auditoria } = preparar({ existente: { ...completa, [campo]: null } });
+    const error = await fallo(casos.registrarSalida(15, GUARDIA));
+    expect(error.tipo).toBe('validacion');
+    expect(error.message).toContain('Complete los datos');
+    expect(repositorio.registrarSalida).not.toHaveBeenCalled();
+    expect(auditoria.operacion).not.toHaveBeenCalled();
+  });
+  it('acepta los datos conocidos de la lista blanca, sin exigir modelo ni color opcionales', async () => {
+    const { casos, repositorio } = preparar({ existente: fila({ propietario: 'Ana Torres', autorizado_tipo: 'SUV', autorizado_marca: 'Mazda', motivo_ingreso: 'Reunión' }) });
+    await casos.registrarSalida(15, GUARDIA);
+    expect(repositorio.registrarSalida).toHaveBeenCalledWith(15);
+  });
+
   it('corrige una salida sin consultar listas ni exigir datos de autorización', async () => {
     const { casos, repositorio, listas } = preparar({ existente: fila({ tipo_movimiento: 'salida' }) });
     const r = await casos.validar(15, { placa_validada: 'PBA1234' }, GUARDIA);
@@ -363,6 +461,41 @@ describe('Detecciones · acciones del personal', () => {
     expect(r.message).toBe('Salida registrada manualmente.');
   });
 
+  describe('autorizar con la ficha completa agrega la placa a la lista blanca', () => {
+    const FICHA = { propietario: 'Ana Torres', cedula: '0912345678', placa: 'PBA1234', tipo_vehiculo: 'SUV', marca: 'Mazda', modelo: 'CX5', color: 'Gris' };
+    const CUERPO = { placa_validada: 'PBA1234', persona_ingreso: 'Ana Torres', motivo_ingreso: 'Reunión', tipo_vehiculo: 'SUV', marca: 'Mazda', modelo: 'CX5', color: 'Gris', datos_permiso: FICHA };
+    const conPadron = (opciones: Parameters<typeof preparar>[0] = {}, registrar = jest.fn().mockResolvedValue({ accion: 'creado' })) => {
+      const p = preparar(opciones);
+      const padron = { registrar };
+      return { ...p, padron, casos: casosDetecciones({ ...p, padron } as DependenciasDetecciones) };
+    };
+
+    it('sin permiso ni alerta: crea el permiso y el paso queda autorizado con él', async () => {
+      const { casos, padron, listas, auditoria } = conPadron();
+      listas.permiso.mockResolvedValueOnce(null).mockResolvedValueOnce(PERMISO_VIGENTE);
+      const r = await casos.validar(15, CUERPO, GUARDIA);
+      expect(padron.registrar).toHaveBeenCalledWith(expect.objectContaining({ propietario: 'Ana Torres', placa: 'PBA1234' }), GUARDIA);
+      expect(r).toMatchObject({ lista_blanca: 'creado', message: 'Autorización registrada; la placa se agregó en la lista blanca.' });
+      expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'VALIDACION', 'deteccion', 15, expect.stringContaining('Autorizado'));
+      expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'VALIDACION', 'deteccion', 15, expect.stringContaining('agregado en la lista blanca'));
+    });
+
+    it('nunca agrega una placa de la lista negra ni duplica un permiso existente', async () => {
+      const alerta = conPadron({ alerta: { id: 9, placa: 'PBA1234', motivo: 'Robo', nivel_alerta: 'ALTA' } });
+      await alerta.casos.validar(15, CUERPO, GUARDIA);
+      expect(alerta.padron.registrar).not.toHaveBeenCalled();
+      const existente = conPadron({ permiso: PERMISO_VIGENTE });
+      expect(await existente.casos.validar(15, CUERPO, GUARDIA)).toMatchObject({ lista_blanca: null });
+      expect(existente.padron.registrar).not.toHaveBeenCalled();
+    });
+
+    it('si el alta falla (p. ej. la cédula ya tiene otro permiso) la placa se confirma igual y se avisa', async () => {
+      const { casos } = conPadron({}, jest.fn().mockRejectedValue(new Error('La cédula 0912345678 ya tiene un permiso activo en la lista blanca.')));
+      const r = await casos.validar(15, CUERPO, GUARDIA);
+      expect(r).toMatchObject({ lista_blanca: null, aviso: 'La placa se confirmó, pero no se agregó a la lista blanca: La cédula 0912345678 ya tiene un permiso activo en la lista blanca.' });
+    });
+  });
+
   it('validar: placa con formato ANT, excepción solo con accesos:excepcion y con motivo', async () => {
     const { casos, repositorio } = preparar();
     expect((await fallo(casos.validar(15, { placa_validada: 'PBA12' }, ADMIN))).tipo).toBe('validacion');
@@ -374,29 +507,59 @@ describe('Detecciones · acciones del personal', () => {
 
   it('validar: guarda la corrección, audita, resuelve las alarmas del paso y avisa si cambia a autorizado', async () => {
     const { casos, repositorio, auditoria, avisos } = preparar({ permiso: PERMISO_VIGENTE });
-    const r = await casos.validar(15, { placa_validada: 'pba-1234', observacion: 'Placa sucia' }, GUARDIA);
+    const r = await casos.validar(15, { placa_validada: 'pba-1234', observacion: 'Placa sucia', ...VEHICULO_VALIDACION }, GUARDIA);
     expect(repositorio.guardarValidacion).toHaveBeenCalledWith(15, { placa: 'PBA1234', tipo: 'Automóvil', usuarioId: GUARDIA.id },
       expect.anything(), expect.objectContaining({ estado: 'autorizado' }));
-    expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'VALIDACION', 'deteccion', 15, 'PBA1234 → PBA1234 (Autorizado) · Placa sucia');
+    expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'VALIDACION', 'deteccion', 15, expect.stringContaining('PBA1234 → PBA1234 (Autorizado) · Placa sucia'));
     expect(avisos.resolverPorDeteccion).toHaveBeenCalledWith(15);
     expect(avisos.decision).toHaveBeenCalled();
-    expect(r.message).toBe('Validación registrada.');
+    expect(r.message).toBe('Autorización registrada.');
   });
 
   it('validar con excepción fuera de horario: autoriza y queda auditado como EXCEPCION_ACCESO', async () => {
-    const { casos, auditoria } = preparar({ permiso: { ...PERMISO_VIGENTE, fecha_vencimiento: '2026-01-31' } });
-    await casos.validar(15, { placa_validada: 'PBA1234', excepcion: true, observacion: 'Reunión urgente' }, ADMIN);
+    const { casos, auditoria, repositorio } = preparar({ permiso: { ...PERMISO_VIGENTE, fecha_vencimiento: '2026-01-31' } });
+    await casos.validar(15, { placa_validada: 'PBA1234', excepcion: true, observacion: 'Reunión urgente', motivo_ingreso: 'Otro motivo anterior', ...VEHICULO_VALIDACION }, ADMIN);
+    expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, expect.objectContaining({ motivo: 'Reunión urgente' }));
     expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'EXCEPCION_ACCESO', 'deteccion', 15, expect.stringContaining('Reunión urgente'));
+    const detalle = auditoria.operacion.mock.calls.find((c: unknown[]) => c[1] === 'EXCEPCION_ACCESO')![4];
+    expect(detalle.split('Reunión urgente')).toHaveLength(2);
+    expect(detalle).not.toContain('Otro motivo anterior');
   });
 
   it('registro manual: valida (placa ANT, motivo), cruza con las listas y no modifica la lista blanca', async () => {
     const { casos, repositorio, auditoria } = preparar();
     expect((await fallo(casos.registroManual({ placa: 'ABC12', motivo: 'Cámara caída' }, GUARDIA))).tipo).toBe('validacion');
     expect((await fallo(casos.registroManual({ placa: 'ABC1234', motivo: 'no' }, GUARDIA))).tipo).toBe('validacion');
-    await casos.registroManual({ placa: 'ab-123c', motivo: 'Cámara fuera de servicio' }, GUARDIA);
-    expect(repositorio.crearManual).toHaveBeenCalledWith({ placa: 'AB123C', camaraId: null, tipo: null, usuarioId: GUARDIA.id },
+    await casos.registroManual({ placa: 'ab-123c', motivo: 'Cámara fuera de servicio', tipo_vehiculo: 'Camioneta', marca: 'Toyota' }, GUARDIA);
+    expect(repositorio.crearManual).toHaveBeenCalledWith({ placa: 'AB123C', camaraId: null, tipo: 'Camioneta', marca: 'Toyota', usuarioId: GUARDIA.id },
       expect.anything(), expect.objectContaining({ estado: 'no_reconocido' }));
-    expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'REGISTRO_MANUAL', 'deteccion', 30, 'AB123C (No registrado) · Cámara fuera de servicio');
+    expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'REGISTRO_MANUAL', 'deteccion', 30,
+      'AB123C (No registrado) · Cámara fuera de servicio · tipo de vehículo: Camioneta · marca: Toyota');
+  });
+
+  it('registro manual con foto: guarda el cuadro elegido de los últimos 30 s como evidencia del paso', async () => {
+    const { casos, repositorio, auditoria, evidenciaManual } = preparar();
+    await casos.registroManual({ placa: 'PBA1234', motivo: 'Pasó muy rápido', camara_id: 2, cuadro_t: 1792634400.5 }, GUARDIA);
+    expect(evidenciaManual.guardar).toHaveBeenCalledWith(2, 1792634400.5);
+    expect(repositorio.crearManual).toHaveBeenCalledWith(expect.objectContaining({ rutaImagen: '/media/manual_20261021_184000_500_2.jpg' }),
+      expect.anything(), expect.anything());
+    expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'REGISTRO_MANUAL', 'deteccion', 30, expect.stringContaining('con foto de evidencia'));
+  });
+
+  it('registro manual con foto: sin cámara o con la foto vencida no se registra', async () => {
+    const { casos, repositorio, evidenciaManual } = preparar();
+    expect((await fallo(casos.registroManual({ placa: 'PBA1234', motivo: 'Pasó muy rápido', cuadro_t: 1792634400.5 }, GUARDIA))).tipo).toBe('validacion');
+    expect((await fallo(casos.registroManual({ placa: 'PBA1234', motivo: 'Pasó muy rápido', camara_id: 2, cuadro_t: 'ayer' }, GUARDIA))).tipo).toBe('validacion');
+    evidenciaManual.guardar.mockResolvedValueOnce(null);
+    expect((await fallo(casos.registroManual({ placa: 'PBA1234', motivo: 'Pasó muy rápido', camara_id: 2, cuadro_t: 1792634400.5 }, GUARDIA))).tipo).toBe('validacion');
+    expect(repositorio.crearManual).not.toHaveBeenCalled();
+  });
+
+  it('fotos del registro manual: exige la cámara y entrega las miniaturas de sus últimos 30 s', async () => {
+    const { casos, evidenciaManual } = preparar();
+    expect((await fallo(casos.cuadrosRegistroManual(undefined))).tipo).toBe('validacion');
+    expect(await casos.cuadrosRegistroManual('2')).toEqual({ disponible: true, cuadros: [{ t: 1792634400.5, miniatura: 'AAAA' }] });
+    expect(evidenciaManual.cuadros).toHaveBeenCalledWith(2);
   });
 
   it('eliminar: motivo obligatorio antes de tocar la base; borra la evidencia y queda auditado', async () => {
@@ -425,8 +588,8 @@ describe('Detecciones · acciones del personal', () => {
 describe('Detecciones · quién ingresa y motivo de ingreso (reporte de control vehicular)', () => {
   it('validar y registrar a mano guardan los nombres y el motivo, y los anotan en la auditoría', async () => {
     const { casos, repositorio, auditoria } = preparar();
-    await casos.validar(15, { placa_validada: 'PBA1234', persona_ingreso: '  Ana   Pérez ', motivo_ingreso: 'Reunión de coordinación' }, GUARDIA);
-    expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, { persona: 'Ana Pérez', motivo: 'Reunión de coordinación' });
+    await casos.validar(15, { placa_validada: 'PBA1234', persona_ingreso: '  Ana   Pérez ', motivo_ingreso: 'Reunión de coordinación', ...VEHICULO_VALIDACION }, GUARDIA);
+    expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, expect.objectContaining({ persona: 'Ana Pérez', motivo: 'Reunión de coordinación' }));
     expect(auditoria.operacion).toHaveBeenLastCalledWith(GUARDIA, 'VALIDACION', 'deteccion', 15,
       expect.stringContaining(' · ingresa: Ana Pérez · motivo de ingreso: Reunión de coordinación'));
 
@@ -434,25 +597,123 @@ describe('Detecciones · quién ingresa y motivo de ingreso (reporte de control 
     expect(repositorio.guardarDatosIngreso).toHaveBeenLastCalledWith(30, { motivo: 'Entrega de botellones' });
   });
 
-  it('sin los campos no se toca lo guardado; un nombre con caracteres no permitidos se rechaza', async () => {
+  it('sin datos personales conserva lo guardado; un nombre con caracteres no permitidos se rechaza', async () => {
     const { casos, repositorio } = preparar();
-    await casos.validar(15, { placa_validada: 'PBA1234' }, GUARDIA);
-    expect(repositorio.guardarDatosIngreso).not.toHaveBeenCalled();
+    await casos.validar(15, { placa_validada: 'PBA1234', ...VEHICULO_VALIDACION }, GUARDIA);
+    expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, { tipo: 'Automóvil', marca: 'Toyota', modelo: 'Yaris', color: 'Blanco' });
     expect((await fallo(casos.validar(15, { placa_validada: 'PBA1234', persona_ingreso: 'Ana <b>' }, GUARDIA))).tipo).toBe('validacion');
     expect(repositorio.guardarValidacion).toHaveBeenCalledTimes(1);   // solo la primera validación: la rechazada no guarda nada
   });
 
+  it.each(['tipo_vehiculo', 'marca', 'modelo', 'color'] as const)('exige %s antes de validar un ingreso, sin escribir cambios parciales', async campo => {
+    const { casos, repositorio, auditoria, listas } = preparar();
+    const entrada = { placa_validada: 'PBA1234', ...VEHICULO_VALIDACION, [campo]: '' };
+    expect((await fallo(casos.validar(15, entrada, GUARDIA))).tipo).toBe('validacion');
+    expect(repositorio.guardarValidacion).not.toHaveBeenCalled();
+    expect(repositorio.guardarDatosIngreso).not.toHaveBeenCalled();
+    expect(listas.permiso).not.toHaveBeenCalled();
+    expect(auditoria.operacion).not.toHaveBeenCalled();
+  });
+
+  it('edita una cédula sin reemplazar los datos del permiso ni cruzar o modificar listas', async () => {
+    const { casos, repositorio, listas, auditoria } = preparar({ existente: fila({ datos_permiso: { institucion: 'ECU 911', cargo: 'Analista' } }) });
+    await casos.editarIngreso(15, { cedula: '0123456789' }, GUARDIA);
+    expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, { cedula: '0123456789' });
+    expect(listas.permiso).not.toHaveBeenCalled();
+    expect(listas.alerta).not.toHaveBeenCalled();
+    expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'INGRESO_DATOS', 'deteccion', 15, expect.stringContaining('cédula: 0123456789'));
+  });
+
   it('editar después: solo en ingresos, con algo que guardar; vacío borra el campo', async () => {
     const { casos, repositorio, eventos } = preparar();
-    const r = await casos.editarIngreso(15, { persona_ingreso: '', motivo_ingreso: 'Recorrido de supervisión' }, GUARDIA);
-    expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, { persona: null, motivo: 'Recorrido de supervisión' });
+    const r = await casos.editarIngreso(15, {
+      persona_ingreso: '', motivo_ingreso: 'Recorrido de supervisión',
+      tipo_vehiculo: 'Camioneta', marca: 'Toyota', modelo: 'Hilux', color: 'Blanco',
+    }, GUARDIA);
+    expect(repositorio.guardarDatosIngreso).toHaveBeenCalledWith(15, {
+      persona: null, motivo: 'Recorrido de supervisión',
+      tipo: 'Camioneta', marca: 'Toyota', modelo: 'Hilux', color: 'Blanco',
+    });
     expect(eventos.emitir).toHaveBeenCalledWith('deteccion:actualizada', expect.objectContaining({ id: 15 }));
     expect(r.message).toBe('Datos del ingreso guardados.');
 
-    expect((await fallo(casos.editarIngreso(15, {}, GUARDIA))).message).toBe('Indique los nombres y apellidos o el motivo de ingreso.');
+    expect((await fallo(casos.editarIngreso(15, {}, GUARDIA))).message).toBe('Indique el titular o algún dato del vehículo.');
     const salida = preparar({ existente: fila({ tipo_movimiento: 'salida' }) });
     expect((await fallo(salida.casos.editarIngreso(15, { motivo_ingreso: 'Visita' }, GUARDIA))).tipo).toBe('validacion');
     expect(salida.repositorio.guardarDatosIngreso).not.toHaveBeenCalled();
   });
 });
 
+
+describe('Detecciones · texto general sin matrícula', () => {
+  const evidencia = { observacion_ocr: 'HAVAL / ambacar', confianza_texto_ocr: 0.996,
+    motivo: 'texto_no_matricula', candidata_descartada: 'QIH-6060' };
+  const entrada = { ingreso_id: 15, placa_reconocida: null, confianza_ocr: 0,
+    estado_procesamiento: 'no_legible', lectura_valida: false, evidencia_lectura: evidencia };
+
+  it.each(['procesado', 'no_legible'])('la abstención tardía elimina la candidata anterior en estado %s y conserva el recorte', async estado => {
+    const actual = fila({ placa_reconocida: 'QIH6060', estado_procesamiento: estado, estado_validacion: 'autorizado',
+      motivo_ingreso: 'Jornada laboral', latencia_ms: 250 });
+    const { casos, repositorio, listas, avisos, eventos } = preparar({ existente: actual });
+    repositorio.marcarNoLegible.mockImplementation(async () => {
+      repositorio.obtener.mockResolvedValue({ ...actual, placa_reconocida: null, estado_procesamiento: 'no_legible', estado_validacion: 'pendiente_revision' });
+    });
+    const resultado = await casos.reevaluar(entrada);
+    expect(resultado).toMatchObject({ reevaluado: true, cambio: true, deteccion: { placa: null, estado_validacion: 'pendiente_revision' } });
+    expect(repositorio.marcarNoLegible).toHaveBeenCalledWith(15, 'capturas/15_placa.jpg');
+    expect(repositorio.guardarVeredicto).toHaveBeenCalledWith(15, false, JSON.stringify(evidencia));
+    expect(repositorio.registrarLecturaAutomatica).toHaveBeenCalledWith(15, {
+      placaOriginal: '', confianza: 0, decision: 'pendiente_revision', lecturaVerificador: null, latenciaMs: 250,
+    });
+    expect(listas.alerta).not.toHaveBeenCalled();
+    expect(listas.permiso).not.toHaveBeenCalled();
+    expect(repositorio.guardarDecisionAutomatica).not.toHaveBeenCalled();
+    expect(repositorio.guardarDatosIngreso).not.toHaveBeenCalled();
+    expect(actual.motivo_ingreso).toBe('Jornada laboral');
+    expect(avisos.decision).not.toHaveBeenCalled();
+    expect(eventos.emitir).toHaveBeenCalledWith('deteccion:actualizada', expect.objectContaining({ placa: null }));
+  });
+
+  it('la fase 2 conserva observación y foto sin guardar el texto general como placa', async () => {
+    const { casos, repositorio } = preparar({ existente: fila({ estado_procesamiento: 'pendiente_ocr' }) });
+    await casos.completarOcr({ ...entrada, ruta_imagen_placa: '/media/rotulo.jpg' });
+    expect(repositorio.marcarNoLegible).toHaveBeenCalledWith(15, '/media/rotulo.jpg');
+    expect(repositorio.guardarVeredicto).toHaveBeenCalledWith(15, false, JSON.stringify(evidencia));
+    expect(repositorio.registrarLecturaAutomatica).toHaveBeenCalledWith(15, expect.objectContaining({ placaOriginal: '', confianza: 0 }));
+  });
+
+  it.each([
+    { validado_manualmente: true, estado_validacion: 'autorizado' },
+    { validado_manualmente: false, estado_validacion: 'alerta' },
+  ])('conserva decisiones protegidas tanto en fase 2 como en reevaluación (%j)', async protegida => {
+    const { casos, repositorio, avisos } = preparar({ existente: fila(protegida) });
+    expect(await casos.reevaluar(entrada)).toMatchObject({ reevaluado: false });
+    expect(await casos.completarOcr(entrada)).toMatchObject({ reevaluado: false });
+    expect(repositorio.marcarNoLegible).not.toHaveBeenCalled();
+    expect(repositorio.guardarVeredicto).not.toHaveBeenCalled();
+    expect(repositorio.guardarDecisionAutomatica).not.toHaveBeenCalled();
+    expect(repositorio.registrarLecturaAutomatica).not.toHaveBeenCalled();
+    expect(avisos.decision).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { ...entrada, lectura_valida: true },
+    { ...entrada, evidencia_lectura: { ...evidencia, observacion_ocr: ' ' } },
+    { ...entrada, evidencia_lectura: { ...evidencia, observacion_ocr: 'a'.repeat(241) } },
+    { ...entrada, evidencia_lectura: { ...evidencia, confianza_texto_ocr: 1.01 } },
+    { ...entrada, evidencia_lectura: { ...evidencia, confianza_texto_ocr: '0.9' } },
+  ])('rechaza abstenciones mal formadas antes de alterar la detección', async invalida => {
+    const { casos, repositorio } = preparar();
+    expect((await fallo(casos.reevaluar(invalida))).tipo).toBe('validacion');
+    expect(repositorio.marcarNoLegible).not.toHaveBeenCalled();
+    expect(repositorio.guardarVeredicto).not.toHaveBeenCalled();
+  });
+
+  it('una reevaluación normal de matrícula sigue cruzando la lectura recibida con las listas', async () => {
+    const { casos, repositorio, listas } = preparar({ existente: fila({ placa_reconocida: 'QIH6060' }) });
+    await casos.reevaluar({ ingreso_id: 15, placa_reconocida: 'PBA1234', confianza_ocr: 0.95, lectura_valida: true });
+    expect(listas.alerta).toHaveBeenCalledWith('PBA1234');
+    expect(repositorio.guardarDecisionAutomatica).toHaveBeenCalledWith(15, expect.objectContaining({ placa: 'PBA1234' }), expect.anything(), expect.anything());
+    expect(repositorio.marcarNoLegible).not.toHaveBeenCalled();
+  });
+});

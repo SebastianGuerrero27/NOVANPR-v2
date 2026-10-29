@@ -6,6 +6,10 @@ DEL SERVICIO INTEGRADO DE SEGURIDAD ECU 911
 **Área:** Gestión de Tecnologías de la Información · **Línea:** Software, Tecnologías de la Información y Ciencia de Datos
 **Versión del documento:** 14 de octubre de 2026 (sistema en la rama `refactor/arquitectura-limpia`)
 
+**Actualización documental, 28 de octubre de 2026.** El apartado de [Antecedentes investigativos](ANTECEDENTES_INVESTIGATIVOS.md) incorpora fuentes primarias y avances hasta 2026, con referencias IEEE propias para integrar a la bibliografía de la tesis. La implementación y las verificaciones vigentes se describen en [ESTADO_DEL_SISTEMA.md](ESTADO_DEL_SISTEMA.md).
+
+El cuerpo de este marco conserva la redacción del 14 de octubre y no se presenta como una revisión técnica completa del sistema actual. Sus referencias a SQL Server, Redis, Prometheus/Grafana y al registro siempre inferior a un segundo deben contrastarse con el estado actualizado. Las afirmaciones de mejora de exactitud o tiempo requieren evaluación independiente y de campo; el piloto de desarrollo no la sustituye.
+
 Este documento es la base para redactar el **Capítulo I (Marco teórico)** del informe final
 (Anexo A). Organiza los conceptos según la **categorización de las variables** (superordinación y
 subordinación), los fundamenta con fuentes y explica, en cada concepto, cómo se aplica en el sistema

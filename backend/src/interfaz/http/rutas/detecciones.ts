@@ -13,12 +13,15 @@ import { actorDe, controlador, idDe } from '../respuesta';
  *   POST /reevaluar            fase 3: segundo OCR o atributos del vehículo llegados después del registro
  * Personal autenticado
  *   GET  /                     historial paginado con filtros
+ *   GET  /historial/resumen    totales del historial completo con los mismos filtros
  *   GET  /recientes            últimos N pasos (monitoreo)
  *   GET  /exportar             CSV con los mismos filtros del historial
  *   GET  /buscar-placa/:placa  situación de una placa en las listas y su historial
  *   GET  /:id                  detalle completo con lectura automática, metadatos y auditoría
  *   POST /validar/:id          corrección / confirmación del personal (excepción con accesos:excepcion)
- *   PATCH /:id/ingreso         nombres y apellidos de quien ingresa y motivo de ingreso
+ *   POST /:id/salida            registra la hora de salida de un ingreso existente
+ *   PATCH /:id/ingreso         cédula, titular, motivo y atributos del vehículo del ingreso
+ *   GET /registro-manual/cuadros  miniaturas de los últimos 30 s de la cámara (foto del registro manual)
  *   POST /registro-manual      paso registrado a mano (cámara sin lectura, visita, etc.)
  *   DELETE /:id                detecciones:eliminar, con motivo auditado (borra también la evidencia)
  *   DELETE /                   eliminación masiva (todas o las filtradas), detecciones:eliminar
@@ -56,13 +59,24 @@ router.get('/', ...monitorear, controlador('DETECCIONES listar', 'Error al consu
   res.json(await detecciones.listar(req.query));
 }));
 
+router.get('/historial/resumen', ...monitorear, controlador('DETECCIONES resumen del historial', 'Error al resumir el historial.', async (req, res) => {
+  res.json(await detecciones.resumenHistorial(req.query));
+}));
+
 router.get('/recientes', ...monitorear, controlador('DETECCIONES recientes', 'Error al consultar los ingresos recientes.', async (req, res) => {
-  res.json(await detecciones.recientes(req.query.limite));
+  res.json(await detecciones.recientes(req.query.limite, req.query.buscar));
 }));
 
 router.get('/exportar', ...monitorear, controlador('DETECCIONES exportar', 'Error al exportar.', async (req, res) => {
   const { nombre, contenido } = await detecciones.exportar(req.query, actorDe(req));
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+  res.send(contenido);
+}));
+
+router.get('/registros.pdf', ...monitorear, controlador('DETECCIONES PDF', 'Error al generar el PDF de registros.', async (req, res) => {
+  const { nombre, contenido } = await detecciones.exportarPdf(req.query, actorDe(req));
+  res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
   res.send(contenido);
 }));
@@ -82,6 +96,16 @@ router.post('/validar/:id(\\d+)', ...validar, controlador('DETECCIONES validar',
   const id = idDe(req, res);
   if (id !== null) res.json(await detecciones.validar(id, req.body, actorDe(req)));
 }));
+
+router.post('/:id(\\d+)/salida', ...validar, controlador('DETECCIONES salida', 'Error al registrar la hora de salida.', async (req, res) => {
+  const id = idDe(req, res);
+  if (id !== null) res.json(await detecciones.registrarSalida(id, actorDe(req)));
+}));
+
+router.get('/registro-manual/cuadros', ...validar,
+  controlador('DETECCIONES fotos del registro manual', 'No se pudieron obtener las fotos de la cámara.', async (req, res) => {
+    res.json(await detecciones.cuadrosRegistroManual(req.query.camara_id));
+  }));
 
 router.post('/registro-manual', ...validar, controlador('DETECCIONES registro manual', 'Error al registrar el ingreso manual.', async (req, res) => {
   res.status(201).json(await detecciones.registroManual(req.body, actorDe(req)));

@@ -57,7 +57,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.sha }}
 
@@ -92,7 +92,7 @@ jobs:
 
       - name: Set up kubectl
         if: steps.config.outputs.habilitado == 'true'
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
 
       - name: Check cluster and secrets
         if: steps.config.outputs.habilitado == 'true'
@@ -149,7 +149,6 @@ jobs:
         if: steps.config.outputs.habilitado == 'true'
         run: |
           kubectl -n "$NS" rollout status statefulset/db --timeout=10m
-          kubectl -n "$NS" rollout status statefulset/redis --timeout=5m
           kubectl -n "$NS" rollout status deployment/mediamtx --timeout=5m
           kubectl -n "$NS" rollout status deployment/anpr-backend --timeout=10m
           kubectl -n "$NS" rollout status deployment/anpr-frontend --timeout=5m

@@ -16,6 +16,22 @@ const paso = {
 };
 
 describe('avisos de permisos de placa', () => {
+  it('no agrupa la llegada de permisos de distintos gestores', async () => {
+    await notificarDecision(paso, AUTORIZADO, { registrado_por: 9 });
+    await notificarDecision(paso, AUTORIZADO, { registrado_por: 10 });
+    const [primero, segundo] = mockNotificar.mock.calls.map(([aviso]) => aviso);
+    expect(primero.destinatarios.usuarios).toEqual([9]);
+    expect(segundo.destinatarios.usuarios).toEqual([10]);
+    expect(primero.claveDedup).not.toBe(segundo.claveDedup);
+  });
+  it('permiso por nombre: avisa a garita sin mostrar una placa inexistente', async () => {
+    await notificarPermisoOtorgado({ id: 7, placa: null, propietario: 'Ana Pérez' }, { id: 9, nombre: 'Gestor' });
+    expect(mockNotificar).toHaveBeenCalledWith(expect.objectContaining({
+      titulo: 'Agregado a la lista blanca · Ana Pérez',
+      mensaje: expect.stringContaining('pendiente de placa'),
+      enlace: '/listas/autorizados?q=Ana%20P%C3%A9rez',
+    }));
+  });
   it('permiso otorgado: avisa a la garita con enlace a la lista blanca y excluye a quien lo otorgó', async () => {
     await notificarPermisoOtorgado(
       { id: 5, placa: 'PBA1234', propietario: 'Juan Pérez', marca: 'Toyota', modelo: 'Corolla', color: 'Blanco', fecha_vencimiento: null, horario: null },

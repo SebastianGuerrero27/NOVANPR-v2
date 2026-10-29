@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Ban, Camera, Cpu, Crop, Edit3, FileVideo, Loader2, Play, Plus, RadioTower, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { Camera, Cpu, Crop, Edit3, FileVideo, Loader2, Play, Plus, RadioTower, RefreshCw, Trash2, Upload } from 'lucide-react';
 import api, { mensajeError } from '../../infraestructura/api';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta } from '../../aplicacion/hooks';
@@ -65,7 +65,7 @@ const Camaras: React.FC = () => {
   return (
     <div className="pagina">
       <div className="pila">
-        <Aviso tipo="info"><b>Ping</b> comprueba la conectividad de red y el servicio RTSP de la cámara; <b>Play</b> reproduce el flujo real para confirmar que el video llega; <b>Zonas</b> delimita dónde el motor busca placas y excluye las áreas con movimiento falso (árboles, banderas, reflejos). Cada minuto se verifica automáticamente el flujo RTSP de las cámaras habilitadas.</Aviso>
+        <Aviso tipo="info"><b>Ping</b> comprueba la conectividad de red y el servicio RTSP de la cámara; <b>Play</b> reproduce el flujo real para confirmar que el video llega; <b>Zona de interés</b> delimita dónde el motor busca placas; todo lo que queda fuera del polígono se ignora automáticamente. Cada minuto se verifica automáticamente el flujo RTSP de las cámaras habilitadas.</Aviso>
         {error && <Aviso tipo="error">{error}</Aviso>}
         <Tarjeta titulo="Cámaras registradas" subtitulo={datos ? `${datos.length} cámaras · ${datos.filter(c => c.activa && c.estado === 'EN_LINEA').length} en línea` : undefined}
           acciones={<>
@@ -90,22 +90,22 @@ const Camaras: React.FC = () => {
                         {c.es_video && <span className="insignia neutro" style={{ marginTop: 4 }} title="Cámara de prueba: el servidor de medios reproduce un video en bucle"><FileVideo size={12} /> Video de prueba</span>}
                         {motor.datos?.camara_activa?.id === c.id && <span className="insignia info" style={{ marginTop: 4 }}><Cpu size={12} /> Procesando en el motor ANPR</span>}
                         {c.roi && <span className="insignia" style={{ marginTop: 4 }} title="El motor solo busca placas dentro del área marcada"><Crop size={12} /> Área de interés ({c.roi.length} vértices)</span>}
-                        {Boolean(c.exclusiones?.length) && <span className="insignia" style={{ marginTop: 4 }} title="Ahí no cuenta el movimiento ni se buscan placas"><Ban size={12} /> {c.exclusiones!.length === 1 ? '1 zona excluida' : `${c.exclusiones!.length} zonas excluidas`}</span>}</td>
+                        </td>
                       <td><span className={`insignia ${c.direccion === 'salida' ? 'info' : 'autorizado'}`}>{c.direccion === 'salida' ? 'Salida' : 'Ingreso'}</span></td>
                       <td>
                         <span className="fila" style={{ gap: 6 }}><span className={`punto ${c.activa ? e.p : 'gris'}`} />{c.activa ? e.t : 'Deshabilitada'}{c.activa && c.tiempo_respuesta_ms !== null && c.estado === 'EN_LINEA' && <span className="texto-secundario">· {c.tiempo_respuesta_ms} ms</span>}</span>
                         <span className="secundario">{c.ultimo_ping ? `${c.mensaje_ping ?? ''} · ${relativo(c.ultimo_ping)}` : 'Aún no verificada'}</span>
                       </td>
                       <td className="ocultar-movil mono truncar" style={{ fontSize: 12, maxWidth: 320 }} title={c.rtsp_url}>{c.es_video ? 'Archivo de video en bucle (sin equipo)' : c.rtsp_url}</td>
-                      <td className="num">{c.detecciones ? <Link to={`/detecciones?camara=${c.id}`}>{numero(c.detecciones)}</Link> : '0'}</td>
+                      <td className="num">{c.detecciones ? <Link to={`/historial?camara=${c.id}`}>{numero(c.detecciones)}</Link> : '0'}</td>
                       <td><Interruptor activo={c.activa} onCambiar={() => alternar(c)} etiqueta={c.activa ? 'Deshabilitar cámara' : 'Habilitar cámara'} /></td>
                       <td className="acciones-celda">
                         <button className="btn btn-secondary btn-sm" title="Ping de red y diagnóstico RTSP" onClick={() => probar(c)} disabled={probando !== null}>
                           {probando === c.id ? <Loader2 size={14} className="girar" /> : <RadioTower size={14} />} Ping</button>
                         <button className="btn btn-secondary btn-sm" title={c.activa ? 'Reproducir el flujo de video' : 'Habilite la cámara para reproducirla'} disabled={!c.activa} onClick={() => setReproduciendo(c)}>
                           <Play size={14} /> Play</button>
-                        <button className="btn btn-secondary btn-sm" title={c.activa ? 'Dibujar el área de detección y las zonas de exclusión' : 'Habilite la cámara para dibujar sus zonas'} disabled={!c.activa} onClick={() => setArea(c)}>
-                          <Crop size={14} /> Zonas</button>
+                        <button className="btn btn-secondary btn-sm" title={c.activa ? 'Dibujar la zona de interés; el exterior se ignora automáticamente' : 'Habilite la cámara para dibujar su zona de interés'} disabled={!c.activa} onClick={() => setArea(c)}>
+                          <Crop size={14} /> Zona de interés</button>
                         <button className="btn btn-ghost btn-sm btn-icono" title={c.es_video ? 'Una cámara de video no se edita: elimínela y cargue otro video' : 'Editar'} aria-label="Editar"
                           disabled={c.es_video} onClick={() => setEditando(c)}><Edit3 size={15} /></button>
                         <button className="btn btn-ghost btn-sm btn-icono" title={c.detecciones ? 'Tiene historial: deshabilítela en su lugar' : 'Eliminar'} aria-label="Eliminar"
@@ -131,9 +131,9 @@ const Camaras: React.FC = () => {
         </Modal>
       )}
       {area && <EditorRoi camara={area} onCerrar={() => setArea(null)}
-        onGuardada={c => { reemplazar(c); setArea(null); notificar('exito', 'Zonas guardadas', 'El motor las aplica de inmediato si procesa esta cámara.'); }} />}
+        onGuardada={c => { reemplazar(c); setArea(null); notificar('exito', 'Zona de interés guardada', 'El motor analiza dentro del polígono e ignora su exterior.'); }} />}
       {cargandoVideo && <CargarVideo onCerrar={() => setCargandoVideo(false)}
-        onCargada={c => { reemplazar(c); setCargandoVideo(false); notificar('exito', 'Video cargado', 'Dibuje sus zonas y asígnelo al motor en Monitoreo.'); }} />}
+        onCargada={c => { reemplazar(c); setCargandoVideo(false); notificar('exito', 'Video cargado', 'Dibuje su zona de interés y asígnelo al motor en Gestión de Accesos.'); }} />}
       {reproduciendo && <ReproductorPrueba titulo={reproduciendo.nombre} camaraId={reproduciendo.id} onCerrar={() => setReproduciendo(null)} />}
       {eliminando && (
         <Confirmar titulo="Eliminar cámara" peligro textoBoton="Eliminar" mensaje={<>Se eliminará <b>{eliminando.nombre}</b>. Solo es posible porque no tiene detecciones registradas.</>}

@@ -1,23 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertOctagon, Camera, CheckCircle2, Clock, Eye, FileCheck2, ShieldAlert, ShieldCheck, Volume2, VolumeX, X } from 'lucide-react';
+import { CheckCircle2, ShieldAlert, ShieldCheck, Volume2, VolumeX, X } from 'lucide-react';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useEvento } from '../../aplicacion/tiempoReal';
 import type { Deteccion } from '../../dominio/tipos';
-import { fecha, hora, NIVELES_ALERTA } from '../../dominio/formato';
-import { formatearPlaca } from '../../dominio/validacion';
+import { hora, NIVELES_ALERTA } from '../../dominio/formato';
 import { alCambiarSonido, detenerSonido, fijarSonido, sonarAutorizado, sonarDenegado, sonidoActivo } from '../../infraestructura/avisos';
-import { describirVehiculo, ImagenEvidencia, PlacaFoto, recortePlaca, ValidarModal } from './deteccion';
-import { FormularioLista } from './FormularioLista';
-import { FormularioSolicitud } from './FormularioSolicitud';
-import { useNotificar } from './Notificaciones';
+import { PlacaFoto, ValidarModal } from './deteccion';
 import { VisorZoom } from './ZoomDual';
 import { useCentroNotificaciones } from '../../aplicacion/notificaciones';
+import { RestringirVehiculoModal } from './RestringirVehiculoModal';
 
 /**
  * Avisos de acceso en tiempo real, visibles en cualquier pantalla del sistema:
- *  - Vehículo NO REGISTRADO o en la LISTA DE ALERTAS → alerta a pantalla completa con fondo
- *    rojo pulsante, sonido de acceso denegado y protocolo para el personal de la garita.
+ *  - Vehículo NO REGISTRADO o en la LISTA DE ALERTAS → cuadro compacto con el motivo,
+ *    acciones e indicaciones desplegables para el personal de la garita.
  *  - Vehículo AUTORIZADO → aviso verde con melodía breve (se cierra solo).
  * Solo se avisa de decisiones automáticas recientes; las validaciones manuales no disparan
  * avisos (las hizo el propio personal).
@@ -25,7 +22,7 @@ import { useCentroNotificaciones } from '../../aplicacion/notificaciones';
  * Se muestra a quien tiene el permiso avisos:garita (personal del punto de control). "Enterado"
  * registra el reconocimiento (ACK) de las alarmas del paso en el centro de notificaciones, lo
  * que detiene su escalamiento y mide el tiempo de respuesta del personal. Los demás roles (p. ej.
- * el gestor de permisos) reciben estos eventos en el centro de notificaciones.
+ * el gestor de permisos) reciben únicamente los avisos que les correspondan en su bandeja.
  */
 
 const VENTANA_S = 120;
@@ -37,7 +34,7 @@ const PROTOCOLO_NO_REGISTRADO = [
   ['Detener el vehículo en el punto de control', 'Con señal verbal y visual, indique al conductor que se detenga y no avance hacia las instalaciones hasta completar la verificación.'],
   ['Inspección visual', 'Desde un punto seguro, confirme que la placa física coincida con {placa} e identifique a los ocupantes.'],
   ['Solicitar documentos', 'Pida cédula de identidad, matrícula del vehículo y el motivo formal del ingreso.'],
-  ['Solicitar la autorización', 'Use “Solicitar autorización”: el gestor de permisos recibe la solicitud al instante y decide el ingreso de un vehículo no registrado.'],
+  ['Autorizar el ingreso', 'Use “Autorizar” para revisar la placa y los datos del ingreso con la evidencia captada.'],
   ['Espera y registro', 'Mientras se verifica, pida al conductor estacionar a un lado sin obstruir el acceso. Si se aprueba, deje constancia en el sistema; si no, indíquele retirarse por la vía de salida.'],
 ];
 
@@ -62,90 +59,41 @@ const TITULO_RESTRICCION: Record<string, string> = {
   vencida: 'Acceso no autorizado: permiso vencido',
 };
 
-const ModalNoAutorizado: React.FC<{
+const AvisoNoAutorizado: React.FC<{
   d: Deteccion; pendientes: number; onCerrar: () => void; onValidar: () => void;
-  onAutorizar?: () => void; onSolicitar?: () => void; onExcepcion?: () => void;
-}> = ({ d, pendientes, onCerrar, onValidar, onAutorizar, onSolicitar, onExcepcion }) => {
-    const navigate = useNavigate();
-    const [sonido, setSonido] = useState(sonidoActivo());
-    const [zoom, setZoom] = useState(false);
-    const boton = useRef<HTMLButtonElement>(null);
-    const esAlerta = d.estado_validacion === 'alerta';
-    const restringido = !esAlerta && d.restriccion_acceso ? d.restriccion_acceso : null;
-    const nivel = d.alerta ? NIVELES_ALERTA[d.alerta.nivel]?.etiqueta ?? d.alerta.nivel : null;
-    const protocolo = esAlerta ? PROTOCOLO_ALERTA : restringido ? PROTOCOLO_RESTRINGIDO : PROTOCOLO_NO_REGISTRADO;
-    useEffect(() => { boton.current?.focus(); return alCambiarSonido(setSonido); }, []);
-
-    return (
-      <div className="alerta-acceso-fondo" role="alertdialog" aria-modal="true" aria-labelledby="alerta-acceso-titulo">
-        <div className="alerta-acceso">
-          <header className="alerta-acceso-cabecera">
-            <span className="alerta-acceso-icono"><AlertOctagon size={26} strokeWidth={2.5} /></span>
-            <div style={{ minWidth: 0 }}>
-              <h2 id="alerta-acceso-titulo">
-                {esAlerta ? 'Alerta de seguridad: vehículo en lista negra' : restringido ? TITULO_RESTRICCION[restringido] : 'Acceso no autorizado: vehículo no registrado'}
-                {nivel && <span className="alerta-acceso-nivel">NIVEL {nivel.toUpperCase()}</span>}
-              </h2>
-              <p>Sistema ANPR ECU 911 · {d.camara ? `${d.camara.nombre} (${d.camara.ubicacion})` : 'Acceso vehicular'} · {hora(d.fecha_hora_ingreso)}</p>
-            </div>
-            <button className="alerta-acceso-cerrar" onClick={() => { const n = !sonido; fijarSonido(n); if (!n) detenerSonido(); }}
-              title={sonido ? 'Silenciar avisos' : 'Activar sonido'} aria-label={sonido ? 'Silenciar avisos' : 'Activar sonido'}>
-              {sonido ? <Volume2 size={18} /> : <VolumeX size={18} />}
-            </button>
-            <button className="alerta-acceso-cerrar" onClick={onCerrar} aria-label="Cerrar"><X size={18} /></button>
-          </header>
-
-          <div className="alerta-acceso-cuerpo">
-            <div className="pila" style={{ gap: 14 }}>
-              <div className="alerta-placa">
-                <span className="alerta-etiqueta"><Eye size={13} /> Placa captada por la cámara</span>
-                <ImagenEvidencia ruta={recortePlaca(d)} alt={`Placa ${d.placa ?? 'sin lectura'}`} alto={120} ajuste="contain" fondoOscuro onClick={() => setZoom(true)} />
-                <span className="alerta-placa-lectura">
-                  <span className="numero">{d.placa ?? 'SIN LECTURA'}</span>
-                  <span className="estado">{esAlerta ? 'EN LISTA NEGRA' : restringido ? 'PERMISO RESTRINGIDO' : 'NO AUTORIZADO'}</span>
-                </span>
-              </div>
-              <dl className="alerta-ficha">
-                <dt>Motivo</dt><dd className="destacado">{esAlerta ? d.alerta?.motivo ?? 'Placa en la lista negra'
-                  : restringido ? d.motivo_revision ?? TITULO_RESTRICCION[restringido] : 'No consta en la lista blanca'}</dd>
-                {restringido && d.autorizado && <><dt>Titular del permiso</dt><dd>{d.autorizado.propietario}{d.autorizado.departamento ? ` · ${d.autorizado.departamento}` : ''}</dd></>}
-                <dt>Vehículo</dt><dd>{describirVehiculo(d)}</dd>
-                <dt>Fecha y hora</dt><dd>{fecha(d.fecha_hora_ingreso)} · {hora(d.fecha_hora_ingreso)}</dd>
-                <dt>Registro</dt><dd>#{d.id}</dd>
-              </dl>
-              {d.verificacion_vehiculo === 'no_coincide' && (
-                <div className="alerta-nota">El vehículo observado no coincide con el registrado ({d.verificacion_detalle}): posible placa clonada o lectura errónea.</div>
-              )}
-              <div><span className="alerta-etiqueta"><Camera size={13} /> Vehículo</span>
-                <ImagenEvidencia ruta={d.imagen_vehiculo} alt="Vehículo" alto={150} fondoOscuro onClick={() => setZoom(true)} /></div>
-            </div>
-
-            <div className="alerta-protocolo">
-              <h3><ShieldAlert size={18} /> Protocolo para el personal de seguridad</h3>
-              <ol>
-                {protocolo.map(([t, x], i) => (
-                  <li key={t}><span className="paso">{i + 1}</span><div><strong>{t}</strong><p>{x.replace('{placa}', d.placa ?? 'la leída por el sistema')}</p></div></li>
-                ))}
-              </ol>
-            </div>
-          </div>
-
-          <footer className="alerta-acceso-pie">
-            {pendientes > 0 && <span className="alerta-pendientes">{pendientes} {pendientes === 1 ? 'aviso más en espera' : 'avisos más en espera'}</span>}
-            <button className="btn btn-sm alerta-boton-secundario" onClick={() => { onCerrar(); navigate(`/detecciones/${d.id}`); }}>Ver detalle</button>
-            <button className="btn btn-sm alerta-boton-secundario" onClick={onValidar}>Corregir lectura</button>
-            {onExcepcion && restringido && <button className="btn btn-sm alerta-boton-secundario" onClick={onExcepcion}><Clock size={14} /> Autorizar por excepción</button>}
-            {onAutorizar && !esAlerta && !restringido && <button className="btn btn-sm alerta-boton-secundario" onClick={onAutorizar}><ShieldCheck size={14} /> Autorizar vehículo</button>}
-            {onSolicitar && !esAlerta && <button className="btn btn-sm alerta-boton-secundario" onClick={onSolicitar}><FileCheck2 size={14} /> Solicitar autorización</button>}
-            <button ref={boton} className="btn alerta-boton-principal" onClick={onCerrar}><CheckCircle2 size={16} /> Enterado</button>
-          </footer>
-        </div>
-        {zoom && <VisorZoom d={d} onCerrar={() => setZoom(false)} />}
+  onRestringir?: () => void;
+}> = ({ d, pendientes, onCerrar, onValidar, onRestringir }) => {
+  const [sonido, setSonido] = useState(sonidoActivo());
+  const [zoom, setZoom] = useState(false);
+  const esAlerta = d.estado_validacion === 'alerta';
+  const restringido = !esAlerta ? d.restriccion_acceso : null;
+  const protocolo = esAlerta ? PROTOCOLO_ALERTA : restringido ? PROTOCOLO_RESTRINGIDO : PROTOCOLO_NO_REGISTRADO;
+  useEffect(() => alCambiarSonido(setSonido), []);
+  return <div className="aviso-autorizado aviso-denegado" role="alert">
+    <span className="icono"><ShieldAlert size={22} /></span>
+    <div className="aviso-denegado-contenido">
+      <strong>{esAlerta ? 'ALERTA DE SEGURIDAD' : 'ACCESO NO AUTORIZADO'}</strong>
+      <PlacaFoto d={d} alto={34} onClick={() => setZoom(true)} />
+      <span className="detalle motivo">{esAlerta ? d.alerta?.motivo || 'Placa en lista negra' : restringido ? TITULO_RESTRICCION[restringido] : 'Vehículo no registrado en la lista blanca'}</span>
+      {esAlerta && d.alerta && <span className="detalle">Nivel: {NIVELES_ALERTA[d.alerta.nivel]?.etiqueta ?? d.alerta.nivel}</span>}
+      <span className="detalle">{d.camara?.nombre ?? 'Acceso'} ? {hora(d.fecha_hora_ingreso)}</span>
+      <details className="aviso-denegado-protocolo"><summary>Ver indicaciones</summary><ol>{protocolo.map(([titulo, texto]) => <li key={titulo}><b>{titulo}</b><p>{texto.replace('{placa}', d.placa ?? 'la placa captada')}</p></li>)}</ol></details>
+      {pendientes > 0 && <span className="detalle">{pendientes} avisos en espera</span>}
+      <div className="aviso-denegado-acciones">
+        <button type="button" onClick={onValidar}>Autorizar</button>
+        {onRestringir && !esAlerta && <button type="button" onClick={onRestringir}>Restringir</button>}
+        <button type="button" className="enterado" onClick={onCerrar}><CheckCircle2 size={14} /> Enterado</button>
       </div>
-    );
-  };
+    </div>
+    <div className="aviso-denegado-controles">
+      <button type="button" onClick={onCerrar} aria-label="Cerrar aviso"><X size={15} /></button>
+      <button type="button" onClick={() => { const n = !sonido; fijarSonido(n); if (!n) detenerSonido(); }} aria-label={sonido ? 'Silenciar avisos' : 'Activar sonido'}>{sonido ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
+    </div>
+    {zoom && <VisorZoom d={d} onCerrar={() => setZoom(false)} />}
+  </div>;
+};
 
-const AvisoAutorizado: React.FC<{ d: Deteccion; onCerrar: () => void; onConfirmar: (d: Deteccion) => void }> = ({ d, onCerrar, onConfirmar }) => {
+const AvisoAutorizado: React.FC<{ d: Deteccion; onCerrar: () => void; onConfirmar: (d: Deteccion) => void; onRestringir?: (d: Deteccion) => void }> = ({ d, onCerrar, onConfirmar, onRestringir }) => {
   const navigate = useNavigate();
   const confirmar = d.estado_validacion === 'pendiente_revision';
   // El aviso de confirmación permanece hasta que el personal actúe; el de autorizado se cierra solo
@@ -162,7 +110,8 @@ const AvisoAutorizado: React.FC<{ d: Deteccion; onCerrar: () => void; onConfirma
           <strong>CONFIRME EL INGRESO</strong>
           <PlacaFoto d={d} alto={34} />
           <span className="detalle" style={{ whiteSpace: 'normal' }}>{d.motivo_revision}</span>
-          <button className="btn btn-sm btn-exito" style={{ marginTop: 8 }} onClick={() => { onCerrar(); onConfirmar(d); }}>Confirmar placa</button>
+          <button className="btn btn-sm btn-exito" style={{ marginTop: 8 }} onClick={() => { onCerrar(); onConfirmar(d); }}>Autorizar</button>
+          {onRestringir && <button className="btn btn-sm btn-danger" style={{ marginTop: 8 }} onClick={() => { onCerrar(); onRestringir(d); }}>Restringir</button>}
         </div>
         <button onClick={e => { e.stopPropagation(); onCerrar(); }} aria-label="Cerrar"><X size={15} /></button>
       </div>
@@ -184,14 +133,11 @@ const AvisoAutorizado: React.FC<{ d: Deteccion; onCerrar: () => void; onConfirma
 
 export const AvisosAcceso: React.FC = () => {
   const { puede } = useAuth();
-  const notificar = useNotificar();
   const { reconocerDeteccion } = useCentroNotificaciones();
   const [cola, setCola] = useState<Deteccion[]>([]);
   const [autorizados, setAutorizados] = useState<Deteccion[]>([]);
   const [validando, setValidando] = useState<Deteccion | null>(null);
-  const [excepcion, setExcepcion] = useState<Deteccion | null>(null);
-  const [autorizando, setAutorizando] = useState<Deteccion | null>(null);
-  const [solicitando, setSolicitando] = useState<Deteccion | null>(null);
+  const [restringiendo, setRestringiendo] = useState<Deteccion | null>(null);
   const avisados = useRef(new Set<string>());
   const garita = puede('avisos:garita');
 
@@ -243,49 +189,24 @@ export const AvisosAcceso: React.FC = () => {
     if (cola.length > 1) sonarDenegado();
   };
   const abrir = (accion: (d: Deteccion) => void) => () => { if (!actual) return; reconocer(actual); detenerSonido(); accion(actual); };
-  const gestionaPadron = puede('padron:gestionar');
   if (!garita) return null;
 
   return (
     <>
-      {autorizados.length > 0 && (
+      {(autorizados.length > 0 || actual) && (
         <div className="avisos-autorizados">
+      {actual && !validando && !restringiendo && (
+        <AvisoNoAutorizado d={actual} pendientes={cola.length - 1} onCerrar={cerrarActual}
+          onValidar={abrir(setValidando)} onRestringir={puede('alertas:restringir') ? abrir(setRestringiendo) : undefined} />
+      )}
           {autorizados.map(d => <AvisoAutorizado key={`${d.id}-${d.estado_validacion}`} d={d} onConfirmar={setValidando}
+            onRestringir={puede('alertas:restringir') ? setRestringiendo : undefined}
             onCerrar={() => setAutorizados(a => a.filter(x => x.id !== d.id || x.estado_validacion !== d.estado_validacion))} />)}
         </div>
       )}
-      {actual && !validando && !autorizando && !solicitando && !excepcion && (
-        <ModalNoAutorizado d={actual} pendientes={cola.length - 1} onCerrar={cerrarActual}
-          onValidar={abrir(setValidando)}
-          onAutorizar={gestionaPadron && actual.placa ? abrir(setAutorizando) : undefined}
-          onSolicitar={!gestionaPadron && puede('solicitudes:crear') && actual.placa ? abrir(setSolicitando) : undefined}
-          onExcepcion={puede('accesos:excepcion') && actual.placa ? abrir(setExcepcion) : undefined} />
-      )}
       {validando && <ValidarModal d={validando} onCerrar={() => setValidando(null)}
         onValidada={d => setCola(c => c.filter(x => x.id !== d.id))} />}
-      {excepcion && <ValidarModal d={excepcion} excepcion onCerrar={() => setExcepcion(null)}
-        onValidada={d => setCola(c => c.filter(x => x.id !== d.id))} />}
-      {solicitando && (
-        <FormularioSolicitud
-          inicial={{ placa: solicitando.placa, marca: solicitando.vehiculo.marca, modelo: solicitando.vehiculo.modelo, color: solicitando.vehiculo.color, deteccion_id: solicitando.id }}
-          onCerrar={() => setSolicitando(null)}
-          onEnviada={s => {
-            notificar('exito', `Solicitud #${s.id} enviada`, 'El gestor de permisos fue notificado. Mantenga el vehículo en espera.');
-            setCola(c => c.filter(x => x.id !== solicitando.id));
-            setSolicitando(null);
-          }} />
-      )}
-      {autorizando && autorizando.placa && (
-        <FormularioLista tipo="autorizados"
-          inicial={{ placa: autorizando.placa, marca: autorizando.vehiculo.marca, modelo: autorizando.vehiculo.modelo, color: autorizando.vehiculo.color }}
-          onCerrar={() => setAutorizando(null)}
-          onGuardado={() => {
-            notificar('exito', `${formatearPlaca(autorizando.placa)} agregado al padrón de autorizados`, 'Valide este ingreso para registrarlo como autorizado.');
-            setCola(c => c.filter(x => x.id !== autorizando.id));
-            setValidando(autorizando);
-            setAutorizando(null);
-          }} />
-      )}
+      {restringiendo && <RestringirVehiculoModal d={restringiendo} onCerrar={() => setRestringiendo(null)} onRestringido={() => setCola(c => c.filter(x => x.id !== restringiendo.id))} />}
     </>
   );
 };

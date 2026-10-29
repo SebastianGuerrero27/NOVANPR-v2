@@ -11,10 +11,18 @@ import { type Validado, validarEntero } from './validacion';
  *   operaciones  detecciones, listas, cámaras, solicitudes y configuración (AuditoriaOperaciones)
  *   cuentas      registro, verificación, altas, cambios de rol/estado, bloqueos (AuditoriaUsuarios)
  *   accesos      cada intento de inicio de sesión (AuditoriaAccesos)
+ *   descartes    lecturas que el motor ANPR descartó y por qué (AuditoriaDescartes)
+ *   propietario  consultas del propietario de un vehículo con su base legal (AuditoriaConsultaPropietario)
+ *
+ * Solo las tres primeras tienen tablas de archivo: la retención se aplica a ellas.
  */
 
-export const FUENTES_AUDITORIA = ['operaciones', 'cuentas', 'accesos'] as const;
+export const FUENTES_AUDITORIA = ['operaciones', 'cuentas', 'accesos', 'descartes', 'propietario'] as const;
 export type FuenteAuditoria = typeof FUENTES_AUDITORIA[number];
+
+/** Fuentes con tabla de archivo (migración v7), a las que se aplica la retención */
+export const FUENTES_ARCHIVABLES = ['operaciones', 'cuentas', 'accesos'] as const satisfies readonly FuenteAuditoria[];
+export type FuenteArchivable = typeof FUENTES_ARCHIVABLES[number];
 
 export function esFuenteAuditoria(valor: unknown): valor is FuenteAuditoria {
   return typeof valor === 'string' && (FUENTES_AUDITORIA as readonly string[]).includes(valor);
@@ -25,6 +33,8 @@ export const CAMPOS_AUDITORIA: Record<FuenteAuditoria, readonly string[]> = {
   operaciones: ['id', 'fecha', 'usuario_id', 'usuario_email', 'accion', 'entidad', 'entidad_id', 'detalle', 'ip'],
   cuentas: ['id', 'fecha', 'accion', 'actor_id', 'actor_email', 'objetivo_id', 'objetivo_email', 'detalle', 'ip'],
   accesos: ['id', 'fecha', 'email', 'usuario_id', 'exito', 'motivo', 'ip', 'user_agent'],
+  descartes: ['id', 'fecha', 'tracking_id', 'motivo', 'texto_candidato', 'confianza', 'fuente', 'camara_id'],
+  propietario: ['id', 'fecha', 'usuario_id', 'usuario_nombre', 'placa', 'motivo', 'deteccion_id', 'proveedor', 'resultado'],
 };
 
 /** Máximo de registros por exportación (los más recientes que cumplen los filtros). */

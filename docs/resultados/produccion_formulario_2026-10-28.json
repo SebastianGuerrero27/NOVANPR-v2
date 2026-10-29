@@ -1,0 +1,37 @@
+{
+  "fecha": "2026-10-28",
+  "objetivo": "Smoke del bundle desplegado con API interceptada y contexto de navegador aislado",
+  "origen": "http://localhost:3000",
+  "bundle": "/assets/index-D12wOW0q.js",
+  "sesion": "Simulada; no utiliza credenciales reales",
+  "navegador": "Microsoft Edge headless",
+  "datos": "Fixtures de prueba; horario histórico JSON y objeto inválido",
+  "horario_inicial": {
+    "desde": "07:00",
+    "hasta": "19:00"
+  },
+  "horario_lookup": {
+    "desde": "18:30",
+    "hasta": "05:30"
+  },
+  "marca_modelo_editables": true,
+  "horario_invalido_bloquea_guardar": true,
+  "seleccion_explicita_repara": true,
+  "errores_no_capturados": [],
+  "escrituras_reales": 0,
+  "intentos_escritura_interceptados": [],
+  "peticiones_api": [
+    "GET /api/auth/me",
+    "GET /api/notificaciones",
+    "GET /api/camaras",
+    "GET /api/detecciones",
+    "GET /api/vehiculos-autorizados/estado-consulta-vehiculo",
+    "GET /api/detecciones/buscar-placa/PBA1234"
+  ],
+  "errores_consola": [
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED"
+  ]
+}

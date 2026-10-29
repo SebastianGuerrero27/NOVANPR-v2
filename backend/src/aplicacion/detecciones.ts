@@ -9,9 +9,10 @@ import {
   leerDatosIngreso, leerDatosValidacion, leerFiltros, leerLimite, leerPaginacion, leerPlacaConsulta, leerRegistroManual, lecturaUtilizable,
   normalizarFuente, REGLA_MOTIVO_ELIMINACION, REGLA_MOTIVO_ELIMINACION_MASIVA, serializarEvidencia, tieneFiltros,
 } from '../dominio/detecciones';
-import { describirHorario, evaluarVigencia, type Vigencia } from '../dominio/horario';
+import { describirHorario, evaluarVigencia, validarHorario, type Vigencia } from '../dominio/horario';
 import { type Rol, tienePermiso } from '../dominio/permisos';
-import { normalizarPlaca, validarPlaca, validarTexto } from '../dominio/validacion';
+import { normalizarPlaca, validarEntero, validarPlaca, validarTexto } from '../dominio/validacion';
+import { faltantesIngreso } from '../dominio/registroCompleto';
 
 /**
  * Detecciones vehiculares: cada registro es un paso por un acceso.
@@ -33,7 +34,8 @@ export type Fila = Record<string, any>;
 /** « · ingresa: … · motivo: …» para la auditoría (un campo borrado se anota como tal). */
 function describirDatosIngreso(x: DatosIngreso): string {
   const parte = (etiqueta: string, v: string | null | undefined) => (v === undefined ? '' : ` · ${etiqueta}: ${v ?? '(borrado)'}`);
-  return parte('ingresa', x.persona) + parte('motivo de ingreso', x.motivo);
+  return parte('ingresa', x.persona) + parte('cédula', x.cedula) + parte('motivo de ingreso', x.motivo)
+    + parte('tipo de vehículo', x.tipo) + parte('marca', x.marca) + parte('modelo', x.modelo) + parte('color', x.color);
 }
 
 /** Detección tal como la entrega la API y los eventos en tiempo real. */
@@ -76,6 +78,26 @@ export interface Observacion {
   tipo: string | null;
 }
 
+export interface ResumenHistorial {
+  total: number;
+  ingresos: number;
+  salidas: number;
+  con_salida: number;
+  autorizados: number;
+  alertas: number;
+  no_registrados: number;
+  pendientes: number;
+  sin_lectura: number;
+  /** Placas distintas leídas o confirmadas */
+  placas: number;
+  /** Por origen: cámara en vivo, video de prueba y registro manual */
+  camara: number;
+  video_prueba: number;
+  manuales: number;
+  primero: Date | string | null;
+  ultimo: Date | string | null;
+}
+
 export interface Descarte {
   trackingId: number;
   motivo: string;
@@ -110,16 +132,22 @@ export interface RepositorioDetecciones {
   registrarDescarte(d: Descarte): Promise<void>;
   contar(f: FiltrosDetecciones): Promise<number>;
   pagina(f: FiltrosDetecciones, offset: number, tamano: number): Promise<Fila[]>;
-  recientes(limite: number): Promise<Fila[]>;
+  /** Totales del historial con los mismos filtros (estados, movimientos, origen, placas distintas y período) */
+  resumenHistorial(f: FiltrosDetecciones): Promise<ResumenHistorial>;
+  recientes(limite: number, buscar?: string | null): Promise<Fila[]>;
+  registrarSalida(id: number): Promise<boolean>;
   exportar(f: FiltrosDetecciones): Promise<Fila[]>;
   /** Últimos 10 pasos de una placa (sin contar `excluirId`) */
   historialPlaca(placa: string, excluirId?: number): Promise<Fila[]>;
   auditoriaDe(id: number): Promise<Fila[]>;
-  guardarValidacion(id: number, d: { placa: string; tipo: string | null; usuarioId: number }, cruce: Cruce, decision: Decision): Promise<void>;
-  crearManual(d: { placa: string; camaraId: number | null; tipo: string | null; usuarioId: number }, cruce: Cruce, decision: Decision): Promise<number>;
-  crearSalidaManual(d: { placa: string; camaraId: number; usuarioId: number }): Promise<number>;
+  guardarValidacion(id: number, d: { placa: string | null; tipo: string | null; usuarioId: number }, cruce: Cruce, decision: Decision): Promise<void>;
+  crearManual(d: { placa: string; camaraId: number | null; tipo: string | null; marca: string | null; usuarioId: number; rutaImagen?: string },
+    cruce: Cruce, decision: Decision): Promise<number>;
+  crearSalidaManual(d: { placa: string; camaraId: number; usuarioId: number; rutaImagen?: string }): Promise<number>;
   /** Nombres y apellidos de quien ingresa y motivo de ingreso (solo los campos presentes) */
   guardarDatosIngreso(id: number, d: DatosIngreso): Promise<void>;
+  /** Crea/vincula un permiso por nombre para un ingreso sin placa ya identificado en garita. */
+  autorizarIngresoSinPlaca?(id: number, usuarioId: number): Promise<void>;
   eliminar(id: number): Promise<void>;
   /** Elimina las que cumplen los filtros (todas si `f` es null) y devuelve sus rutas de evidencia */
   eliminarFiltradas(f: FiltrosDetecciones | null): Promise<{ id: number; ruta_imagen_ingreso: string | null; ruta_imagen_placa: string | null }[]>;
@@ -131,7 +159,17 @@ export interface PuertoListasDetecciones {
   permiso(placa: string): Promise<Fila | null>;
 }
 
+export interface CuadroHistorial { t: number; miniatura: string }
+
+export interface PuertoEvidenciaManual {
+  /** Miniaturas (JPEG en base64, la más reciente primero) si `camaraId` es la cámara que procesa el motor */
+  cuadros(camaraId: number): Promise<{ disponible: boolean; motivo?: string; cuadros: CuadroHistorial[] }>;
+  /** Guarda como foto de evidencia el cuadro de esa hora; su ruta /media/…, o null si ya no está */
+  guardar(camaraId: number, t: number): Promise<string | null>;
+}
+
 export interface DependenciasDetecciones {
+  pdfRegistros?: (filas: Fila[], generado: Date, zona: string) => Promise<Buffer>;
   repositorio: RepositorioDetecciones;
   listas: PuertoListasDetecciones;
   /** Representación de una fila para la API (imágenes firmadas y motivo de revisión) */
@@ -146,6 +184,15 @@ export interface DependenciasDetecciones {
     resolverPorDeteccion(id: number): Promise<void>;
   };
   evidencia: { eliminar(rutas: (string | null | undefined)[]): Promise<number> };
+  /**
+   * Alta en la lista blanca desde la autorización de un paso (mismo caso de uso que el formulario:
+   * valida, crea o reactiva, audita y avisa). Lanza el error de validación o conflicto.
+   */
+  padron?: { registrar(entrada: Record<string, unknown>, actor: Actor): Promise<{ accion: 'creado' | 'reactivado' }> };
+  /** Conserva la primera foto de una placa registrada, sin depender del historial. */
+  evidenciaListas?: { conservar(fila: Fila): Promise<void> };
+  /** Últimos 30 s de la cámara que procesa el motor, para la foto del registro manual */
+  evidenciaManual?: PuertoEvidenciaManual;
   eventos: PuertoEventos;
   auditoria: PuertoAuditoria;
   tiempo: { ahora(): Date; zona: string };
@@ -154,6 +201,25 @@ export interface DependenciasDetecciones {
 type Entrada = Record<string, any>;
 const CONFIANZA_MINIMA_DETECCION_REGISTRO = 0.23;
 const cuerpo = (entrada: unknown): Entrada => (entrada && typeof entrada === 'object' ? entrada as Entrada : {});
+
+/** Una abstención explícita no debe recuperar la matrícula candidata del registro anterior. */
+function evidenciaTextoNoMatricula(estado: unknown, lecturaValida: unknown, evidencia: unknown): string | null {
+  if (!evidencia || typeof evidencia !== 'object' || Array.isArray(evidencia)) return null;
+  const ev = evidencia as Entrada;
+  if (estado !== 'no_legible' || ev.motivo !== 'texto_no_matricula') return null;
+  if (lecturaValida !== false) throw errorValidacion('El texto sin matrícula debe informar lectura_valida=false.');
+  const texto = typeof ev.observacion_ocr === 'string' ? ev.observacion_ocr.trim().replace(/\s+/g, ' ') : '';
+  if (!texto || texto.length > 240 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(texto)) {
+    throw errorValidacion('La observación OCR debe contener entre 1 y 240 caracteres de texto.');
+  }
+  const confianza = ev.confianza_texto_ocr;
+  if (typeof confianza !== 'number' || !Number.isFinite(confianza) || confianza < 0 || confianza > 1) {
+    throw errorValidacion('La confianza del texto OCR debe ser un número entre 0 y 1.');
+  }
+  const serializada = serializarEvidencia({ ...ev, observacion_ocr: texto });
+  if (!serializada) throw errorValidacion('La evidencia del texto OCR no cabe en el registro.');
+  return serializada;
+}
 
 const entradaListas = (c: Cruce) => ({
   alerta: c.alerta ? { id: c.alerta.id as number, coincidencia: c.alerta.coincidencia } : null,
@@ -165,6 +231,8 @@ export function casosDetecciones(d: DependenciasDetecciones) {
   async function difundir(id: number, evento: 'deteccion:nueva' | 'deteccion:actualizada'): Promise<DeteccionDTO | null> {
     const fila = await d.repositorio.obtener(id);
     if (!fila) return null;
+    try { await d.evidenciaListas?.conservar(fila); }
+    catch (error) { console.warn('[EVIDENCIA LISTAS] No se pudo conservar la foto del paso:', (error as Error).message); }
     const dto = d.presentar(fila);
     d.eventos.emitir(evento, dto);
     if (dto.estado_validacion === 'alerta') d.eventos.emitir('deteccion:alerta', dto);
@@ -233,6 +301,24 @@ export function casosDetecciones(d: DependenciasDetecciones) {
   const avisarSiCorresponde = (dto: DeteccionDTO | null, decision: Decision, permiso: Fila | null) => {
     if (dto && (decision.estado === 'alerta' || decision.estado === 'autorizado')) d.avisos.decision(dto, decision, permiso);
   };
+
+  async function registrarTextoNoMatricula(id: number, actual: Fila, evidencia: string, rutaPlaca: string | null,
+    latenciaMs: unknown, permitirPendiente = false) {
+    const estadoAutomatico = actual.estado_procesamiento === 'procesado' || actual.estado_procesamiento === 'no_legible'
+      || (permitirPendiente && actual.estado_procesamiento === 'pendiente_ocr');
+    // Una observación automática tardía no cambia lo confirmado por el personal ni rebaja alertas.
+    if (actual.validado_manualmente || actual.estado_validacion === 'alerta' || !estadoAutomatico) {
+      return { message: 'Se conserva la decisión vigente del paso.', reevaluado: false, cambio: false,
+        deteccion: await difundir(id, 'deteccion:actualizada') };
+    }
+    await d.repositorio.marcarNoLegible(id, rutaPlaca ?? actual.ruta_imagen_placa ?? null);
+    await d.repositorio.guardarVeredicto(id, false, evidencia);
+    await d.repositorio.registrarLecturaAutomatica(id, {
+      placaOriginal: '', confianza: 0, decision: 'pendiente_revision', lecturaVerificador: null, latenciaMs,
+    });
+    return { message: 'Texto observado conservado sin asignar una matrícula.', reevaluado: true,
+      cambio: actual.estado_validacion !== 'pendiente_revision', deteccion: await difundir(id, 'deteccion:actualizada') };
+  }
 
   return {
     // ─── Servicio ANPR ─────────────────────────────────────────────────────────
@@ -304,6 +390,14 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       if (!Number.isInteger(ingreso_id)) throw errorValidacion('El ID de ingreso es obligatorio.');
       const id = ingreso_id as number;
 
+      const textoNoMatricula = evidenciaTextoNoMatricula(estado_procesamiento, lectura_valida, evidencia_lectura);
+      if (textoNoMatricula) {
+        const actual = await d.repositorio.obtener(id);
+        if (!actual) throw errorNoEncontrado('Registro vehicular no encontrado.');
+        const ruta = typeof ruta_imagen_placa === 'string' && ruta_imagen_placa ? ruta_imagen_placa.substring(0, 255) : null;
+        return registrarTextoNoMatricula(id, actual, textoNoMatricula, ruta, latencia_ms, true);
+      }
+
       const placa = normalizarPlaca(placa_reconocida);
       const confianza = typeof confianza_ocr === 'number' ? confianza_ocr : null;
       const rutaPlaca = ruta_imagen_placa || null;
@@ -353,15 +447,45 @@ export function casosDetecciones(d: DependenciasDetecciones) {
      */
     async reevaluar(entrada: unknown) {
       const { ingreso_id, placa_reconocida = null, confianza_ocr = null, lectura_verificador = null, lectura_valida = null,
-        evidencia_lectura = null, vehiculo = null, ruta_imagen_placa = null } = cuerpo(entrada);
+        evidencia_lectura = null, vehiculo = null, ruta_imagen_placa = null, estado_procesamiento = null } = cuerpo(entrada);
       const rutaPlaca = typeof ruta_imagen_placa === 'string' && ruta_imagen_placa ? ruta_imagen_placa.substring(0, 255) : null;
       if (!Number.isInteger(ingreso_id)) throw errorValidacion('El ID de ingreso es obligatorio.');
       const id = ingreso_id as number;
       const actual = await d.repositorio.obtener(id);
       if (!actual) throw errorNoEncontrado('Ingreso no encontrado.');
 
+      // Un rótulo de otra pista del mismo vehículo aporta texto, no sustituye su matrícula.
+      const observacion = cuerpo(entrada).observacion_ocr;
+      if (observacion !== undefined) {
+        const o = cuerpo(observacion);
+        const comprobada = evidenciaTextoNoMatricula('no_legible', false, {
+          motivo: 'texto_no_matricula', observacion_ocr: o.texto, confianza_texto_ocr: o.confianza,
+        });
+        if (!comprobada) throw errorValidacion('Observación OCR no válida.');
+        const texto = JSON.parse(comprobada) as Entrada;
+        let anterior: Entrada = {};
+        try { anterior = cuerpo(JSON.parse(actual.evidencia_lectura || '{}')); } catch { /* Evidencia histórica dañada. */ }
+        const evidencia = serializarEvidencia({ ...anterior, observacion_ocr: texto.observacion_ocr,
+          confianza_texto_ocr: texto.confianza_texto_ocr });
+        if (!evidencia) throw errorValidacion('La observación OCR no cabe en el registro.');
+        await d.repositorio.guardarVeredicto(id, actual.lectura_valida == null ? null : Boolean(actual.lectura_valida), evidencia);
+        return { message: 'Observación OCR añadida al mismo acceso.', reevaluado: true, cambio: false,
+          deteccion: await difundir(id, 'deteccion:actualizada') };
+      }
+
+      const textoNoMatricula = evidenciaTextoNoMatricula(estado_procesamiento, lectura_valida, evidencia_lectura);
       if (vehiculo && typeof vehiculo === 'object' && !Array.isArray(vehiculo)) await d.repositorio.guardarVehiculo(id, vehiculo);
+      if (textoNoMatricula) return registrarTextoNoMatricula(id, actual, textoNoMatricula, rutaPlaca, actual.latencia_ms ?? null);
       const placa = normalizarPlaca(placa_reconocida) || normalizarPlaca(actual.placa_reconocida);
+      // Una alerta o confirmación manual mantiene su decisión; una foto tardía de la misma
+      // matrícula sí puede completar la evidencia que todavía falta en su registro de lista.
+      if ((rutaPlaca || typeof lectura_valida === 'boolean')
+        && placa === normalizarPlaca(actual.placa_validada || actual.placa_reconocida) && lectura_valida !== false) {
+        try { await d.evidenciaListas?.conservar({ ...actual, ruta_imagen_placa: rutaPlaca ?? actual.ruta_imagen_placa,
+          evidencia_lectura: evidencia_lectura ?? actual.evidencia_lectura,
+          lectura_valida: typeof lectura_valida === 'boolean' ? lectura_valida : actual.lectura_valida }); }
+        catch (error) { console.warn('[EVIDENCIA LISTAS] No se pudo conservar el recorte tardío:', (error as Error).message); }
+      }
       if (actual.tipo_movimiento === 'salida' && !actual.validado_manualmente && actual.estado_procesamiento === 'procesado' && placa) {
         const confianza = typeof confianza_ocr === 'number' ? confianza_ocr : typeof actual.confianza_ocr === 'number' ? actual.confianza_ocr : null;
         await d.repositorio.guardarSalida(id, { placa, confianza, rutaPlaca: null });
@@ -416,11 +540,26 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       return { items: filas.map(x => d.presentar(x)), total, pagina, tamano };
     },
 
-    async recientes(limite: unknown) {
-      return (await d.repositorio.recientes(leerLimite(limite))).map(x => d.presentar(x));
+    /** Historial completo: totales de lo que cumple los filtros, para leer la consulta de un vistazo. */
+    resumenHistorial: (consulta: Entrada) => d.repositorio.resumenHistorial(filtros(consulta)),
+
+    async recientes(limite: unknown, busqueda?: unknown) {
+      const texto = typeof busqueda === 'string' ? busqueda.trim() : '';
+      if (texto.length > 100) throw errorValidacion('La búsqueda no puede superar 100 caracteres.');
+      return (await d.repositorio.recientes(leerLimite(limite), texto || null)).map(x => d.presentar(x));
     },
 
     /** CSV del historial con los mismos filtros; la exportación queda en la auditoría. */
+    async exportarPdf(consulta: Entrada, actor: Actor) {
+      const f = filtros({ ...consulta, cerrados: 'si', completos: 'si' });
+      const filas = await d.repositorio.exportar(f);
+      if (!d.pdfRegistros) throw new Error('Generador PDF no configurado.');
+      const ahora = d.tiempo.ahora();
+      const contenido = await d.pdfRegistros(filas, ahora, d.tiempo.zona);
+      await d.auditoria.operacion(actor, 'EXPORTACION', 'deteccion', null, `PDF · ${filas.length} registros con salida · ${JSON.stringify(consulta).substring(0, 300)}`);
+      return { nombre: `registros_${ahora.toISOString().slice(0, 10)}.pdf`, contenido };
+    },
+
     async exportar(consulta: Entrada, actor: Actor) {
       const f = filtros(consulta);
       const filas = await d.repositorio.exportar(f);
@@ -437,13 +576,16 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       const cruce = await cruzarListas(placa, d.tiempo.ahora());
       const decision = decidirAcceso({ origen: 'manual', ...entradaListas(cruce), politica: d.politica() });
       const historial = await d.repositorio.historialPlaca(placa);
+      const horario = cruce.permiso ? validarHorario(cruce.permiso.horario) : null;
       return {
         placa,
         estado: decision.estado === 'no_reconocido' ? (cruce.permiso ? 'restringido' : 'no_registrado') : decision.estado,
         restriccion: decision.restriccion,
         motivo: decision.restriccion ? MOTIVO_RESTRICCION[decision.restriccion] : null,
         alerta: cruce.alerta,
-        autorizado: cruce.permiso ? { ...cruce.permiso, horario_texto: describirHorario(cruce.permiso.horario) } : null,
+        autorizado: cruce.permiso ? { ...cruce.permiso, horario: horario!.horario,
+          ...(horario!.error ? { horario_error: 'El horario guardado no es válido. Seleccione un horario antes de guardar.' } : {}),
+          horario_texto: describirHorario(cruce.permiso.horario) } : null,
         ultimos_ingresos: historial.map(x => d.presentar(x)),
       };
     },
@@ -468,7 +610,10 @@ export function casosDetecciones(d: DependenciasDetecciones) {
      */
     async validar(id: number, entrada: unknown, actor: Actor) {
       const b = cuerpo(entrada);
-      const placa = validarPlaca(b.placa_validada);
+      const placaEntrada = b.placa_validada;
+      const placa = placaEntrada == null || (typeof placaEntrada === 'string' && !placaEntrada.trim())
+        ? { ok: true as const, valor: { placa: null } }
+        : validarPlaca(placaEntrada);
       if (!placa.ok) throw errorValidacion(placa.error);
       const excepcion = b.excepcion === true;
       if (excepcion && !tienePermiso(actor.rol as Rol, 'accesos:excepcion')) {
@@ -477,18 +622,37 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       const datos = leerDatosValidacion(b, excepcion);
       if (!datos.ok) throw errorValidacion(datos.error);
       const { tipoVehiculo, observacion } = datos.valor;
-      const ingreso = leerDatosIngreso(b);
-      if (!ingreso.ok) throw errorValidacion(ingreso.error);
       const actual = await d.repositorio.obtener(id);
       if (!actual) throw errorNoEncontrado('Detección no encontrada.');
+      const ingreso = leerDatosIngreso(excepcion ? { ...b, motivo_ingreso: observacion } : b, actual.tipo_movimiento !== 'salida');
+      if (!ingreso.ok) throw errorValidacion(ingreso.error);
       if (actual.tipo_movimiento === 'salida') {
         if (excepcion) throw errorValidacion('La excepción de acceso solo se aplica a ingresos.');
-        await d.repositorio.validarSalida(id, { placa: placa.valor.placa, usuarioId: actor.id });
+        await d.repositorio.validarSalida(id, { placa: placa.valor.placa ?? '', usuarioId: actor.id });
         await d.auditoria.operacion(actor, 'SALIDA_VALIDACION', 'deteccion', id, `${actual.placa_reconocida || 'sin lectura'} → ${placa.valor.placa}`);
         return { message: 'Lectura de salida corregida.', deteccion: await difundir(id, 'deteccion:actualizada') };
       }
 
-      const cruce = await cruzarListas(placa.valor.placa, new Date(actual.fecha_hora_ingreso));
+      const instante = new Date(actual.fecha_hora_ingreso);
+      let cruce: Cruce = placa.valor.placa
+        ? await cruzarListas(placa.valor.placa, instante)
+        : { alerta: null, permiso: null, vigencia: null };
+      // Placa confirmada con la ficha completa y sin permiso ni alerta: se agrega a la lista blanca
+      // (mismo caso de uso que el formulario) y el paso se decide con ese permiso. Nunca con una
+      // placa de la lista negra; un permiso existente (aunque esté fuera de horario) no se duplica.
+      let padron: { accion: 'creado' | 'reactivado' } | null = null;
+      let avisoPadron: string | null = null;
+      const fichaPermiso = b.datos_permiso && typeof b.datos_permiso === 'object' && !Array.isArray(b.datos_permiso) ? b.datos_permiso as Entrada : null;
+      if (placa.valor.placa && fichaPermiso && !excepcion && !cruce.alerta && !cruce.permiso && d.padron
+          && tienePermiso(actor.rol as Rol, 'padron:gestionar')) {
+        try {
+          // El motivo de este ingreso queda como motivo habitual del permiso
+          padron = await d.padron.registrar({ motivo_ingreso: b.motivo_ingreso, ...fichaPermiso, placa: placa.valor.placa }, actor);
+          cruce = await cruzarListas(placa.valor.placa, instante);
+        } catch (e) {
+          avisoPadron = `La placa se confirmó, pero no se agregó a la lista blanca: ${(e as Error).message}`;
+        }
+      }
       const decision = decidirAcceso({ origen: 'manual', ...entradaListas(cruce), excepcion, politica: d.politica() });
       const final = cruce.permiso ? normalizarPlaca(cruce.permiso.placa) || placa.valor.placa : placa.valor.placa;
       await d.repositorio.guardarValidacion(id, {
@@ -498,42 +662,67 @@ export function casosDetecciones(d: DependenciasDetecciones) {
 
       const antes = actual.placa_validada || actual.placa_reconocida || 'sin lectura';
       await d.auditoria.operacion(actor, decision.regla === 'R2-excepcion' ? 'EXCEPCION_ACCESO' : 'VALIDACION', 'deteccion', id,
-        `${antes} → ${final} (${ETIQUETA_ESTADO[decision.estado]}${decision.restriccion ? ` · ${MOTIVO_RESTRICCION[decision.restriccion]}` : ''})${observacion ? ` · ${observacion}` : ''}`
-        + describirDatosIngreso(ingreso.valor));
+        `${antes} → ${final} (${ETIQUETA_ESTADO[decision.estado]}${decision.restriccion ? ` · ${MOTIVO_RESTRICCION[decision.restriccion]}` : ''})${observacion && !excepcion ? ` · ${observacion}` : ''}`
+        + describirDatosIngreso(ingreso.valor) + (padron ? ` · ${padron.accion === 'reactivado' ? 'permiso reactivado' : 'agregado'} en la lista blanca` : ''));
       // La persona atendió el paso: sus alarmas se resuelven
       await d.avisos.resolverPorDeteccion(id);
       const dto = await difundir(id, 'deteccion:actualizada');
       // Si la corrección revela una alerta se avisa; si confirma un permiso, se avisa a quien lo otorgó
       if (decision.estado !== actual.estado_validacion) avisarSiCorresponde(dto, decision, cruce.permiso);
-      return { message: 'Validación registrada.', deteccion: dto };
+      return {
+        message: padron ? `Autorización registrada; la placa se ${padron.accion === 'reactivado' ? 'reactivó' : 'agregó'} en la lista blanca.` : 'Autorización registrada.',
+        deteccion: dto, lista_blanca: padron?.accion ?? null, ...(avisoPadron ? { aviso: avisoPadron } : {}),
+      };
     },
 
     /**
      * Paso registrado a mano (cámara fuera de servicio, placa ilegible…). Se cruza con las listas
      * igual que una lectura automática y NO modifica la lista blanca.
      */
+    /**
+     * Miniaturas de los últimos 30 s de la cámara (dos por segundo) para que el guardia elija la foto
+     * de evidencia de un registro manual: el vehículo que el motor no registró ya pasó cuando se
+     * registra a mano. Solo la cámara que procesa el motor tiene historial.
+     */
+    async cuadrosRegistroManual(camaraIdEntrada: unknown) {
+      const id = validarEntero(camaraIdEntrada, { etiqueta: 'Cámara', min: 1, max: 2_147_483_647, requerido: true });
+      if (!id.ok) throw errorValidacion(id.error);
+      if (id.valor === null) throw errorValidacion('Indique la cámara.');
+      if (!d.evidenciaManual) return { disponible: false, motivo: 'Sin historial de video.', cuadros: [] };
+      return d.evidenciaManual.cuadros(id.valor);
+    },
+
     async registroManual(entrada: unknown, actor: Actor) {
       const r = leerRegistroManual(cuerpo(entrada));
       if (!r.ok) throw errorValidacion(r.error);
-      const { placa, motivo, camaraId, tipoVehiculo } = r.valor;
+      const { placa, motivo, camaraId, tipoVehiculo, marca, cuadroT } = r.valor;
       const ingreso = leerDatosIngreso(cuerpo(entrada));
       if (!ingreso.ok) throw errorValidacion(ingreso.error);
       const direccion = camaraId === null ? 'ingreso' : await d.repositorio.direccionCamara(camaraId);
       if (direccion === null) throw errorValidacion('La cámara seleccionada no existe o no tiene una dirección válida.');
+      // Foto elegida de los últimos 30 s de la cámara: se guarda antes de crear el registro
+      let rutaImagen: string | null = null;
+      if (cuadroT !== null && camaraId !== null) {
+        rutaImagen = d.evidenciaManual ? await d.evidenciaManual.guardar(camaraId, cuadroT) : null;
+        if (!rutaImagen) throw errorValidacion('La foto elegida ya no está en los últimos 30 s de la cámara. Elija otra o registre sin foto.');
+      }
+      const conFoto = rutaImagen ? { rutaImagen } : {};
+      const notaFoto = rutaImagen ? ' · con foto de evidencia' : '';
       if (direccion === 'salida') {
         if (camaraId === null) throw errorValidacion('La salida manual requiere una cámara configurada como salida.');
-        const id = await d.repositorio.crearSalidaManual({ placa, camaraId, usuarioId: actor.id });
-        await d.auditoria.operacion(actor, 'REGISTRO_SALIDA_MANUAL', 'deteccion', id, `${placa} · ${motivo}`);
+        const id = await d.repositorio.crearSalidaManual({ placa, camaraId, usuarioId: actor.id, ...conFoto });
+        await d.auditoria.operacion(actor, 'REGISTRO_SALIDA_MANUAL', 'deteccion', id, `${placa} · ${motivo}${notaFoto}`);
         return { message: 'Salida registrada manualmente.', deteccion: await difundir(id, 'deteccion:nueva') };
       }
       const cruce = await cruzarListas(placa, d.tiempo.ahora());
       const decision = decidirAcceso({ origen: 'manual', ...entradaListas(cruce), politica: d.politica() });
       const id = await d.repositorio.crearManual({
-        placa, camaraId, tipo: tipoVehiculo || cruce.permiso?.tipo_vehiculo || null, usuarioId: actor.id,
+        placa, camaraId, tipo: tipoVehiculo || cruce.permiso?.tipo_vehiculo || null,
+        marca, usuarioId: actor.id, ...conFoto,
       }, cruce, decision);
       if (hayDatosIngreso(ingreso.valor)) await d.repositorio.guardarDatosIngreso(id, ingreso.valor);
       await d.auditoria.operacion(actor, 'REGISTRO_MANUAL', 'deteccion', id,
-        `${placa} (${ETIQUETA_ESTADO[decision.estado]}) · ${motivo}${describirDatosIngreso(ingreso.valor)}`);
+        `${placa} (${ETIQUETA_ESTADO[decision.estado]}) · ${motivo}${describirDatosIngreso(ingreso.valor)}${notaFoto}`);
       const dto = await difundir(id, 'deteccion:nueva');
       avisarSiCorresponde(dto, decision, cruce.permiso);
       return { message: 'Ingreso registrado manualmente.', deteccion: dto };
@@ -546,14 +735,41 @@ export function casosDetecciones(d: DependenciasDetecciones) {
     async editarIngreso(id: number, entrada: unknown, actor: Actor) {
       const datos = leerDatosIngreso(cuerpo(entrada));
       if (!datos.ok) throw errorValidacion(datos.error);
-      if (!hayDatosIngreso(datos.valor)) throw errorValidacion('Indique los nombres y apellidos o el motivo de ingreso.');
+      if (!hayDatosIngreso(datos.valor)) throw errorValidacion('Indique el titular o algún dato del vehículo.');
       const actual = await d.repositorio.obtener(id);
       if (!actual) throw errorNoEncontrado('Detección no encontrada.');
       if (actual.tipo_movimiento === 'salida') throw errorValidacion('Los nombres y el motivo se registran en el ingreso, no en la salida.');
       await d.repositorio.guardarDatosIngreso(id, datos.valor);
+      const actualizado = await d.repositorio.obtener(id);
+      const sinPlaca = actualizado
+        && !actualizado.placa
+        && !actualizado.placa_reconocida
+        && !actualizado.placa_validada;
+      const datosVehiculoCompletos = actualizado?.persona_ingreso
+        && actualizado.vehiculo_tipo
+        && actualizado.vehiculo_marca
+        && actualizado.vehiculo_modelo;
+      if (sinPlaca && datosVehiculoCompletos && d.repositorio.autorizarIngresoSinPlaca) {
+        await d.repositorio.autorizarIngresoSinPlaca(id, actor.id);
+      }
       await d.auditoria.operacion(actor, 'INGRESO_DATOS', 'deteccion', id,
         `${actual.placa_validada || actual.placa_reconocida || 'sin placa'}${describirDatosIngreso(datos.valor)}`);
       return { message: 'Datos del ingreso guardados.', deteccion: await difundir(id, 'deteccion:actualizada') };
+    },
+
+    /** Marca la hora de salida únicamente cuando la ficha de ingreso está completa. */
+    async registrarSalida(id: number, actor: Actor) {
+      const actual = await d.repositorio.obtener(id);
+      if (!actual) throw errorNoEncontrado('Detección no encontrada.');
+      if (actual.tipo_movimiento === 'salida') throw errorValidacion('El registro seleccionado ya es un movimiento de salida.');
+      if (actual.fecha_hora_salida) throw errorValidacion('La hora de salida ya fue registrada.');
+      const faltantes = faltantesIngreso(actual);
+      if (faltantes.length) throw errorValidacion(`Complete los datos antes de registrar la salida. Falta: ${faltantes.join(', ')}.`);
+      if (new Date(actual.fecha_hora_ingreso).getTime() > d.tiempo.ahora().getTime()) throw errorValidacion('La fecha de ingreso no puede ser posterior a la salida.');
+      if (!await d.repositorio.registrarSalida(id)) throw errorValidacion('No se pudo registrar la salida. El ingreso cambió, tiene datos incompletos o ya tiene salida. Actualice el registro.');
+      await d.auditoria.operacion(actor, 'REGISTRO_SALIDA', 'deteccion', id,
+        `${actual.placa_validada || actual.placa_reconocida || 'sin lectura'} · ${d.tiempo.ahora().toISOString()}`);
+      return { message: 'Hora de salida registrada.', deteccion: await difundir(id, 'deteccion:actualizada') };
     },
 
     /** Elimina una detección y su evidencia fotográfica, con motivo auditado. */

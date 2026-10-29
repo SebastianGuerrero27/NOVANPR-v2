@@ -42,7 +42,8 @@ describe('Parámetros del sistema · validación por tipo declarado', () => {
   it('dominios de correo: nombres de host válidos, en minúsculas, sin @ ni repetidos', () => {
     expect(valor(DOMINIOS, ' @ECU911.gob.ec, ecu911.gob.ec ,gob.ec')).toBe('ecu911.gob.ec,gob.ec');
     expect(valor(DOMINIOS, ['ecu911.gob.ec', 'xn--maana-pta.ec'])).toBe('ecu911.gob.ec,xn--maana-pta.ec');
-    expect(valor(DOMINIOS, ' , ')).toBe('ERROR: Dominios de correo permitidos: indique al menos un dominio.');
+    expect(valor(DOMINIOS, ' , ')).toBe('');
+    expect(valor(DOMINIOS, '')).toBe('');
     for (const invalido of ['ecu911', '192.168.1.10', '-ecu911.gob.ec', 'ecu_911.gob.ec', 'ecu911..gob.ec', 'ecu911.gob.e1', 'ecu<911>.ec']) {
       expect(valor(DOMINIOS, invalido)).toMatch(/^ERROR: Dominios de correo permitidos: dominio inválido/);
     }
@@ -123,6 +124,15 @@ describe('Casos de uso · configuración', () => {
     expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'CONFIGURACION', 'configuracion', null, 'sesion_horas: 8 → 10');
     expect(repositorio.recargar).toHaveBeenCalled();
     expect(r).toEqual({ cambiados: 1, parametros });
+  });
+
+  it('guardar lista vacía de dominios permite usar cualquier correo válido', async () => {
+    const { casos, repositorio, auditoria } = preparar();
+    const r = await casos.guardar({ dominios_correo: '' }, ADMIN);
+    expect(repositorio.guardar).toHaveBeenCalledWith('dominios_correo', '', ADMIN.id);
+    expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'CONFIGURACION', 'configuracion', null, 'dominios_correo: ecu911.gob.ec → ');
+    expect(repositorio.recargar).toHaveBeenCalled();
+    expect(r.cambiados).toBe(1);
   });
 
   it('guardar sin cambios reales: no escribe ni audita, pero recarga y responde los parámetros', async () => {

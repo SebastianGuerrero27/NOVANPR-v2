@@ -8,9 +8,11 @@ import { useConsulta, useDiferido } from '../../aplicacion/hooks';
 import type { EstadoSolicitud, SolicitudAcceso } from '../../dominio/tipos';
 import { CATEGORIAS_PERMISO, fecha, fechaHora, relativo } from '../../dominio/formato';
 import { formatearPlaca } from '../../dominio/validacion';
-import { Aviso, Confirmar, FilasEsqueleto, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
+import { Aviso, Confirmar, FilasEsqueleto, Pestanas, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
 import { AprobarSolicitud, FormularioSolicitud } from '../componentes/FormularioSolicitud';
 import { useNotificar } from '../componentes/Notificaciones';
+import Listas from './Listas';
+import PermisosUsuarios from './PermisosUsuarios';
 
 type Vista = 'pendiente' | 'resueltas' | 'todas';
 
@@ -26,7 +28,7 @@ const ESTADO: Record<EstadoSolicitud, { etiqueta: string; clase: string }> = {
  * cancela; el gestor de permisos (y quien tenga solicitudes:resolver) ve todas y las aprueba o
  * rechaza. Nadie resuelve las propias (separación de funciones, aplicada también por la API).
  */
-const SolicitudesAcceso: React.FC<{ incrustada?: boolean; onVerPadron?: () => void }> = ({ incrustada, onVerPadron }) => {
+const ListaSolicitudesAcceso: React.FC<{ incrustada?: boolean; onVerPadron?: () => void }> = ({ incrustada, onVerPadron }) => {
   const { user, puede } = useAuth();
   const crea = puede('solicitudes:crear');
   const verIngresos = puede('operacion:monitorear');
@@ -60,13 +62,16 @@ const SolicitudesAcceso: React.FC<{ incrustada?: boolean; onVerPadron?: () => vo
     <div className={incrustada ? undefined : 'pagina'}>
       <div className="pila">
         <Aviso tipo="info">
-          {resuelve
-            ? <>Revise cada solicitud y conceda un permiso con la vigencia y el horario adecuados. Por <b>separación de funciones</b>, no puede resolver las solicitudes que usted registró.</>
-            : <>Sus solicitudes llegan al <b>gestor de permisos</b> como notificación. Recibirá otra notificación cuando sean resueltas.</>}
+          {/* El gestor de permisos solo entrega permisos: las solicitudes las envían la garita y el administrador */}
+          {resuelve && !crea
+            ? <>Aquí llegan las solicitudes que envían la <b>garita</b> y el <b>administrador</b>. Revise cada una y entregue el permiso con la vigencia y el horario adecuados, o recházela.</>
+            : resuelve
+              ? <>Revise cada solicitud y conceda un permiso con la vigencia y el horario adecuados. Por <b>separación de funciones</b>, no puede resolver las solicitudes que usted registró.</>
+              : <>Sus solicitudes llegan al <b>gestor de permisos</b> como notificación. Recibirá otra notificación cuando sean resueltas.</>}
         </Aviso>
         {error && <Aviso tipo="error">{error}</Aviso>}
-        <Tarjeta titulo={resuelve ? 'Solicitudes de acceso' : 'Mis solicitudes de acceso'}
-          subtitulo="Ingreso de visitas, proveedores y vehículos sin permiso detectados en la garita"
+        <Tarjeta titulo={resuelve && !crea ? 'Solicitudes por resolver' : resuelve ? 'Solicitudes de acceso' : 'Mis solicitudes de acceso'}
+          subtitulo={resuelve && !crea ? 'Pedidos de permiso de la garita: visitas, proveedores y vehículos sin permiso' : 'Ingreso de visitas, proveedores y vehículos sin permiso detectados en la garita'}
           acciones={crea ? <button className="btn btn-navy btn-sm" onClick={() => setNueva(true)}><Plus size={14} /> Nueva solicitud</button> : undefined}
           sinPadding>
           <div className="filtros" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
@@ -141,6 +146,54 @@ const SolicitudesAcceso: React.FC<{ incrustada?: boolean; onVerPadron?: () => vo
       )}
     </div>
   );
+};
+
+/**
+ * El administrador ve aquí, además de las solicitudes, los permisos que otorgaron TODOS los
+ * usuarios (gestores incluidos), con los retirados: un gestor concede la mayoría directamente, sin
+ * solicitud, y esos permisos no aparecían en esta pantalla. Las notificaciones de una solicitud
+ * (?id=) abren la pestaña de solicitudes.
+ */
+const SolicitudesAdministrador: React.FC = () => {
+  const [params, setParams] = useSearchParams();
+  const { datos: pendientes } = useConsulta<number>(() => api.get('/solicitudes-acceso/resumen').then(r => r.data.pendientes), []);
+  const seccion = params.get('seccion') === 'solicitudes' || params.has('id') ? 'solicitudes' : 'permisos';
+  return <div className="pagina"><div className="pila">
+    <Pestanas<'permisos' | 'solicitudes'> valor={seccion} onCambiar={destino => {
+      const siguientes = new URLSearchParams();
+      siguientes.set('seccion', destino);
+      setParams(siguientes);
+    }} opciones={[
+      { valor: 'permisos', etiqueta: 'Permisos otorgados por todos los usuarios', icono: <ShieldCheck size={15} /> },
+      { valor: 'solicitudes', etiqueta: 'Solicitudes', icono: <Clock size={15} />, num: pendientes ?? undefined },
+    ]} />
+    {seccion === 'permisos' ? <PermisosUsuarios incrustada /> : <ListaSolicitudesAcceso incrustada />}
+  </div></div>;
+};
+
+/** En garita también se consultan los permisos concedidos directamente, sin crear una solicitud. */
+const SolicitudesAcceso: React.FC<{ incrustada?: boolean; onVerPadron?: () => void }> = props => {
+  const { puede } = useAuth();
+  const [params, setParams] = useSearchParams();
+  if (!props.incrustada && puede('padron:supervisar')) return <SolicitudesAdministrador />;
+  const consultaPermisos = !props.incrustada && puede('listas:ver') && !puede('solicitudes:resolver');
+  if (!consultaPermisos) return <ListaSolicitudesAcceso {...props} />;
+  const seccion = params.get('seccion') === 'solicitudes' || params.has('id') ? 'solicitudes' : 'permisos';
+  return <div className="pagina"><div className="pila">
+    <Pestanas<'permisos' | 'solicitudes'> valor={seccion} onCambiar={destino => {
+      const siguientes = new URLSearchParams(params);
+      siguientes.set('seccion', destino);
+      siguientes.delete('id');
+      setParams(siguientes);
+    }} opciones={[
+      { valor: 'permisos', etiqueta: 'Permisos otorgados', icono: <ShieldCheck size={15} /> },
+      { valor: 'solicitudes', etiqueta: 'Mis solicitudes', icono: <Clock size={15} /> },
+    ]} />
+    {seccion === 'permisos' ? <>
+      <Aviso tipo="info">Aquí aparecen los permisos registrados por el gestor, incluidos los concedidos directamente. Sus solicitudes y sus respuestas están en <b>Mis solicitudes</b>.</Aviso>
+      <Listas tipo="autorizados" incrustada />
+    </> : <ListaSolicitudesAcceso incrustada />}
+  </div></div>;
 };
 
 export default SolicitudesAcceso;

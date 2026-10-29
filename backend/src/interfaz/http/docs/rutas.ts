@@ -28,6 +28,15 @@ const FILTROS_DETECCIONES: Record<string, CampoDoc> = {
   validado: { tipo: 'string', descripcion: 'Validado por el operador', valores: ['si', 'no'] },
   desde: { tipo: 'string', formato: 'date-time', descripcion: 'Fecha y hora inicial', ejemplo: '2026-10-01T00:00:00' },
   hasta: { tipo: 'string', formato: 'date-time', descripcion: 'Fecha y hora final', ejemplo: '2026-10-01T23:59:59' },
+  aproximada: { tipo: 'string', descripcion: 'La placa tolera confusiones del OCR (O/0, I/1, B/8, S/5…)', valores: ['si'] },
+  buscar: { tipo: 'string', descripcion: 'Placa, titular, cédula, marca, modelo o motivo de ingreso', ejemplo: 'María Pérez' },
+  movimiento: { tipo: 'string', descripcion: 'Tipo de movimiento', valores: ['ingreso', 'salida'] },
+  origen: { tipo: 'string', descripcion: 'Cámara en vivo (RTSP), video de prueba o registro manual', valores: ['camara', 'video', 'manual'] },
+  hora_desde: { tipo: 'string', descripcion: 'Franja horaria local: desde (HH:MM)', ejemplo: '08:00' },
+  hora_hasta: { tipo: 'string', descripcion: 'Franja horaria local: hasta, incluido su minuto (HH:MM); menor que la inicial cruza la medianoche', ejemplo: '10:00' },
+  cerrados: { tipo: 'string', descripcion: 'Ingresos con (si) o sin (no) hora de salida', valores: ['si', 'no'] },
+  completos: { tipo: 'string', descripcion: 'Registros con todos los datos y salida (si) o incompletos (no)', valores: ['si', 'no'] },
+  orden: { tipo: 'string', descripcion: 'Orden por fecha de ingreso', valores: ['reciente', 'antiguo'] },
 };
 
 /** Reglas en dominio/camaras.ts (alfanumérico: letras, números, espacios y . , / # ( ) -). */
@@ -109,7 +118,10 @@ const CUERPO_SOLICITUD: Record<string, CampoDoc> = {
 
 /** Filtros comunes de la consulta y la exportación de la auditoría (dominio/auditoria.ts). */
 const FILTROS_AUDITORIA: Record<string, CampoDoc> = {
-  fuente: { tipo: 'string', valores: ['operaciones', 'cuentas', 'accesos'], descripcion: 'Por omisión `operaciones`' },
+  fuente: {
+    tipo: 'string', valores: ['operaciones', 'cuentas', 'accesos', 'descartes', 'propietario'],
+    descripcion: 'Por omisión `operaciones`. `descartes`: lecturas que descartó el motor; `propietario`: consultas del propietario',
+  },
   q: { tipo: 'string', descripcion: 'Texto a buscar', ejemplo: 'PBA1234' },
   desde: { tipo: 'string', formato: 'date-time' },
   hasta: { tipo: 'string', formato: 'date-time' },
@@ -146,13 +158,22 @@ function rutasLista(prefijo: string, etiqueta: string, nombre: string, permiso: 
     {
       metodo: 'delete', ruta: `${prefijo}/:id(\\d+)`, etiqueta, acceso: permiso,
       resumen: `Retiro (baja lógica) de un registro de la ${nombre}`,
-      cuerpo: { motivo: { tipo: 'string', descripcion: 'Motivo del retiro (mínimo 5 caracteres)', requerido: true, ejemplo: 'Finalizó el contrato' } },
+      cuerpo: { motivo: permiso === 'alertas:gestionar'
+        ? { tipo: 'string', descripcion: 'Motivo del retiro (mínimo 5 caracteres)', requerido: true, ejemplo: 'Vehículo recuperado' }
+        : { tipo: 'string', descripcion: 'Motivo del retiro (opcional; si se envía, mínimo 5 caracteres)', ejemplo: 'Finalizó el contrato' } },
       respuestas: { 400: 'Falta el motivo', 404: 'Registro no encontrado' },
     },
   ];
 }
 
 export const RUTAS: RutaDoc[] = [
+  // Compatibilidad con pantallas anteriores: no se contacta ningún proveedor externo.
+  ...(['consultar-persona', 'consultar-vehiculo', 'estado-consulta-vehiculo'] as const).map((ruta): RutaDoc => ({
+    metodo: ruta === 'estado-consulta-vehiculo' ? 'get' : 'post',
+    ruta: `/api/vehiculos-autorizados/${ruta}`, etiqueta: 'Lista blanca', acceso: 'sesion',
+    resumen: 'Consulta externa retirada; complete los datos manualmente',
+    respuestas: { 410: 'Función retirada. No se consume saldo de proveedores.' },
+  })),
   // ─── Autenticación ──────────────────────────────────────────────────────────
   {
     metodo: 'get', ruta: '/api/auth/estado', etiqueta: 'Autenticación', acceso: 'publica',
@@ -189,7 +210,7 @@ export const RUTAS: RutaDoc[] = [
     resumen: 'Registro público de una cuenta (rol Guardia)',
     descripcion: 'Crea la cuenta pendiente y envía el correo de verificación. Requiere que el registro público esté habilitado.',
     cuerpo: {
-      email: { tipo: 'string', formato: 'email', requerido: true, descripcion: 'Correo institucional (dominios permitidos en la configuración)', ejemplo: 'guardia@ecu911.gob.ec' },
+      email: { tipo: 'string', formato: 'email', requerido: true, descripcion: 'Correo electrónico válido; no se restringe el dominio en las cuentas creadas por administración.', ejemplo: 'guardia@ejemplo.com' },
       nombre_completo: { tipo: 'string', requerido: true, descripcion: 'Nombres y apellidos: letras, espacios y . \' - & (3 a 150)', ejemplo: 'Carlos Andrade' },
       password: { tipo: 'string', formato: 'password', requerido: true, descripcion: '10 a 128 caracteres con mayúscula, minúscula, número y símbolo' },
       cargo: { tipo: 'string', descripcion: 'Letras, números, espacios y . , / # ( ) - (máx. 100)', ejemplo: 'Guardia de garita' },
@@ -268,13 +289,14 @@ export const RUTAS: RutaDoc[] = [
   },
   {
     metodo: 'post', ruta: '/api/usuarios/', etiqueta: 'Usuarios', acceso: 'usuarios:gestionar',
-    resumen: 'Crea una cuenta y envía el enlace para definir la contraseña',
-    descripcion: 'El administrador nunca conoce la contraseña: el usuario la define con el enlace recibido por correo.',
+    resumen: 'Crea una cuenta y permite definir una contraseña inicial o enviar invitación',
+    descripcion: 'La contraseña es opcional. Si se omite, se envía un enlace por correo para que la persona la defina. Si se entrega, se valida y guarda cifrada; nunca se registra en auditoría.',
     cuerpo: {
-      email: { tipo: 'string', formato: 'email', requerido: true, descripcion: 'Correo institucional (dominios permitidos en la configuración)', ejemplo: 'guardia@ecu911.gob.ec' },
+      email: { tipo: 'string', formato: 'email', requerido: true, descripcion: 'Correo electrónico válido; no se restringe el dominio en las cuentas creadas por administración.', ejemplo: 'guardia@ejemplo.com' },
       nombre_completo: { tipo: 'string', requerido: true, descripcion: 'Nombres y apellidos: letras, espacios y . \' - & (3 a 150)', ejemplo: 'Luis Mendoza' },
       rol: { tipo: 'string', requerido: true, valores: ['Admin', 'Guardia', 'GestorPermisos'], ejemplo: 'Guardia' },
       cargo: { tipo: 'string', descripcion: 'Letras, números, espacios y . , / # ( ) - (máx. 100)', ejemplo: 'Guardia de garita' },
+      password: { tipo: 'string', descripcion: 'Opcional: 10 a 128 caracteres, con mayúscula, minúscula, número y símbolo' },
     },
     respuestas: { 201: 'Usuario creado', 400: 'Datos inválidos', 409: 'Ya existe una cuenta con ese correo' },
   },
@@ -306,6 +328,13 @@ export const RUTAS: RutaDoc[] = [
     metodo: 'post', ruta: '/api/usuarios/:id/restablecer-password', etiqueta: 'Usuarios', acceso: 'usuarios:gestionar',
     resumen: 'Envía al usuario un enlace de restablecimiento de contraseña',
     respuestas: { 400: 'Identificador inválido', 404: 'Usuario no encontrado' },
+  },
+  {
+    metodo: 'post', ruta: '/api/usuarios/:id/password', etiqueta: 'Usuarios', acceso: 'usuarios:gestionar',
+    resumen: 'Cambia la contraseña de una cuenta desde la administración',
+    descripcion: 'La contraseña se valida y guarda cifrada; se invalidan enlaces de restablecimiento y sesiones abiertas. La clave nunca se registra en auditoría.',
+    cuerpo: { password: { tipo: 'string', requerido: true, descripcion: '10 a 128 caracteres, con mayúscula, minúscula, número y símbolo' } },
+    respuestas: { 400: 'Identificador o contraseña inválidos', 404: 'Usuario no encontrado' },
   },
   {
     metodo: 'delete', ruta: '/api/usuarios/:id', etiqueta: 'Usuarios', acceso: 'usuarios:gestionar',
@@ -500,9 +529,19 @@ export const RUTAS: RutaDoc[] = [
     consulta: { ...FILTROS_DETECCIONES, ...PAGINACION },
   },
   {
+    metodo: 'get', ruta: '/api/detecciones/historial/resumen', etiqueta: 'Detecciones', acceso: 'operacion:monitorear',
+    resumen: 'Totales del historial completo con los mismos filtros',
+    descripcion: 'Registros, ingresos y salidas, estados, pasos sin lectura, placas distintas, origen (cámara, video de prueba, manual) y período.',
+    consulta: FILTROS_DETECCIONES,
+    respuestas: { 400: 'Filtro inválido' },
+  },
+  {
     metodo: 'get', ruta: '/api/detecciones/recientes', etiqueta: 'Detecciones', acceso: 'operacion:monitorear',
     resumen: 'Últimos pasos vehiculares (monitoreo)',
-    consulta: { limite: { tipo: 'integer', descripcion: 'Cantidad (1 a 50)', ejemplo: 20 } },
+    consulta: {
+      limite: { tipo: 'integer', descripcion: 'Cantidad (1 a 50)', ejemplo: 20 },
+      buscar: { tipo: 'string', descripcion: 'Filtra por placa, titular autorizado o nombre de quien ingresa', ejemplo: 'María Pérez' },
+    },
   },
   {
     metodo: 'get', ruta: '/api/detecciones/exportar', etiqueta: 'Detecciones', acceso: 'operacion:monitorear',
@@ -536,6 +575,11 @@ export const RUTAS: RutaDoc[] = [
     respuestas: { 400: 'Placa fuera del formato ANT, tipo u observación inválidos o falta el motivo de la excepción', 403: 'Sin permiso para excepciones', 404: 'Detección no encontrada' },
   },
   {
+    metodo: 'post', ruta: '/api/detecciones/:id(\\d+)/salida', etiqueta: 'Detecciones', acceso: 'detecciones:validar',
+    resumen: 'Registra la hora de salida en un ingreso existente',
+    respuestas: { 400: 'El registro no es un ingreso o ya tiene salida', 404: 'Detección no encontrada' },
+  },
+  {
     metodo: 'post', ruta: '/api/detecciones/registro-manual', etiqueta: 'Detecciones', acceso: 'detecciones:validar',
     resumen: 'Registra a mano un paso vehicular',
     descripcion: 'Se cruza con las listas como una lectura automática; no modifica el padrón de autorizados.',
@@ -544,19 +588,35 @@ export const RUTAS: RutaDoc[] = [
       motivo: { tipo: 'string', requerido: true, descripcion: 'Texto libre sin < >, 5 a 300 caracteres', ejemplo: 'Cámara fuera de servicio' },
       camara_id: { tipo: 'integer', ejemplo: 1 },
       tipo_vehiculo: { tipo: 'string', ejemplo: 'Camioneta' },
+      marca: { tipo: 'string', descripcion: 'Marca del vehículo (opcional, hasta 50 caracteres)', ejemplo: 'Toyota' },
       persona_ingreso: { tipo: 'string', descripcion: 'Nombres y apellidos de quien ingresa (solo ingresos)', ejemplo: 'Ana Pérez' },
       motivo_ingreso: { tipo: 'string', descripcion: 'Motivo de ingreso (solo ingresos)', ejemplo: 'Reunión de coordinación' },
+      cuadro_t: {
+        tipo: 'number', ejemplo: 1792634400.5,
+        descripcion: 'Hora (s desde 1970) del cuadro de los últimos 30 s elegido como foto de evidencia; requiere camara_id',
+      },
     },
-    respuestas: { 201: 'Ingreso registrado', 400: 'Placa fuera del formato ANT, motivo, tipo o cámara inválidos' },
+    respuestas: { 201: 'Ingreso registrado', 400: 'Placa fuera del formato ANT, motivo, tipo o cámara inválidos, o la foto ya no está en los últimos 30 s' },
+  },
+  {
+    metodo: 'get', ruta: '/api/detecciones/registro-manual/cuadros', etiqueta: 'Detecciones', acceso: 'detecciones:validar',
+    resumen: 'Fotos de los últimos 30 s de la cámara para el registro manual',
+    descripcion: 'Dos miniaturas por segundo (JPEG en base64, la más reciente primero) de la cámara que procesa el motor ANPR; '
+      + 'el guardia elige la que muestra el vehículo y su hora va como cuadro_t del registro manual.',
+    consulta: { camara_id: { tipo: 'integer', requerido: true, ejemplo: 1 } },
+    respuestas: { 200: '{ disponible, motivo?, cuadros: [{ t, miniatura }] }', 400: 'Falta la cámara' },
   },
   {
     metodo: 'patch', ruta: '/api/detecciones/:id(\\d+)/ingreso', etiqueta: 'Detecciones', acceso: 'detecciones:validar',
-    resumen: 'Registra quién ingresa y el motivo de ingreso',
-    descripcion: 'Columnas «Nombres y apellidos» y «Observaciones» del reporte de control vehicular. Un campo ausente no cambia; '
-      + 'vacío, lo borra. Solo en ingresos; queda en la auditoría.',
+    resumen: 'Edita titular y datos del vehículo de un ingreso',
+    descripcion: 'Permite actualizar solo los campos enviados; un campo ausente no cambia y vacío lo borra. Solo en ingresos; queda en la auditoría.',
     cuerpo: {
       persona_ingreso: { tipo: 'string', descripcion: 'Letras, espacios y . \' - &, hasta 150 caracteres', ejemplo: 'Sbte. María Cevallos' },
       motivo_ingreso: { tipo: 'string', descripcion: 'Texto libre sin < >, hasta 300 caracteres', ejemplo: 'Compras públicas' },
+      tipo_vehiculo: { tipo: 'string', descripcion: 'Tipo de vehículo, hasta 50 caracteres', ejemplo: 'Camioneta' },
+      marca: { tipo: 'string', descripcion: 'Marca, hasta 50 caracteres', ejemplo: 'Toyota' },
+      modelo: { tipo: 'string', descripcion: 'Modelo, hasta 50 caracteres', ejemplo: 'Hilux' },
+      color: { tipo: 'string', descripcion: 'Color, hasta 30 caracteres', ejemplo: 'Blanco' },
     },
     respuestas: { 400: 'Sin datos, nombre o motivo inválidos, o el paso es una salida', 404: 'Detección no encontrada' },
   },
@@ -581,6 +641,40 @@ export const RUTAS: RutaDoc[] = [
   // ─── Listas de control ──────────────────────────────────────────────────────
   ...rutasLista('/api/vehiculos-autorizados', 'Lista blanca', 'lista blanca',
     'padron:gestionar', CUERPO_AUTORIZADO),
+  {
+    metodo: 'post', ruta: '/api/vehiculos-autorizados/importar', etiqueta: 'Lista blanca', acceso: 'padron:gestionar',
+    resumen: 'Importa permisos desde una hoja de cálculo (.xlsx o .csv)',
+    descripcion: 'El cuerpo es el archivo (máximo 5 MB y 500 permisos). Columnas: id, nombres, cedula, institucion, cargo, placa, marca, '
+      + 'modelo, tipo, color; el id solo identifica la fila y no se guarda. Cada fila se valida como el formulario: una placa ya activa se '
+      + 'omite, una retirada se reactiva. Con ?simular=si devuelve la vista previa sin guardar. Queda en la auditoría.',
+    consulta: {
+      simular: { tipo: 'string', descripcion: 'Vista previa: valida sin guardar', valores: ['si'] },
+      archivo: { tipo: 'string', descripcion: 'Nombre del archivo, para la auditoría', ejemplo: 'permisos_garita.xlsx' },
+    },
+    respuestas: { 400: 'Archivo vacío, ilegible, sin la columna nombres o con más de 500 permisos' },
+  },
+  {
+    metodo: 'get', ruta: '/api/vehiculos-autorizados/registro', etiqueta: 'Lista blanca', acceso: 'padron:supervisar',
+    resumen: 'Registro de permisos de todos los usuarios (administrador)',
+    descripcion: 'Permisos activos y retirados (marca `activo`) con quién los registró, y el resumen de lo que otorgó cada gestor.',
+    consulta: {
+      usuario: { tipo: 'integer', descripcion: 'ID del usuario que registró los permisos', ejemplo: 2 },
+      estado: { tipo: 'string', descripcion: 'Por omisión `todos`', valores: ['activos', 'retirados', 'todos'] },
+    },
+    respuestas: { 400: 'Filtro inválido' },
+  },
+  {
+    metodo: 'post', ruta: '/api/vehiculos-autorizados/:id(\\d+)/reactivar', etiqueta: 'Lista blanca', acceso: 'padron:supervisar',
+    resumen: 'Reactiva un permiso retirado con sus mismos datos',
+    cuerpo: { motivo: { tipo: 'string', descripcion: 'Motivo de la reactivación (opcional; si se envía, mínimo 5 caracteres)', ejemplo: 'Renovó el contrato' } },
+    respuestas: { 400: 'Motivo demasiado corto', 404: 'Registro no encontrado', 409: 'Ya está activo u otra persona tiene la cédula' },
+  },
+  {
+    metodo: 'delete', ruta: '/api/vehiculos-autorizados/:id(\\d+)/definitivo', etiqueta: 'Lista blanca', acceso: 'padron:supervisar',
+    resumen: 'Elimina definitivamente un permiso retirado o vencido',
+    descripcion: 'Solo si ningún paso del historial lo referencia (si tiene ingresos se conserva retirado). Borra su evidencia propia y queda en la auditoría.',
+    respuestas: { 404: 'Permiso no encontrado', 409: 'Permiso vigente o con ingresos en el historial' },
+  },
   ...rutasLista('/api/blacklist', 'Lista negra', 'lista negra', 'alertas:gestionar', CUERPO_ALERTA),
 
   // ─── Panel ──────────────────────────────────────────────────────────────────
@@ -594,7 +688,14 @@ export const RUTAS: RutaDoc[] = [
   },
   {
     metodo: 'get', ruta: '/api/panel/administracion', etiqueta: 'Panel', acceso: 'usuarios:gestionar',
-    resumen: 'Panel de administración: cuentas, accesos, actividad y servicios',
+    resumen: 'Panel de administración: cuentas y servicios',
+  },
+  {
+    metodo: 'get', ruta: '/api/panel/cpu', etiqueta: 'Panel', acceso: 'usuarios:gestionar',
+    resumen: 'Uso de CPU del equipo, del backend y del motor ANPR',
+    descripcion: 'Porcentaje de la capacidad total del equipo (todos sus núcleos) desde la consulta anterior, medido sin '
+      + 'Prometheus: el equipo por /proc/stat y el backend y el motor por el cgroup de su contenedor (la cifra de docker stats). '
+      + 'null si no hay dato.',
   },
 
   // ─── Monitoreo ──────────────────────────────────────────────────────────────
@@ -619,18 +720,6 @@ export const RUTAS: RutaDoc[] = [
   },
 
   // ─── Reportes ───────────────────────────────────────────────────────────────
-  {
-    metodo: 'get', ruta: '/api/reportes/', etiqueta: 'Reportes', acceso: 'reportes:ver',
-    resumen: 'Reporte consolidado de un período',
-    descripcion: 'Por omisión, los últimos 7 días locales; máximo un año por consulta. Fechas AAAA-MM-DD o ISO 8601 y cámara '
-      + 'entera positiva; un valor inválido responde 400 (antes se ignoraba).',
-    consulta: {
-      desde: { tipo: 'string', formato: 'date-time', ejemplo: '2026-09-01T00:00:00' },
-      hasta: { tipo: 'string', formato: 'date-time', ejemplo: '2026-09-30T23:59:59' },
-      camara: { tipo: 'integer', descripcion: 'ID de la cámara', ejemplo: 1 },
-    },
-    respuestas: { 400: 'Fecha o cámara inválida, período invertido o mayor a un año' },
-  },
   {
     metodo: 'get', ruta: '/api/reportes/control-vehicular', etiqueta: 'Reportes', acceso: 'reportes:ver',
     resumen: 'Reporte de control vehicular de la garita (PDF o Excel)',
@@ -683,7 +772,7 @@ export const RUTAS: RutaDoc[] = [
     archivo: 'text/csv',
   },
   {
-    metodo: 'get', ruta: '/api/auditoria/:fuente(operaciones|cuentas|accesos)/:id(\\d+)', etiqueta: 'Auditoría', acceso: 'auditoria:ver',
+    metodo: 'get', ruta: '/api/auditoria/:fuente(operaciones|cuentas|accesos|descartes|propietario)/:id(\\d+)', etiqueta: 'Auditoría', acceso: 'auditoria:ver',
     resumen: 'Detalle de un registro de auditoría (todas sus columnas)',
     respuestas: { 400: 'Identificador inválido', 404: 'Registro de auditoría no encontrado' },
   },
@@ -692,6 +781,7 @@ export const RUTAS: RutaDoc[] = [
     resumen: 'Retención: traslada al archivo los registros antiguos',
     descripcion: 'Mueve los registros con más de `dias` días a AuditoriaOperacionesArchivo, AuditoriaUsuariosArchivo y '
       + 'AuditoriaAccesosArchivo en una sola transacción (copia y después elimina solo lo copiado): no se pierde evidencia. '
+      + 'Los descartes del motor y las consultas de propietario no tienen tabla de archivo y no se trasladan. '
       + 'Responde { archivados: { operaciones, cuentas, accesos } } y queda en la auditoría (AUDITORIA_RETENCION).',
     cuerpo: { dias: { tipo: 'integer', requerido: true, descripcion: 'Antigüedad mínima, en días, de lo que se archiva (365 a 3650)', ejemplo: 730 } },
     respuestas: { 400: 'Plazo fuera de 365 a 3650 días' },
@@ -711,33 +801,6 @@ export const RUTAS: RutaDoc[] = [
       query: { tipo: 'string', ejemplo: 'ticket=…' },
     },
     respuestas: { 200: 'Autorizado', 401: 'Denegado' },
-  },
-
-  // ─── Evaluación ─────────────────────────────────────────────────────────────
-  {
-    metodo: 'get', ruta: '/api/evaluacion/resumen', etiqueta: 'Evaluación', acceso: 'evaluacion:ver',
-    resumen: 'Métricas de evaluación del reconocimiento en un período',
-    descripcion: 'Exactitud de placa, CER, tasas de falsa aceptación y falso rechazo y latencia, con intervalos de confianza de '
-      + 'Wilson al 95 %, sobre los pasos validados por el personal. Días inclusivos (el final hasta las 23:59:59).',
-    consulta: {
-      desde: { tipo: 'string', formato: 'date', ejemplo: '2026-09-01' },
-      hasta: { tipo: 'string', formato: 'date', ejemplo: '2026-09-30' },
-      camara_id: { tipo: 'integer', ejemplo: 1 },
-    },
-    respuestas: { 400: 'Fecha inválida, período invertido o cámara inválida' },
-  },
-  {
-    metodo: 'get', ruta: '/api/evaluacion/export.csv', etiqueta: 'Evaluación', acceso: 'evaluacion:ver',
-    resumen: 'CSV de evaluación (una fila por paso vehicular)',
-    descripcion: 'Alimenta services/anpr/scripts/estadistica.py (bootstrap, McNemar). Los textos que empiezan como fórmula '
-      + '(= + - @) llevan un apóstrofo delante (inyección CSV); los números se exportan sin cambios.',
-    consulta: {
-      desde: { tipo: 'string', formato: 'date', ejemplo: '2026-09-01' },
-      hasta: { tipo: 'string', formato: 'date', ejemplo: '2026-09-30' },
-      camara_id: { tipo: 'integer', ejemplo: 1 },
-    },
-    archivo: 'text/csv',
-    respuestas: { 400: 'Fecha inválida, período invertido o cámara inválida' },
   },
 
   // ─── Propietario ────────────────────────────────────────────────────────────
@@ -832,14 +895,6 @@ export const RUTAS: RutaDoc[] = [
     resumen: 'Envía un push de prueba a los equipos del usuario',
     respuestas: { 404: 'Sin equipos suscritos', 503: 'Canal push no disponible' },
   },
-  {
-    metodo: 'get', ruta: '/api/notificaciones/metricas', etiqueta: 'Notificaciones', acceso: 'evaluacion:ver',
-    resumen: 'Indicadores del canal de notificación (TTA, escalamiento)',
-    descripcion: 'Tiempo de reconocimiento por prioridad (mediana y p95), tasa de alarmas por hora y ventanas de avalancha (ISA-18.2).',
-    consulta: { dias: { tipo: 'integer', descripcion: 'Período en días (1 a 90)', ejemplo: 7 } },
-    respuestas: { 400: 'Días fuera de 1 a 90' },
-  },
-
   // ─── Solicitudes de acceso ──────────────────────────────────────────────────
   {
     metodo: 'get', ruta: '/api/solicitudes-acceso/', etiqueta: 'Solicitudes de acceso', acceso: 'sesion',

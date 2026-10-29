@@ -40,7 +40,7 @@ const ANCHOS = [62, 150, 80, 72, 84, 56, 56];
 const BORDE = '#94a3b8';
 const TINTA = '#0f172a';
 
-export function pdfControl(h: HojaControl): Promise<Buffer> {
+export function pdfControl(h: HojaControl, soloRegistros = false): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4', layout: 'landscape', margin: MARGEN, bufferPages: true,
@@ -61,7 +61,7 @@ export function pdfControl(h: HojaControl): Promise<Buffer> {
     doc.fillColor(TINTA).font('Helvetica-Bold').fontSize(14).text(h.sede, MARGEN, MARGEN + 2, { width: ancho, align: 'center' });
     doc.fontSize(12).text(h.titulo, { width: ancho, align: 'center' });
     doc.fontSize(10.5).text(h.lugar, { width: ancho, align: 'center' });
-    doc.font('Helvetica').fontSize(9.5).text(lineaTurno(h), MARGEN, MARGEN + 66, { width: ancho });
+    doc.font('Helvetica').fontSize(9.5).text(soloRegistros ? `Registros con salida registrada · ${h.filas.length} registros · Generado: ${h.generado}` : lineaTurno(h), MARGEN, MARGEN + 66, { width: ancho });
     let y = doc.y + 8;
 
     const fila = (celdas: string[], negrita: boolean) => {
@@ -86,17 +86,19 @@ export function pdfControl(h: HojaControl): Promise<Buffer> {
     fila(COLUMNAS_CONTROL.map(c => c.titulo), true);
     if (h.filas.length === 0) {
       doc.lineWidth(0.6).rect(MARGEN, y, ancho, 22).strokeColor(BORDE).stroke();
-      doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#475569').text(SIN_INGRESOS, MARGEN, y + 7, { width: ancho, align: 'center' });
+      doc.font('Helvetica-Oblique').fontSize(8.5).fillColor('#475569').text(soloRegistros ? 'Sin registros con salida para los filtros seleccionados.' : SIN_INGRESOS, MARGEN, y + 7, { width: ancho, align: 'center' });
       y += 22;
     }
     for (const f of h.filas) fila(valores(f), false);
 
     // Firma del agente entrante
+    if (!soloRegistros) {
     if (y + 74 > limite()) { doc.addPage(); y = MARGEN; }
     const xFirma = MARGEN + ancho - 260;
     doc.lineWidth(0.8).strokeColor(TINTA).moveTo(xFirma, y + 50).lineTo(xFirma + 220, y + 50).stroke();
     doc.font('Helvetica-Bold').fontSize(8.5).fillColor(TINTA).text('Firma del agente entrante', xFirma, y + 54, { width: 220, align: 'center' });
     doc.font('Helvetica').fontSize(8.5).text(h.agente, xFirma, doc.y + 1, { width: 220, align: 'center' });
+    }
 
     // Pie de cada página (sin margen inferior para que el texto no abra otra página)
     const paginas = doc.bufferedPageRange();

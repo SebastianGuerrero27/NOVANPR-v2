@@ -31,6 +31,17 @@ function falsos(estado: { duplicada?: number | null; usuarios?: number[]; subs?:
 afterEach(() => configurarPuertos());
 
 describe('centro de notificaciones', () => {
+  it('un permiso otorgado se guarda y asigna a guardias y administración, excluyendo al gestor autor', async () => {
+    const { p, emitidos } = falsos({ usuarios: [3, 1] });
+    configurarPuertos(p);
+    await notificar({ tipo: 'padron.permiso_otorgado', titulo: 'Permiso registrado', mensaje: 'Nuevo permiso',
+      datos: { vehiculo_autorizado_id: 77 }, destinatarios: { excluir: [9] } });
+    expect(p.insertar).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'padron.permiso_otorgado', datos: JSON.stringify({ vehiculo_autorizado_id: 77 }) }));
+    expect(p.asignar).toHaveBeenCalledWith(41, expect.arrayContaining(['ADMIN', 'GUARDIA']), [], [9]);
+    expect((p.asignar as jest.Mock).mock.calls[0][1]).not.toContain('GESTOR_PERMISOS');
+    expect(emitidos).toEqual([expect.objectContaining({ usuarios: [3, 1], evento: 'notificacion:nueva' })]);
+  });
+
   it('guarda, asigna por permiso (roles del catálogo) y emite a cada destinatario', async () => {
     const { p, emitidos } = falsos();
     configurarPuertos(p);

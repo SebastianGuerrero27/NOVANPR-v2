@@ -1,224 +1,253 @@
-import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Download, FileSpreadsheet, FileText, Printer, ShieldAlert } from 'lucide-react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { CarFront, ClipboardList, Download, FileSpreadsheet, FileText, Printer, Search, ShieldCheck } from 'lucide-react';
 import api, { mensajeError, mensajeErrorDescarga } from '../../infraestructura/api';
-import logoEcu911 from '../../assets/ecu911.png';
+import { useAuth } from '../../aplicacion/AuthContext';
 import { useConsulta } from '../../aplicacion/hooks';
-import type { Camara } from '../../dominio/tipos';
-import { diaCorto, fecha, fechaHora, fechaIsoLocal, limiteDia, NIVELES_ALERTA, nombreDescarga, numero, porcentaje, SERIES_ESTADO } from '../../dominio/formato';
+import type { Deteccion, Pagina } from '../../dominio/tipos';
+import { fecha, fechaHora, fechaIsoLocal, limiteDia, nombreDescarga, numero } from '../../dominio/formato';
+import { formatearPlaca, normalizarPlaca, validarPlaca } from '../../dominio/validacion';
 import { descargarBlob } from '../../infraestructura/descargas';
-import { Aviso, Cargando, Kpi, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
-import { BarraDistribucion, BarrasApiladas, BarrasHorizontales, Leyenda } from '../componentes/Graficos';
+import { Aviso, Cargando, Pestanas, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
+import { Informe, ResumenInforme, TablaAccesosInforme } from '../componentes/InformeImprimible';
+import { type ResultadoBusqueda } from '../componentes/SituacionPlaca';
 import { useNotificar } from '../componentes/Notificaciones';
+import { SelectorPeriodo } from '../componentes/SelectorPeriodo';
 
-type Periodo = 'hoy' | '7d' | '30d' | 'mes' | 'personalizado';
+/**
+ * Reportes para consultar e imprimir:
+ *   - Accesos por fecha: autorizados, no autorizados, alertas o pendientes de un período.
+ *   - Historial de un vehículo: su situación en las listas y cada día que ingresó.
+ *   - Hoja de control de garita: el formato oficial en PDF o Excel.
+ * Cada informe se muestra como el documento que se imprime (logo, datos, tabla y firmas).
+ */
 
-function rango(p: Periodo, desde: string, hasta: string): { desde: string; hasta: string } {
+type Vista = 'accesos' | 'vehiculo' | 'control';
+type TipoAcceso = 'todos' | 'autorizados' | 'no_autorizados' | 'alertas' | 'pendientes';
+
+const TIPOS: Record<TipoAcceso, { etiqueta: string; titulo: string; estado?: string }> = {
+  todos: { etiqueta: 'Todos', titulo: 'Reporte de accesos vehiculares' },
+  autorizados: { etiqueta: 'Autorizados', titulo: 'Reporte de accesos autorizados', estado: 'autorizado' },
+  no_autorizados: { etiqueta: 'No autorizados', titulo: 'Reporte de accesos no autorizados', estado: 'no_reconocido,alerta' },
+  alertas: { etiqueta: 'Lista negra', titulo: 'Reporte de alertas de lista negra', estado: 'alerta' },
+  pendientes: { etiqueta: 'Pendientes', titulo: 'Reporte de accesos pendientes de autorización', estado: 'pendiente_revision' },
+};
+
+/** Máximo de filas por informe impreso (20 páginas de la API). */
+const MAX_FILAS = 2000;
+
+/** Todos los ingresos que cumplen los filtros, en orden cronológico, hasta MAX_FILAS. */
+async function cargarAccesos(params: Record<string, string | undefined>): Promise<{ items: Deteccion[]; total: number }> {
+  const pagina = (n: number) => api.get<Pagina<Deteccion>>('/detecciones', { params: { ...params, movimiento: 'ingreso', orden: 'antiguo', pagina: n, tamano: 100 } }).then(r => r.data);
+  const primera = await pagina(1);
+  const items = [...primera.items];
+  const paginas = Math.min(Math.ceil(primera.total / 100), MAX_FILAS / 100);
+  for (let n = 2; n <= paginas; n++) items.push(...(await pagina(n)).items);
+  return { items, total: primera.total };
+}
+
+const textoDia = (ymd: string) => fecha(`${ymd}T12:00:00-05:00`);
+const textoPeriodo = (desde: string, hasta: string) => (desde === hasta ? textoDia(desde) : `${textoDia(desde)} al ${textoDia(hasta)}`);
+
+/* ─────────────── Accesos por fecha ─────────────── */
+
+const ReporteAccesos: React.FC = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const notificar = useNotificar();
   const hoy = fechaIsoLocal();
-  const menos = (n: number) => fechaIsoLocal(new Date(Date.now() - n * 86400000));
-  switch (p) {
-    case 'hoy': return { desde: hoy, hasta: hoy };
-    case '7d': return { desde: menos(6), hasta: hoy };
-    case '30d': return { desde: menos(29), hasta: hoy };
-    case 'mes': return { desde: `${hoy.slice(0, 8)}01`, hasta: hoy };
-    default: return { desde: desde || menos(6), hasta: hasta || hoy };
-  }
-}
+  const [desde, setDesde] = useState(hoy);
+  const [hasta, setHasta] = useState(hoy);
+  const [tipo, setTipo] = useState<TipoAcceso>('todos');
+  const [exportando, setExportando] = useState(false);
+  const params = { desde: limiteDia(desde), hasta: limiteDia(hasta, true), estado: TIPOS[tipo].estado };
+  const { datos, cargando, error } = useConsulta(() => cargarAccesos(params), [desde, hasta, tipo]);
+  const filas = datos?.items ?? [];
+  const cuenta = (...estados: string[]) => filas.filter(d => estados.includes(d.estado_validacion)).length;
 
-interface Reporte {
-  periodo: { desde: string; hasta: string; camara: number | null };
-  totales: { total: number; autorizados: number; alertas: number; no_registrados: number; pendientes: number; validados: number; manuales: number; placas_distintas: number; latencia_media_ms: number | null; confianza_ocr_media: number | null };
-  por_dia: { fecha: string; total: number; autorizados: number; alertas: number; no_registrados: number; pendientes: number }[];
-  por_hora: { hora: number; total: number }[];
-  por_camara: { camara_id: number; camara: string; total: number; autorizados: number; alertas: number; no_registrados: number; pendientes: number }[];
-  por_tipo: { tipo: string; total: number }[];
-  placas_frecuentes: { placa: string; ingresos: number; ultimo: string; estado: string; propietario: string | null }[];
-  validacion_por_usuario: { usuario: string; validaciones: number; correcciones: number }[];
-  alertas: { id: number; fecha_hora_ingreso: string; placa: string | null; motivo: string | null; nivel_alerta: string | null; camara: string | null; validado_manualmente: boolean }[];
-}
+  const exportar = async () => {
+    setExportando(true);
+    try {
+      const r = await api.get('/detecciones/exportar', { params: { ...params, movimiento: 'ingreso', orden: 'antiguo' }, responseType: 'blob' });
+      descargarBlob(r.data, nombreDescarga(r.headers['content-disposition'], `accesos_${desde}_${hasta}.csv`));
+    } catch (e) { notificar('error', 'No se pudo exportar', mensajeError(e)); } finally { setExportando(false); }
+  };
 
-const SERIE_TOTAL = [{ clave: 'total', etiqueta: 'Ingresos', color: '#15315d' }];
+  return <>
+    <Tarjeta className="no-imprimir">
+      <div className="filtros">
+        <SelectorPeriodo prefijo="ra" desde={desde} hasta={hasta} onCambiar={(d, h) => { setDesde(d || hoy); setHasta(h || hoy); }} />
+        <div className="campo"><span className="etiqueta-campo">Accesos</span>
+          <Segmentado<TipoAcceso> valor={tipo} onCambiar={setTipo} opciones={(Object.keys(TIPOS) as TipoAcceso[]).map(t => ({ valor: t, etiqueta: TIPOS[t].etiqueta }))} />
+        </div>
+        <div className="fila" style={{ marginLeft: 'auto' }}>
+          <button className="btn btn-secondary" onClick={exportar} disabled={exportando || !filas.length}><Download size={15} /> {exportando ? 'Exportando…' : 'Excel (CSV)'}</button>
+          <button className="btn btn-navy" onClick={() => window.print()} disabled={!filas.length}><Printer size={15} /> Imprimir</button>
+        </div>
+      </div>
+    </Tarjeta>
+    {error && <Aviso tipo="error">{error}</Aviso>}
+    {cargando && !datos ? <Cargando alto={260} /> : (
+      <Informe titulo={TIPOS[tipo].titulo} generadoPor={user?.nombre}
+        datos={[['Período', textoPeriodo(desde, hasta)], ['Accesos', TIPOS[tipo].etiqueta], ['Registros', numero(datos?.total ?? 0)]]}>
+        <ResumenInforme cifras={[
+          ['Ingresos', numero(filas.length)], ['Autorizados', numero(cuenta('autorizado'))], ['No autorizados', numero(cuenta('no_reconocido'))],
+          ['Lista negra', numero(cuenta('alerta'))], ['Pendientes', numero(cuenta('pendiente_revision'))], ['Con salida', numero(filas.filter(d => d.fecha_hora_salida).length)],
+        ]} />
+        {datos && datos.total > filas.length && <p className="informe-nota">Se muestran los primeros {numero(filas.length)} de {numero(datos.total)} registros. Acote el período o use la exportación a Excel para el detalle completo.</p>}
+        {filas.length
+          ? <TablaAccesosInforme filas={filas} onAbrir={d => navigate(`/detecciones/${d.id}`)} />
+          : <p className="informe-vacio">No hay accesos {tipo === 'todos' ? '' : `${TIPOS[tipo].etiqueta.toLowerCase()} `}registrados en el período.</p>}
+      </Informe>
+    )}
+  </>;
+};
+
+/* ─────────────── Historial de un vehículo ─────────────── */
+
+const SITUACION: Record<ResultadoBusqueda['estado'], string> = {
+  autorizado: 'Autorizado en la lista blanca', alerta: 'En la lista negra (alerta)', restringido: 'Permiso no vigente en este momento', no_registrado: 'No consta en las listas',
+};
+
+const ReporteVehiculo: React.FC = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [texto, setTexto] = useState('');
+  const [consulta, setConsulta] = useState<{ placa: string; desde: string; hasta: string } | null>(null);
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const [errorPlaca, setErrorPlaca] = useState<string | null>(null);
+
+  const { datos, cargando, error } = useConsulta(async () => {
+    if (!consulta) return null;
+    const [situacion, accesos] = await Promise.all([
+      api.get<ResultadoBusqueda & { autorizado: Record<string, string | null> | null }>(`/detecciones/buscar-placa/${encodeURIComponent(consulta.placa)}`).then(r => r.data),
+      cargarAccesos({ placa: consulta.placa, desde: consulta.desde ? limiteDia(consulta.desde) : undefined, hasta: consulta.hasta ? limiteDia(consulta.hasta, true) : undefined }),
+    ]);
+    // La búsqueda por placa es parcial: el informe es de esta placa exacta
+    return { situacion, items: accesos.items.filter(d => normalizarPlaca(d.placa) === consulta.placa), total: accesos.total };
+  }, [consulta]);
+
+  const consultar = (e: React.FormEvent) => {
+    e.preventDefault();
+    const v = validarPlaca(texto);
+    if (!v.ok) { setErrorPlaca(v.error); return; }
+    setErrorPlaca(null);
+    setConsulta({ placa: v.valor.placa, desde, hasta });
+  };
+
+  const filas = datos?.items ?? [];
+  const permiso = datos?.situacion.estado === 'autorizado' || datos?.situacion.estado === 'restringido' ? datos.situacion.autorizado : null;
+  const dias = new Set(filas.map(d => fecha(d.fecha_hora_ingreso))).size;
+
+  return <>
+    <Tarjeta className="no-imprimir">
+      <form className="filtros" onSubmit={consultar}>
+        <div className="campo"><label htmlFor="r-placa">Placa del vehículo</label>
+          <input id="r-placa" className="input placa-input" value={texto} maxLength={8} placeholder="ABC-1234" autoComplete="off"
+            onChange={e => setTexto(e.target.value.toUpperCase())} aria-invalid={Boolean(errorPlaca)} />
+          {errorPlaca && <span className="error">{errorPlaca}</span>}
+        </div>
+        <div className="campo" style={{ minWidth: 150 }}><label htmlFor="rv-desde">Desde (opcional)</label>
+          <input id="rv-desde" type="date" className="input" value={desde} max={hasta || fechaIsoLocal()} onChange={e => setDesde(e.target.value)} /></div>
+        <div className="campo" style={{ minWidth: 150 }}><label htmlFor="rv-hasta">Hasta (opcional)</label>
+          <input id="rv-hasta" type="date" className="input" value={hasta} min={desde || undefined} max={fechaIsoLocal()} onChange={e => setHasta(e.target.value)} /></div>
+        <button type="submit" className="btn btn-navy"><Search size={15} /> Consultar</button>
+        <button type="button" className="btn btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => window.print()} disabled={!datos}><Printer size={15} /> Imprimir</button>
+      </form>
+    </Tarjeta>
+    {error && <Aviso tipo="error">{error}</Aviso>}
+    {!consulta ? (
+      <Tarjeta><Vacio titulo="Consulte una placa" icono={<CarFront size={22} />}
+        texto="Escriba la placa (por ejemplo ABC-1234) para ver su situación en las listas y cada ingreso registrado. Puede acotar las fechas." /></Tarjeta>
+    ) : cargando && !datos ? <Cargando alto={260} /> : datos && (
+      <Informe titulo={`Historial del vehículo ${formatearPlaca(consulta.placa)}`} generadoPor={user?.nombre}
+        datos={[
+          ['Placa', <span className="informe-placa">{formatearPlaca(consulta.placa)}</span>],
+          ['Situación', SITUACION[datos.situacion.estado]],
+          ['Período', consulta.desde && consulta.hasta ? textoPeriodo(consulta.desde, consulta.hasta)
+            : consulta.desde ? `Desde el ${textoDia(consulta.desde)}` : consulta.hasta ? `Hasta el ${textoDia(consulta.hasta)}` : 'Todo el historial'],
+          ...(permiso ? [
+            ['Titular', permiso.propietario ?? '—'], ['Cédula', permiso.cedula ?? '—'],
+            ['Vehículo', [permiso.tipo_vehiculo, permiso.marca, permiso.modelo, permiso.color].filter(Boolean).join(' · ') || '—'],
+            ['Vigencia', permiso.fecha_vencimiento ? `hasta ${fecha(permiso.fecha_vencimiento)}` : 'Sin vencimiento'],
+          ] as [string, string][] : []),
+          ...(datos.situacion.estado === 'alerta' ? [['Motivo de la alerta', datos.situacion.alerta.motivo]] as [string, string][] : []),
+        ]}>
+        <ResumenInforme cifras={[
+          ['Ingresos', numero(filas.length)], ['Días con ingreso', numero(dias)],
+          ['Primer ingreso', filas[0] ? fechaHora(filas[0].fecha_hora_ingreso) : '—'],
+          ['Último ingreso', filas.length ? fechaHora(filas[filas.length - 1].fecha_hora_ingreso) : '—'],
+        ]} />
+        {filas.length
+          ? <TablaAccesosInforme filas={filas} sinPlaca onAbrir={d => navigate(`/detecciones/${d.id}`)} />
+          : <p className="informe-vacio">El vehículo {formatearPlaca(consulta.placa)} no registra ingresos{consulta.desde || consulta.hasta ? ' en el período' : ''}.</p>}
+      </Informe>
+    )}
+  </>;
+};
+
+/* ─────────────── Hoja de control de garita ─────────────── */
 
 type Turno = 'completo' | 'diurno' | 'nocturno';
 
-/**
- * Reporte de control vehicular de la garita (PDF o Excel con el logo del ECU 911), en el formato de
- * la hoja que se llenaba a mano: para el período y la cámara elegidos arriba y el turno de aquí.
- */
-const ControlVehicular: React.FC<{ params: { desde: string; hasta: string; camara?: string }; desde: string; hasta: string }> = ({ params, desde, hasta }) => {
+/** Formato oficial de la garita (PDF o Excel con el logo del ECU 911), por período y turno. */
+const HojaControl: React.FC = () => {
   const notificar = useNotificar();
+  const hoy = fechaIsoLocal();
+  const [desde, setDesde] = useState(hoy);
+  const [hasta, setHasta] = useState(hoy);
   const [turno, setTurno] = useState<Turno>('completo');
   const [generando, setGenerando] = useState<'pdf' | 'xlsx' | null>(null);
   const descargar = async (formato: 'pdf' | 'xlsx') => {
     setGenerando(formato);
     try {
-      const x = await api.get('/reportes/control-vehicular', { params: { ...params, turno, formato }, responseType: 'blob' });
+      const x = await api.get('/reportes/control-vehicular', { params: { desde: limiteDia(desde), hasta: limiteDia(hasta, true), turno, formato }, responseType: 'blob' });
       descargarBlob(x.data, nombreDescarga(x.headers['content-disposition'], `control_vehicular_${desde}_${hasta}_${turno}.${formato}`));
     } catch (e) {
-      notificar('error', 'No se pudo generar el reporte de control vehicular', await mensajeErrorDescarga(e));
-    } finally {
-      setGenerando(null);
-    }
+      notificar('error', 'No se pudo generar la hoja de control', await mensajeErrorDescarga(e));
+    } finally { setGenerando(null); }
   };
   return (
-    <Tarjeta className="no-imprimir" titulo="Reporte de control vehicular"
-      subtitulo="Hoja de la garita con el logo del ECU 911: fecha, nombres y apellidos, tipo, marca, placa, horas de ingreso y salida y motivo, con la línea del turno y la firma del agente entrante">
+    <Tarjeta titulo="Hoja de control vehicular de la garita"
+      subtitulo="Formato oficial con el logo del ECU 911: fecha, nombres y apellidos, tipo, marca, placa, horas de ingreso y salida y motivo, con la firma del agente.">
       <div className="filtros">
-        <div className="campo">
-          <span className="etiqueta-campo">Turno</span>
+        <SelectorPeriodo prefijo="rc" desde={desde} hasta={hasta} onCambiar={(d, h) => { setDesde(d || hoy); setHasta(h || hoy); }} />
+        <div className="campo"><span className="etiqueta-campo">Turno</span>
           <Segmentado<Turno> valor={turno} onCambiar={setTurno} opciones={[
-            { valor: 'completo', etiqueta: 'Día completo' }, { valor: 'diurno', etiqueta: 'Diurno · 07:00–19:00' },
-            { valor: 'nocturno', etiqueta: 'Nocturno · 19:00–07:00' },
+            { valor: 'completo', etiqueta: 'Día completo' }, { valor: 'diurno', etiqueta: 'Diurno 07:00–19:00' }, { valor: 'nocturno', etiqueta: 'Nocturno 19:00–07:00' },
           ]} />
         </div>
         <div className="fila" style={{ marginLeft: 'auto' }}>
-          <button className="btn btn-secondary" onClick={() => descargar('xlsx')} disabled={generando !== null}>
-            <FileSpreadsheet size={15} /> {generando === 'xlsx' ? 'Generando…' : 'Descargar Excel'}</button>
-          <button className="btn btn-navy" onClick={() => descargar('pdf')} disabled={generando !== null}>
-            <FileText size={15} /> {generando === 'pdf' ? 'Generando…' : 'Descargar PDF'}</button>
+          <button className="btn btn-secondary" onClick={() => descargar('xlsx')} disabled={generando !== null}><FileSpreadsheet size={15} /> {generando === 'xlsx' ? 'Generando…' : 'Excel'}</button>
+          <button className="btn btn-navy" onClick={() => descargar('pdf')} disabled={generando !== null}><FileText size={15} /> {generando === 'pdf' ? 'Generando…' : 'PDF'}</button>
         </div>
       </div>
-      <p className="texto-secundario" style={{ marginTop: 10, fontSize: 12.5 }}>
-        El nombre y el motivo se registran al validar el ingreso o en su detalle; sin nombre se usa el titular de la lista blanca. La hora de
-        salida es la siguiente salida de la misma placa (cámara de salida o salida manual). El turno nocturno de un día termina a las 07:00 del siguiente.
-      </p>
     </Tarjeta>
   );
 };
 
 const Reportes: React.FC = () => {
-  const notificar = useNotificar();
-  const [periodo, setPeriodo] = useState<Periodo>('7d');
-  const [desdeP, setDesdeP] = useState('');
-  const [hastaP, setHastaP] = useState('');
-  const [camara, setCamara] = useState('');
-  const [exportando, setExportando] = useState(false);
-  const r = rango(periodo, desdeP, hastaP);
-  const params = useMemo(() => ({ desde: limiteDia(r.desde), hasta: limiteDia(r.hasta, true), camara: camara || undefined }), [r.desde, r.hasta, camara]);
-
-  const { datos, cargando, error } = useConsulta<Reporte>(() => api.get('/reportes', { params }).then(x => x.data), [params]);
-  const { datos: camaras } = useConsulta<Camara[]>(() => api.get('/camaras').then(x => x.data), []);
-  const t = datos?.totales;
-  const unDia = r.desde === r.hasta;
-
-  const exportar = async () => {
-    setExportando(true);
-    try {
-      const x = await api.get('/detecciones/exportar', { params, responseType: 'blob' });
-      descargarBlob(x.data, nombreDescarga(x.headers['content-disposition'], `ingresos_${r.desde}_${r.hasta}.csv`));
-    } catch (e) {
-      notificar('error', 'No se pudo exportar', mensajeError(e));
-    } finally {
-      setExportando(false);
-    }
-  };
-
-  const nombreCamara = camara ? camaras?.find(c => String(c.id) === camara)?.nombre : 'Todas las cámaras';
-
+  const [vista, setVista] = useState<Vista>('accesos');
   return (
     <div className="pagina">
-      <div className="pila">
-        <Tarjeta className="no-imprimir">
-          <div className="filtros">
-            <div className="campo">
-              <span className="etiqueta-campo">Período</span>
-              <Segmentado<Periodo> valor={periodo} onCambiar={setPeriodo} opciones={[
-                { valor: 'hoy', etiqueta: 'Hoy' }, { valor: '7d', etiqueta: '7 días' }, { valor: '30d', etiqueta: '30 días' },
-                { valor: 'mes', etiqueta: 'Este mes' }, { valor: 'personalizado', etiqueta: 'Personalizado' },
-              ]} />
-            </div>
-            {periodo === 'personalizado' && <>
-              <div className="campo" style={{ minWidth: 140 }}><label htmlFor="r-desde">Desde</label>
-                <input id="r-desde" type="date" className="input" value={desdeP || r.desde} max={hastaP || fechaIsoLocal()} onChange={e => setDesdeP(e.target.value)} /></div>
-              <div className="campo" style={{ minWidth: 140 }}><label htmlFor="r-hasta">Hasta</label>
-                <input id="r-hasta" type="date" className="input" value={hastaP || r.hasta} min={desdeP || undefined} max={fechaIsoLocal()} onChange={e => setHastaP(e.target.value)} /></div>
-            </>}
-            <div className="campo"><label htmlFor="r-camara">Cámara</label>
-              <select id="r-camara" className="select" value={camara} onChange={e => setCamara(e.target.value)}>
-                <option value="">Todas</option>{camaras?.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </select></div>
-            <div className="fila" style={{ marginLeft: 'auto' }}>
-              <button className="btn btn-secondary" onClick={() => window.print()} disabled={!datos}><Printer size={15} /> Imprimir</button>
-              <button className="btn btn-navy" onClick={exportar} disabled={exportando || !t?.total}><Download size={15} /> {exportando ? 'Exportando…' : 'Exportar detalle CSV'}</button>
-            </div>
-          </div>
-        </Tarjeta>
-
-        <ControlVehicular params={params} desde={r.desde} hasta={r.hasta} />
-
-        <div className="solo-imprimir">
-          <div className="fila" style={{ gap: 14, alignItems: 'center' }}>
-            <img src={logoEcu911} alt="ECU 911" style={{ height: 56 }} />
-            <div>
-              <h2 style={{ fontSize: 18 }}>Reporte de ingresos vehiculares · Sistema ANPR ECU 911</h2>
-              <p className="texto-secundario">Período: {fecha(`${r.desde}T12:00:00-05:00`)} – {fecha(`${r.hasta}T12:00:00-05:00`)} · {nombreCamara} · generado {fechaHora(new Date())}</p>
-            </div>
-          </div>
+      <div className="encabezado-pagina no-imprimir">
+        <div>
+          <h2>Reportes</h2>
+          <p>Consulte e imprima los accesos registrados por período, el historial de un vehículo o la hoja de control de la garita.</p>
         </div>
-
-        {error && <Aviso tipo="error">{error}</Aviso>}
-        {cargando && !datos ? <Cargando alto={300} /> : datos && t && (
-          t.total === 0 ? <Tarjeta><Vacio titulo="Sin ingresos en el período" texto="Pruebe otro rango de fechas o cámara." /></Tarjeta> : (
-            <>
-              <div className="grid-kpi">
-                <Kpi etiqueta="Ingresos" valor={numero(t.total)} pie={`${numero(t.placas_distintas)} placas distintas`} />
-                <Kpi etiqueta="Autorizados" valor={numero(t.autorizados)} color="var(--autorizado)" pie={porcentaje(t.autorizados / t.total, 0)} />
-                <Kpi etiqueta="Alertas" valor={numero(t.alertas)} color="var(--alerta)" pie={porcentaje(t.alertas / t.total, 1)} />
-                <Kpi etiqueta="Confirmados por el personal" valor={numero(t.validados)} pie={`${numero(t.manuales)} registros manuales`} />
-                <Kpi etiqueta="Tiempo de lectura" valor={t.latencia_media_ms !== null ? `${numero(Math.round(t.latencia_media_ms))} ms` : '—'}
-                  pie={t.confianza_ocr_media !== null ? `Confianza OCR media ${porcentaje(t.confianza_ocr_media)}` : 'Sin lecturas automáticas'} />
-              </div>
-
-              <Tarjeta titulo={unDia ? 'Ingresos por hora' : 'Ingresos por día'} subtitulo={unDia ? 'Total del día' : 'Por estado de la decisión'} acciones={unDia ? undefined : <Leyenda series={SERIES_ESTADO} />}>
-                {unDia
-                  ? <BarrasApiladas datos={datos.por_hora} series={SERIE_TOTAL} etiquetaX={d => String(d.hora).padStart(2, '0')} cadaEtiqueta={2} />
-                  : <BarrasApiladas datos={datos.por_dia} series={SERIES_ESTADO} etiquetaX={d => (datos.por_dia.length > 14 ? d.fecha.slice(8) : diaCorto(d.fecha))}
-                      tituloTip={d => fecha(`${d.fecha}T12:00:00-05:00`)} cadaEtiqueta={Math.ceil(datos.por_dia.length / 16)} />}
-              </Tarjeta>
-
-              <div className="grid-2">
-                <Tarjeta titulo="Distribución por estado"><BarraDistribucion valores={t} series={SERIES_ESTADO} /></Tarjeta>
-                {!unDia && (
-                  <Tarjeta titulo="Horas de mayor afluencia" subtitulo="Total del período por hora del día">
-                    <BarrasApiladas datos={datos.por_hora} series={SERIE_TOTAL} etiquetaX={d => String(d.hora).padStart(2, '0')} alto={170} cadaEtiqueta={3} />
-                  </Tarjeta>
-                )}
-                <Tarjeta titulo="Por cámara" acciones={<Leyenda series={SERIES_ESTADO} />}>
-                  <BarrasHorizontales series={SERIES_ESTADO} filas={datos.por_camara.map(c => ({ etiqueta: c.camara, total: c.total, valores: c }))} />
-                </Tarjeta>
-              </div>
-
-              <div className="grid-2">
-                <Tarjeta titulo="Placas más frecuentes" sinPadding>
-                  <div className="tabla-contenedor"><table className="tabla"><thead><tr><th>Placa</th><th>Titular (padrón)</th><th className="num">Ingresos</th><th>Último</th></tr></thead><tbody>
-                    {datos.placas_frecuentes.map(p => (
-                      <tr key={p.placa}><td><Link to={`/detecciones?placa=${p.placa}`} style={{ textDecoration: 'none' }}><Placa valor={p.placa} /></Link></td>
-                        <td>{p.propietario ?? <span className="texto-secundario">No registrado</span>}</td><td className="num">{numero(p.ingresos)}</td><td className="nowrap">{fechaHora(p.ultimo)}</td></tr>
-                    ))}
-                  </tbody></table></div>
-                </Tarjeta>
-                <Tarjeta titulo="Validación por el personal" subtitulo="Confirmaciones y correcciones de lectura" sinPadding>
-                  {datos.validacion_por_usuario.length === 0 ? <Vacio titulo="Sin validaciones en el período" /> : (
-                    <div className="tabla-contenedor"><table className="tabla"><thead><tr><th>Usuario</th><th className="num">Validaciones</th><th className="num">Correcciones</th></tr></thead><tbody>
-                      {datos.validacion_por_usuario.map(v => <tr key={v.usuario}><td>{v.usuario}</td><td className="num">{numero(v.validaciones)}</td><td className="num">{numero(v.correcciones)}</td></tr>)}
-                    </tbody></table></div>
-                  )}
-                </Tarjeta>
-              </div>
-
-              <Tarjeta titulo="Alertas del período" subtitulo={`${numero(datos.alertas.length)} eventos${datos.alertas.length === 50 ? ' (últimos 50)' : ''}`} sinPadding>
-                {datos.alertas.length === 0 ? <Vacio titulo="Sin alertas en el período" icono={<ShieldAlert size={22} />} /> : (
-                  <div className="tabla-contenedor"><table className="tabla"><thead><tr><th>Fecha</th><th>Placa</th><th>Motivo</th><th>Nivel</th><th>Cámara</th></tr></thead><tbody>
-                    {datos.alertas.map(a => (
-                      <tr key={a.id}><td className="nowrap"><Link to={`/detecciones/${a.id}`}>{fechaHora(a.fecha_hora_ingreso)}</Link></td><td><Placa valor={a.placa} /></td>
-                        <td>{a.motivo ?? '—'}</td><td>{a.nivel_alerta && <span className={`insignia ${NIVELES_ALERTA[a.nivel_alerta]?.clase}`}>{NIVELES_ALERTA[a.nivel_alerta]?.etiqueta}</span>}</td><td>{a.camara ?? '—'}</td></tr>
-                    ))}
-                  </tbody></table></div>
-                )}
-              </Tarjeta>
-            </>
-          )
-        )}
+      </div>
+      <div className="pila">
+        <div className="no-imprimir">
+          <Pestanas<Vista> valor={vista} onCambiar={setVista} opciones={[
+            { valor: 'accesos', etiqueta: 'Accesos por fecha', icono: <ShieldCheck size={15} /> },
+            { valor: 'vehiculo', etiqueta: 'Historial de un vehículo', icono: <CarFront size={15} /> },
+            { valor: 'control', etiqueta: 'Hoja de control de garita', icono: <ClipboardList size={15} /> },
+          ]} />
+        </div>
+        {vista === 'accesos' && <ReporteAccesos />}
+        {vista === 'vehiculo' && <ReporteVehiculo />}
+        {vista === 'control' && <HojaControl />}
       </div>
     </div>
   );

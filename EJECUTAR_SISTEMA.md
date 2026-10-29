@@ -58,10 +58,23 @@ Desktop. Todos los comandos se ejecutan desde la carpeta raíz del proyecto
 4. **Zonas:** botón **Zonas** para dibujar el área donde se buscan placas y excluir árboles,
    banderas o reflejos que generan movimiento falso.
 5. **Asignar la cámara al motor:** en **Monitoreo**, selector *Cámara que procesa el motor ANPR*.
-   Desde ese momento se ven el video, los recuadros de las placas y los pasos en **Detecciones**.
+   Desde ese momento se ven el video, los recuadros de las placas y los pasos en **Historial
+   Completo** (todos los pasos) y, cuando se completan con salida, en **Registro de Salidas**.
 
 La cámara debe ser alcanzable desde este equipo: si figura **SIN_CONEXION**, revise la red o VLAN
 de cámaras y vuelva a probar con **Ping**. El motor se reconecta solo cuando vuelve la señal.
+
+### Pasar del video de prueba al flujo real
+
+Cada paso guarda su origen: **cámara en vivo** (RTSP), **video de prueba** (cámara creada con un
+video cargado) o **registro manual**. Así los datos de prueba no se mezclan con los reales.
+
+1. Abra **Historial Completo**: el recuadro bajo la consulta indica qué procesa el motor. Si dice
+   *video de prueba*, pulse **Usar «Garita»** (o cambie la cámara en **Monitoreo**).
+2. Para ver solo los datos reales, pulse **Ver solo el flujo real** (filtro *Origen: cámara en
+   vivo*) o escriba en la consulta inteligente «cámara en vivo hoy».
+3. Los pasos registrados antes con el video de prueba quedan marcados como tales (la marca se
+   aplicó una sola vez al actualizar, el 2026-10-28) y se excluyen con el mismo filtro de origen.
 
 ### Prueba sin cámara real
 

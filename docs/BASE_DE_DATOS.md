@@ -42,7 +42,7 @@ y detecciones deben registrarse nuevamente. El esquema SQL Server por sí solo n
 | Listas | `ListaNegra` | Placas con alerta (nivel CRÍTICA/ALTA/MEDIA), marca/modelo/color registrados, **fecha de vencimiento** y observaciones; `registrado_por` |
 | | `VehiculosAutorizados` | Permisos de placa: categoría, **vigencia desde/hasta**, **franjas horarias** (JSON), marca/modelo/color, observaciones, `registrado_por` y `solicitud_id` de origen |
 | | `SolicitudesAcceso` | Solicitudes de autorización (pendiente / aprobada / rechazada / cancelada) con solicitante, resolutor, vigencia y horario pedidos, ingreso de origen, permiso creado y `version` para la concurrencia optimista (v8) |
-| Operación | `DeteccionVehiculo` | Cada movimiento: `tipo_movimiento` (`ingreso` o `salida`, v13; los registros preexistentes quedan como ingreso), captura (fotos del vehículo y del recorte de la placa), OCR, decisión, validez de la lectura (`lectura_valida`, `evidencia_lectura` en JSON con las evidencias E1–E5 y el texto crudo de cada lector), validación del guardia (`usuario_validador_id`), lectura y decisión automáticas originales, metadatos de evaluación, atributos del vehículo y fuente (`rtsp` o `manual`, nunca la URL). Las salidas son eventos independientes y no ejecutan la decisión de autorización de ingreso. |
+| Operación | `DeteccionVehiculo` | Cada registro: `tipo_movimiento` (`ingreso` o `salida`, v13; los registros preexistentes quedan como ingreso), captura (fotos del vehículo y del recorte de la placa), OCR, decisión, validez de la lectura (`lectura_valida`, `evidencia_lectura` en JSON con las evidencias E1–E5 y el texto crudo de cada lector), validación del guardia (`usuario_validador_id`), lectura y decisión automáticas originales, metadatos de captura, atributos del vehículo y fuente (`rtsp` o `manual`, nunca la URL). Las salidas son eventos independientes y no ejecutan la decisión de autorización de ingreso. |
 | | `AuditoriaDescartes` | Pasos descartados por el motor con su motivo (p. ej. `region_sin_caracteres`, `formato_no_corresponde_a_la_placa`, foto ilegible tras los reintentos) |
 | | `AuditoriaConsultaPropietario` | Consultas de datos del propietario (solo con convenio oficial) |
 | Notificaciones | `Notificaciones` | Alarmas y avisos: tipo, prioridad, mensaje, enlace, clave de supresión y repeticiones, reconocimiento (quién y cuándo), resolución y escalamiento |
@@ -65,8 +65,9 @@ ListaNegra 1───* DeteccionVehiculo (alerta_id) · VehiculosAutorizados 1�
 
 - Inicio de sesión con correo; tras `LOGIN_MAX_INTENTOS` (5) fallos la cuenta se bloquea
   `LOGIN_MINUTOS_BLOQUEO` (15) minutos y se notifica por correo.
-- Registro público (`REGISTRO_PUBLICO_HABILITADO`) solo con dominios de `ALLOWED_EMAIL_DOMAINS`;
-  la cuenta queda `pendiente` hasta verificar el correo y luego `activo` con rol Guardia.
+- Registro público (`REGISTRO_PUBLICO_HABILITADO`) acepta los dominios de `ALLOWED_EMAIL_DOMAINS`;
+  si la lista queda vacía, acepta cualquier correo válido. La cuenta queda `pendiente` hasta verificar
+  el correo y luego `activo` con rol Guardia. Producción conserva el dominio institucional por omisión.
 - No se puede quitar el rol ni desactivar al último administrador activo.
 - Un permiso de placa solo concede el paso dentro de su vigencia (desde/hasta) y de sus franjas
   horarias; fuera de ellas el paso queda `no_reconocido` con `DeteccionVehiculo.restriccion_acceso`

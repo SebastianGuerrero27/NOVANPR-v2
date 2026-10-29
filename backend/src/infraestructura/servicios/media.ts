@@ -38,13 +38,17 @@ export function firmaValida(archivo: string, exp: unknown, f: unknown): boolean 
   return esperada.length === recibida.length && crypto.timingSafeEqual(esperada, recibida);
 }
 
-/** Carpetas donde el servicio ANPR guarda la evidencia (según el entorno de ejecución). */
+/** Destino propio del backend; en producción es un volumen persistente escribible por Node. */
+export const DIRECTORIO_EVIDENCIA_LISTAS = process.env.EVIDENCIA_LISTAS_DIR || path.resolve(process.cwd(), 'media-listas');
+
+/** Carpetas de evidencia del motor y de las listas (según el entorno de ejecución). */
 export const DIRECTORIOS_MEDIA = [
   process.env.MEDIA_DIR,
   '/app/media',
   path.resolve(process.cwd(), '../services/anpr/media'),
   path.resolve(process.cwd(), 'services/anpr/media'),
   path.resolve(__dirname, '../../../services/anpr/media'),
+  DIRECTORIO_EVIDENCIA_LISTAS,
 ].filter(Boolean) as string[];
 
 /** Borra del disco las imágenes de evidencia indicadas. Devuelve cuántos archivos eliminó. */

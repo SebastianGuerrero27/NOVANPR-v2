@@ -12,7 +12,8 @@ import { actorDe, controlador, idDe } from '../respuesta';
  *   GET    /catalogo                 tipos de notificación (etiqueta, prioridad, canales)
  *   POST   /:id/leer                 marca como leída
  *   POST   /leer-todas               marca todas como leídas
- *   POST   /:id/reconocer            reconocimiento (ACK) de una alarma
+ *   POST   /:id/reconocer            reconocimiento (ACK) de una alarma; sale de la bandeja de quien la
+ *                                    atendió ({ archivada: true })
  *   POST   /reconocer-deteccion/:id  ACK de las alarmas de un paso (botón "Enterado" del aviso de garita)
  *   DELETE /:id                      quita de la bandeja propia una notificación revisada (409 si está
  *                                    sin leer o es una alarma pendiente de atención)
@@ -21,7 +22,6 @@ import { actorDe, controlador, idDe } from '../respuesta';
  *   POST   /push/suscripcion         registra la suscripción push del navegador
  *   DELETE /push/suscripcion         la elimina (el usuario desactivó las notificaciones)
  *   POST   /push/prueba              envía un push de prueba a los equipos del usuario
- *   GET    /metricas                 indicadores del canal para la evaluación (evaluacion:ver), ?dias (1-90)
  *
  * Casos de uso en aplicacion/notificaciones.ts.
  */
@@ -85,12 +85,5 @@ router.delete('/push/suscripcion', controlador('NOTIFICACIONES baja de suscripci
 router.post('/push/prueba', controlador('NOTIFICACIONES prueba push', 'No se pudo enviar la prueba.', async (req, res) => {
   res.json(await notificaciones.probarPush(actorDe(req)));
 }));
-
-// ─── Indicadores para la evaluación científica del canal ─────────────────────
-
-router.get('/metricas', requierePermiso('evaluacion:ver'),
-  controlador('NOTIFICACIONES métricas', 'No se pudieron calcular las métricas de notificación.', async (req, res) => {
-    res.json(await notificaciones.metricas(req.query));
-  }));
 
 export default router;

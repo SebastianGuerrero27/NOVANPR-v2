@@ -1,6 +1,6 @@
 import { type Actor, errorNoEncontrado, errorValidacion, type PuertoAuditoria } from './comun';
 import {
-  CAMPOS_AUDITORIA, esFuenteAuditoria, type FiltrosAuditoria, type FuenteAuditoria, generarCsv, leerFiltrosAuditoria,
+  CAMPOS_AUDITORIA, esFuenteAuditoria, type FiltrosAuditoria, type FuenteArchivable, type FuenteAuditoria, generarCsv, leerFiltrosAuditoria,
   leerPaginacion, MAX_FILAS_EXPORTACION, validarDiasRetencion, validarIdAuditoria,
 } from '../dominio/auditoria';
 
@@ -14,11 +14,7 @@ import {
 /** Registro tal como lo entrega la base (columnas de la fuente). */
 export type RegistroAuditoria = Record<string, unknown>;
 
-export interface ConteoArchivado {
-  operaciones: number;
-  cuentas: number;
-  accesos: number;
-}
+export type ConteoArchivado = Record<FuenteArchivable, number>;
 
 export interface RepositorioAuditoria {
   contar(f: FiltrosAuditoria): Promise<number>;
@@ -29,7 +25,8 @@ export interface RepositorioAuditoria {
   obtener(fuente: FuenteAuditoria, id: number): Promise<RegistroAuditoria | null>;
   /**
    * Traslada a las tablas de archivo los registros con más de `dias` días en una sola
-   * transacción: copia y después elimina solo lo copiado. Devuelve cuántos movió por fuente.
+   * transacción: copia y después elimina solo lo copiado. Devuelve cuántos movió por fuente
+   * archivable (operaciones, cuentas y accesos).
    */
   archivar(dias: number): Promise<ConteoArchivado>;
 }

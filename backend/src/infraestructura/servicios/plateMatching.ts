@@ -1,5 +1,6 @@
 import sql, { PostgresPool } from '../postgres';
-import { hoyLocalSql } from './tiempo';
+import { evaluarVigencia } from '../../dominio/horario';
+import { hoyLocalSql, ZONA_HORARIA } from './tiempo';
 
 /**
  * Cruce de placas leídas por OCR contra Lista Negra y Vehículos Autorizados.
@@ -24,13 +25,16 @@ export interface BlacklistMatch {
 export async function findBlacklistMatch(db: PostgresPool, placa: string): Promise<BlacklistMatch | null> {
   if (!normalizePlate(placa)) return null;
   const result = await db.request().query(`
-    SELECT id, placa, motivo, nivel_alerta, fecha_registro, marca, modelo, color
+    SELECT id, placa, motivo, nivel_alerta, fecha_registro, marca, modelo, color, fecha_inicio, fecha_vencimiento, horario
     FROM ListaNegra
-    WHERE activo = 1 AND (fecha_vencimiento IS NULL OR fecha_vencimiento >= ${hoyLocalSql()})
+    WHERE activo = 1
+      AND (fecha_inicio IS NULL OR fecha_inicio <= ${hoyLocalSql()})
+      AND (fecha_vencimiento IS NULL OR fecha_vencimiento >= ${hoyLocalSql()})
   `);
 
   let aproximada: BlacklistMatch | null = null;
   for (const row of result.recordset) {
+    if (evaluarVigencia(row, new Date(), ZONA_HORARIA) !== 'vigente') continue;
     const tipo = comparePlates(placa, row.placa);
     if (tipo === 'exacta') return { row, coincidencia: 'exacta' };
     if (tipo === 'aproximada' && !aproximada) aproximada = { row, coincidencia: 'aproximada' };

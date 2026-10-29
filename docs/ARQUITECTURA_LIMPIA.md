@@ -47,7 +47,7 @@ flowchart LR
 
 | Capa | Puede importar | No puede importar | Contiene |
 |---|---|---|---|
-| `dominio/` | solo `dominio/` | paquetes, E/S, `process.env` | tipos, reglas, validaciones (`validacion.ts`), decisión de acceso (`decisionAcceso.ts`), métricas de evaluación |
+| `dominio/` | solo `dominio/` | paquetes, E/S, `process.env` | tipos, reglas, validaciones (`validacion.ts`), decisión de acceso (`decisionAcceso.ts`) |
 | `aplicacion/` | `dominio/`, `aplicacion/` | Express, mssql, `infraestructura/`, `process.env` | casos de uso (`casosX(deps)`), puertos (`interface RepositorioX`), errores (`ErrorAplicacion`) |
 | `infraestructura/` | `dominio/`, tipos de `aplicacion/`, mssql, Socket.IO… | Express, `interfaz/`, `contenedor/` | repositorios SQL, adaptadores de auditoría, eventos, sesiones, servicios externos |
 | `interfaz/http/` | `aplicacion/`, `dominio/`, `contenedor/` | `infraestructura/`, mssql, consultas SQL | routers: leer `req`, llamar al caso de uso, responder |
@@ -66,7 +66,6 @@ flowchart LR
 | Configuración | `aplicacion/configuracion.ts` | `/api/configuracion` | `dominio/configuracion.ts` |
 | Panel de inicio | `aplicacion/panel.ts` | `/api/panel` | — |
 | Reportes | `aplicacion/reportes.ts` | `/api/reportes` | `dominio/periodo.ts` |
-| Evaluación científica | `aplicacion/evaluacion.ts` | `/api/evaluacion` | `dominio/evaluacion.ts`, `periodo.ts` |
 | Notificaciones | `aplicacion/notificaciones.ts` | `/api/notificaciones` | `dominio/notificaciones.ts`, `suscripcionPush.ts` |
 | Consulta de propietario | `aplicacion/propietario.ts` | `/api/propietario` | `dominio/propietario.ts` |
 

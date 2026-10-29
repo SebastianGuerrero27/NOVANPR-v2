@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+import math
 from dataclasses import dataclass
 from typing import Optional, List, Tuple
 
@@ -37,9 +38,37 @@ from app.dominio.plate_parser import (
     validate_ecuadorian_plate,
     disambiguate_plate,
     HEADER_NOISE_WORDS,
+    sanitize_raw_text,
 )
 
 logger = get_logger("plate_agent")
+
+
+def confianza_visual(resultados: list[OcrResult], texto_crudo: str) -> float:
+    """Confianza de los tokens que originaron la lectura; la sintaxis no aporta probabilidad.
+
+    Al unir fragmentos se usa el mínimo: un token seguro no oculta otro dudoso.
+    Este valor es la puntuación del modelo, no una probabilidad calibrada de acierto.
+    """
+    tokens = []
+    for resultado in resultados:
+        texto = sanitize_raw_text(resultado.text)
+        if not texto or texto in HEADER_NOISE_WORDS:
+            continue
+        valor = float(resultado.confidence)
+        confianza = max(0.0, min(1.0, valor)) if math.isfinite(valor) else 0.0
+        tokens.append((texto, confianza))
+    objetivo = sanitize_raw_text(texto_crudo)
+    for inicio in range(len(tokens)):
+        unido, puntuaciones = "", []
+        for texto, confianza in tokens[inicio:]:
+            unido += texto
+            puntuaciones.append(confianza)
+            if unido == objetivo:
+                return min(puntuaciones)
+            if len(unido) >= len(objetivo):
+                break
+    return min((confianza for _, confianza in tokens), default=0.0)
 
 
 @dataclass
@@ -135,11 +164,11 @@ class PlateEnhancementAgent:
                 is_valid, formatted_plate, format_score = validate_ecuadorian_plate(parsed_plate)
                 if is_valid:
                     best_plate, best_raw = formatted_plate, crudo
-                    best_conf = max(score, format_score)
+                    best_conf = confianza_visual(direct_results, crudo)
                     found_valid_format = True
                 elif len(parsed_plate.replace("-", "")) >= 4:
                     best_plate, best_raw = parsed_plate, crudo
-                    best_conf = score
+                    best_conf = confianza_visual(direct_results, crudo)
 
         # 6. FASE 2: Preprocesamiento Científico Robusto (Inspirado en Laroca et al.)
         # Normalización a 140px, Filtro Bilateral anti-ruido H.264 y Realce CLAHE en CIELAB
@@ -152,9 +181,10 @@ class PlateEnhancementAgent:
                 parsed_plate, score, crudo = extraer_placa(tokens)
                 if parsed_plate:
                     is_valid, formatted_plate, format_score = validate_ecuadorian_plate(parsed_plate)
-                    if is_valid or score > best_conf:
+                    visual = confianza_visual(enhanced_results, crudo)
+                    if is_valid or visual > best_conf:
                         best_plate, best_raw = (formatted_plate if is_valid else parsed_plate), crudo
-                        best_conf = max(score, format_score)
+                        best_conf = visual
                         found_valid_format = is_valid
 
         # 7. FASE 2.5: Binarización Adaptativa Local (Inspirada en Wolf-Jolion / OpenALPR binarize_wolf.cpp)
@@ -167,9 +197,10 @@ class PlateEnhancementAgent:
                 parsed_plate, score, crudo = extraer_placa(tokens)
                 if parsed_plate:
                     is_valid, formatted_plate, format_score = validate_ecuadorian_plate(parsed_plate)
-                    if is_valid or score > best_conf:
+                    visual = confianza_visual(bin_results, crudo)
+                    if is_valid or visual > best_conf:
                         best_plate, best_raw = (formatted_plate if is_valid else parsed_plate), crudo
-                        best_conf = max(score, format_score)
+                        best_conf = visual
                         found_valid_format = is_valid
 
         # 8. FASE 3: Búsqueda Multi-Ángulo Residual (solo en modo offline o batch, no en streaming 30 FPS)
@@ -184,9 +215,10 @@ class PlateEnhancementAgent:
                     parsed_plate, score, crudo = extraer_placa(tokens)
                     if parsed_plate:
                         is_valid, formatted_plate, format_score = validate_ecuadorian_plate(parsed_plate)
-                        if is_valid or (len(parsed_plate.replace("-", "")) >= 4 and score > best_conf):
+                        visual = confianza_visual(rot_results, crudo)
+                        if is_valid or (len(parsed_plate.replace("-", "")) >= 4 and visual > best_conf):
                             best_plate, best_raw = (formatted_plate if is_valid else parsed_plate), crudo
-                            best_conf = max(score, format_score)
+                            best_conf = visual
                             found_valid_format = is_valid
                             if is_valid:
                                 break

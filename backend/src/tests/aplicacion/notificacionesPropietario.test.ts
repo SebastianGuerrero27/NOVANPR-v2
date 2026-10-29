@@ -1,7 +1,7 @@
 import { ErrorAplicacion, type Actor } from '../../aplicacion/comun';
 import { casosNotificaciones, type PuertoPush, type RepositorioNotificaciones } from '../../aplicacion/notificaciones';
 import { casosPropietario, MENSAJE_DESHABILITADO, type ProveedorPropietario, type RepositorioPropietario } from '../../aplicacion/propietario';
-import { leerConsultaBandeja, leerDiasMetricas } from '../../dominio/notificaciones';
+import { leerConsultaBandeja } from '../../dominio/notificaciones';
 import { enmascararIdentificacion, leerConsultaPropietario } from '../../dominio/propietario';
 import { leerSuscripcionPush } from '../../dominio/suscripcionPush';
 
@@ -20,7 +20,7 @@ const SUSCRIPCION = {
   keys: { p256dh: 'BOr2X_tl-vZb3K1a9w', auth: 'k8JV6sjdbhAi' },
 };
 
-describe('Dominio · parámetros de la bandeja y de las métricas', () => {
+describe('Dominio · parámetros de la bandeja', () => {
   it('bandeja: por omisión 30 sin filtros; acepta los valores del cliente', () => {
     expect(leerConsultaBandeja({})).toEqual({ ok: true, valor: { limite: 30, antesDe: null, desde: null, filtro: null } });
     expect(leerConsultaBandeja({ limite: '50', antes_de: '120', filtro: 'pendientes' }))
@@ -32,12 +32,6 @@ describe('Dominio · parámetros de la bandeja y de las métricas', () => {
     [{ filtro: 'todas' }], [{ filtro: ['no_leidas'] }],
   ])('bandeja: rechaza %p', consulta => {
     expect(leerConsultaBandeja(consulta).ok).toBe(false);
-  });
-
-  it('métricas: 1 a 90 días, 7 por omisión', () => {
-    expect(leerDiasMetricas(undefined)).toEqual({ ok: true, valor: 7 });
-    expect(leerDiasMetricas('30')).toEqual({ ok: true, valor: 30 });
-    for (const malo of ['0', '91', '7.5', 'x']) expect(leerDiasMetricas(malo).ok).toBe(false);
   });
 
   it('suscripción push: endpoint https y claves base64url; otro tipo se rechaza', () => {
@@ -66,11 +60,6 @@ describe('Casos de uso · notificaciones', () => {
       eliminarSuscripcion: jest.fn().mockResolvedValue(undefined),
       suscripciones: jest.fn().mockResolvedValue([{ id: 5, usuario_id: 3, endpoint: SUSCRIPCION.endpoint, p256dh: 'a', auth: 'b' }]),
       eliminarSuscripciones: jest.fn().mockResolvedValue(undefined),
-      metricas: jest.fn().mockResolvedValue({
-        porSeveridad: [{ severidad: 'critica', emitidas: 24, repeticiones_agrupadas: null, con_ack: 24, reconocidas: 20, escaladas: 2 }],
-        tta: [{ severidad: 'critica', tta_mediana_s: 12.5, tta_p95_s: 40 }],
-        avalanchas: { ventanas_avalancha: 1 },
-      }),
     };
     const push: jest.Mocked<PuertoPush> = {
       habilitado: jest.fn(() => pushHabilitado),
@@ -129,9 +118,22 @@ describe('Casos de uso · notificaciones', () => {
     const { casos, repositorio } = preparar();
     expect(await casos.leer(GUARDIA, 9)).toEqual({ no_leidas: 2, pendientes: 1, revisadas: 4 });
     expect(repositorio.leer).toHaveBeenCalledWith(GUARDIA.id, 9);
-    expect(await casos.reconocer(GUARDIA, 9)).toEqual({ reconocidas: 3, no_leidas: 2, pendientes: 1, revisadas: 4 });
+    expect(await casos.reconocer(GUARDIA, 9)).toEqual({ reconocidas: 3, archivada: true, no_leidas: 2, pendientes: 1, revisadas: 4 });
     expect(await casos.reconocerDeteccion(GUARDIA, 1532)).toMatchObject({ reconocidas: 3 });
     expect(repositorio.reconocer).toHaveBeenLastCalledWith(GUARDIA.id, { deteccionId: 1532 });
+  });
+
+  it('atendida: sale de la bandeja de quien la atendió y se sincronizan sus otras pestañas', async () => {
+    const { casos, repositorio, eventos } = preparar();
+    await casos.reconocer(GUARDIA, 9);
+    expect(repositorio.eliminar).toHaveBeenCalledWith(GUARDIA.id, 9);
+    expect(eventos.aUsuario).toHaveBeenCalledWith(GUARDIA.id, 'notificacion:eliminada', { ids: [9] });
+
+    // Si sigue pendiente (no se pudo registrar la atención) se queda en la bandeja
+    const pendiente = preparar();
+    pendiente.repositorio.eliminar.mockResolvedValue(false);
+    expect(await pendiente.casos.reconocer(GUARDIA, 9)).toMatchObject({ archivada: false });
+    expect(pendiente.eventos.aUsuario).not.toHaveBeenCalled();
   });
 
   it('suscripción push: valida el cuerpo (400) y recorta el agente de usuario', async () => {
@@ -151,20 +153,6 @@ describe('Casos de uso · notificaciones', () => {
     const { casos, repositorio } = preparar();
     expect(await casos.probarPush(GUARDIA)).toMatchObject({ message: 'Prueba enviada a 1 equipo.', enviados: 1 });
     expect(repositorio.eliminarSuscripciones).toHaveBeenCalledWith([5]);
-  });
-
-  it('métricas: valida los días y calcula la tasa de alarmas por hora (ISA-18.2)', async () => {
-    const { casos, repositorio } = preparar();
-    expect((await fallo(casos.metricas({ dias: '365' }))).tipo).toBe('validacion');
-    const r = await casos.metricas({ dias: '1' });
-    expect(repositorio.metricas).toHaveBeenCalledWith(1);
-    expect(r).toEqual({
-      dias: 1, alarmas_por_hora: 1, ventanas_avalancha_10min: 1,
-      por_severidad: [{
-        severidad: 'critica', emitidas: 24, repeticiones_agrupadas: 0, con_ack: 24, reconocidas: 20, escaladas: 2,
-        tta_mediana_s: 12.5, tta_p95_s: 40,
-      }],
-    });
   });
 
   it('clave push: activo solo si el servidor tiene claves y el parámetro lo permite', () => {

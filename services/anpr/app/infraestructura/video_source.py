@@ -29,6 +29,13 @@ OPCIONES_FFMPEG_RTSP = (
 )
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = OPCIONES_FFMPEG_RTSP
 
+# Hilos del decodificador H.264/H.265. OpenCV usa por omisión uno por núcleo (16 en el portátil de
+# 20 hilos) con decodificación por cuadros, y cada hilo retiene un cuadro: el motor recibía cada
+# cuadro ~370 ms después que con un hilo (medido con dos lectores de la misma cámara), y la caja del
+# HUD quedaba detrás de la placa del video. Un hilo decodifica 1080p a 30 fps de sobra; súbalo solo
+# para cámaras 4K o H.265 que no alcancen el ritmo.
+HILOS_DECODIFICADOR_RTSP = max(1, int(os.getenv("RTSP_HILOS_DECODIFICADOR", "1")))
+
 from app.infraestructura.config import RTSP_URL
 from app.dominio.tasa_cuadros import TasaCuadros
 from app.infraestructura.logger import get_logger
@@ -40,6 +47,13 @@ logger = get_logger("video_source")
 # Interfaz Abstracta
 # =============================================================================
 
+
+
+def espera_reintento(intentos: int) -> float:
+    """Segundos hasta el próximo intento de conexión: 1,5 s, 3 s, 6 s y luego 10 s. El exponente se
+    acota: con la cámara caída durante horas, 2 ** intentos dejaba de caber en un float
+    (OverflowError) y el hilo lector moría sin volver a conectar cuando la cámara regresaba."""
+    return min(10.0, 1.5 * 2 ** min(max(0, intentos - 1), 3))
 
 class VideoSource(ABC):
     """
@@ -101,7 +115,8 @@ def _abrir_rtsp(url: str, abrir_ms: int, leer_ms: int) -> Optional[Any]:
     del nombre de la opción en cada versión de FFmpeg y cortan una conexión estancada."""
     try:
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG,
-                               [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, abrir_ms, cv2.CAP_PROP_READ_TIMEOUT_MSEC, leer_ms])
+                               [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, abrir_ms, cv2.CAP_PROP_READ_TIMEOUT_MSEC, leer_ms,
+                                cv2.CAP_PROP_N_THREADS, HILOS_DECODIFICADOR_RTSP])
         if cap.isOpened():
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             return cap
@@ -195,7 +210,7 @@ class RTSPSource(VideoSource):
                 cap = self._open_capture()
                 if cap is None:
                     intentos += 1
-                    proximo_intento = time.time() + min(10.0, 1.5 * 2 ** (intentos - 1))
+                    proximo_intento = time.time() + espera_reintento(intentos)
                     continue
                 intentos = 0
                 self._cap = cap

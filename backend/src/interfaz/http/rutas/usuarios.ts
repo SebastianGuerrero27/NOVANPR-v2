@@ -15,6 +15,7 @@ import { actorDe, controlador, idDe } from '../respuesta';
  *   POST   /api/usuarios/:id/bloquear             bloqueo administrativo
  *   POST   /api/usuarios/:id/desbloquear          quita bloqueos (administrativo y por intentos)
  *   POST   /api/usuarios/:id/restablecer-password envía enlace de restablecimiento
+ *   POST   /api/usuarios/:id/password             cambia la contraseña desde administración
  *   DELETE /api/usuarios/:id                      baja lógica (estado inactivo) con motivo
  *
  * Las reglas están en dominio/usuarios.ts y los casos de uso en aplicacion/usuarios.ts.
@@ -41,12 +42,15 @@ router.get('/:id', controlador('USUARIOS detalle', 'No se pudo obtener el usuari
 }));
 
 router.post('/', controlador('USUARIOS crear', 'No se pudo crear el usuario.', async (req, res) => {
-  const { usuario, enviado } = await usuarios.crear(req.body, actorDe(req));
+  const { usuario, enviado, passwordDefinida } = await usuarios.crear(req.body, actorDe(req));
   res.status(201).json({
-    message: enviado
-      ? 'Usuario creado. Se envió un correo para que defina su contraseña.'
-      : 'Usuario creado, pero no se pudo enviar el correo. Use "Enviar enlace de contraseña".',
+    message: passwordDefinida
+      ? 'Usuario creado con contraseña inicial.'
+      : enviado
+        ? 'Usuario creado. Se envió un correo para que defina su contraseña.'
+        : 'Usuario creado, pero no se pudo enviar el correo. Use "Enviar enlace de contraseña".',
     usuario,
+    passwordDefinida,
   });
 }));
 
@@ -70,6 +74,11 @@ router.post('/:id/restablecer-password', controlador('USUARIOS restablecer', 'No
   if (id === null) return;
   const enviado = await usuarios.enviarEnlacePassword(id, actorDe(req));
   res.json({ message: enviado ? 'Enlace de restablecimiento enviado.' : 'No se pudo enviar el correo.' });
+}));
+
+router.post('/:id/password', controlador('USUARIOS cambiar password', 'No se pudo cambiar la contraseña.', async (req, res) => {
+  const id = idDe(req, res);
+  if (id !== null) res.json(await usuarios.cambiarPassword(id, req.body, actorDe(req)));
 }));
 
 router.delete('/:id', controlador('USUARIOS baja', 'No se pudo dar de baja la cuenta.', async (req, res) => {

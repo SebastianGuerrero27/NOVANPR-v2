@@ -23,6 +23,7 @@ export const guardarToken = (token: string | null) => {
 };
 
 const api = axios.create({
+  timeout: 20000,
   baseURL: `${API_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
@@ -40,7 +41,15 @@ api.interceptors.request.use((config) => {
 // Las rutas públicas de autenticación devuelven 401 por credenciales y no deben cerrar nada.
 api.interceptors.response.use(
   (r) => r,
-  (error) => {
+  async (error) => {
+    // Solo lecturas: nunca repetir automáticamente altas, validaciones o registros de salida.
+    const config = error.config as (typeof error.config & { reintentosLectura?: number }) | undefined;
+    const transitorio = !error.response || [502, 503, 504].includes(error.response.status);
+    if (config && config.method?.toLowerCase() === 'get' && transitorio && !axios.isCancel(error) && (config.reintentosLectura ?? 0) < 2) {
+      config.reintentosLectura = (config.reintentosLectura ?? 0) + 1;
+      await new Promise(resolve => setTimeout(resolve, config.reintentosLectura! * 750));
+      return api.request(config);
+    }
     const url: string = error.config?.url ?? '';
     const esRutaPublica = /\/auth\/(login|registro|configuracion-inicial|olvide-password|restablecer-password|verificar-email|reenviar-verificacion|estado)/.test(url);
     if (error.response?.status === 401 && !esRutaPublica && leerToken()) {

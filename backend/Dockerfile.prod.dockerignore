@@ -4,4 +4,5 @@
 !backend/package-lock.json
 !backend/tsconfig.json
 !backend/src
+!backend/scripts/supervisar.cjs
 !db

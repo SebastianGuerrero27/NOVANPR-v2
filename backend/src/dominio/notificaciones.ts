@@ -192,9 +192,3 @@ export function leerConsultaBandeja(q: { limite?: unknown; antes_de?: unknown; d
   }
   return { ok: true, valor: { limite: limite.valor ?? 30, antesDe: antesDe.valor, desde: desde.valor, filtro } };
 }
-
-/** Período de las métricas del canal: 1 a 90 días; por omisión 7. */
-export function leerDiasMetricas(valor: unknown): Validado<number> {
-  const dias = validarEntero(valor, { etiqueta: 'Días', min: 1, max: 90 });
-  return dias.ok ? { ok: true, valor: dias.valor ?? 7 } : dias;
-}

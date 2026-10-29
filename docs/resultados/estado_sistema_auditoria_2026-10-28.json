@@ -1,0 +1,388 @@
+{
+  "fecha_local": "2026-10-28T15:03:52.474411-05:00",
+  "zona": "America/Guayaquil",
+  "alcance": "Auditoría de solo lectura del despliegue local y fuentes; no es benchmark, certificación de disponibilidad ni reevaluación de precisión.",
+  "composicion": [
+    "docker-compose.yml",
+    "docker-compose.produccion-local.yml"
+  ],
+  "contenedores": [
+    {
+      "nombre": "/anpr-backend",
+      "imagen": "anpr-backend:produccion",
+      "imagen_id": "sha256:38784d5e71bba33a67789b0d080c9a77187cceda042a01b0d877780e5ea5433c",
+      "estado": "running",
+      "salud": "healthy",
+      "puertos": {
+        "5000/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "5000"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "5000"
+          }
+        ]
+      }
+    },
+    {
+      "nombre": "/anpr-frontend",
+      "imagen": "anpr-frontend:produccion",
+      "imagen_id": "sha256:0354229b3aeb93263ea0f8d2d0d68f4cfb79b107a3a66b1d49c2356d30d7f8e1",
+      "estado": "running",
+      "salud": "healthy",
+      "puertos": {
+        "8080/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "3000"
+          }
+        ]
+      }
+    },
+    {
+      "nombre": "/anpr-service",
+      "imagen": "anpr-motor:produccion",
+      "imagen_id": "sha256:c20ec6223ad0d45eb8c09b2ef0ec7740875d8a3f28fb3bba2391475bccfd3a4a",
+      "estado": "running",
+      "salud": "healthy",
+      "puertos": {
+        "8000/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "8000"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "8000"
+          }
+        ]
+      }
+    },
+    {
+      "nombre": "/anpr-db",
+      "imagen": "postgres:17-alpine",
+      "imagen_id": "sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+      "estado": "running",
+      "salud": "healthy",
+      "puertos": {
+        "5432/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "5433"
+          }
+        ]
+      }
+    },
+    {
+      "nombre": "/anpr-mediamtx",
+      "imagen": "bluenviron/mediamtx:1.21.2-ffmpeg",
+      "imagen_id": "sha256:c0feb4acc548d5f410d57d9046f62dfa355e2abc4098f5243de9e86430c77a95",
+      "estado": "running",
+      "salud": null,
+      "puertos": {
+        "8189/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "8189"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "8189"
+          }
+        ],
+        "8189/udp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "8189"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "8189"
+          }
+        ],
+        "8554/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "8554"
+          }
+        ],
+        "8889/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "8889"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "8889"
+          }
+        ]
+      }
+    }
+  ],
+  "salud": {
+    "backend": {
+      "status": "OK",
+      "base_datos": {
+        "ok": true,
+        "ms": 1
+      },
+      "redis": "desactivado",
+      "time": "2026-10-28T20:03:54.55Z"
+    },
+    "frontend_bundle": "/assets/index-Dx7bZ2Ae.js",
+    "frontend_http": 200
+  },
+  "motor": {
+    "status": "online",
+    "running": true,
+    "capture_fps": 30.0,
+    "tracker_fps": 2.8,
+    "inferencias_omitidas_pct": 24.1,
+    "enlace_video": {
+      "codec": "h264",
+      "ancho": 1920,
+      "alto": 1080,
+      "fps_recibidos": 29.8,
+      "reconexiones": 0,
+      "ultimo_cuadro_hace_s": 0.0
+    },
+    "latencia": {
+      "edad_cuadro": {
+        "p50_ms": 13,
+        "p95_ms": 36,
+        "max_ms": 100,
+        "muestras": 300
+      },
+      "lectura_en_vivo": {
+        "p50_ms": 429,
+        "p95_ms": 1556,
+        "max_ms": 2726,
+        "muestras": 200
+      },
+      "registro": {
+        "p50_ms": 780,
+        "p95_ms": 3303,
+        "max_ms": 7745,
+        "muestras": 94
+      },
+      "cuadros_descartados_pct": 77.3
+    },
+    "etapas_ms": {
+      "detector": {
+        "p50_ms": 145,
+        "p95_ms": 436,
+        "max_ms": 698,
+        "muestras": 200
+      },
+      "movimiento": {
+        "p50_ms": 5,
+        "p95_ms": 9,
+        "max_ms": 21,
+        "muestras": 200
+      },
+      "pistas": {
+        "p50_ms": 0,
+        "p95_ms": 6,
+        "max_ms": 101,
+        "muestras": 200
+      },
+      "seguimiento": {
+        "p50_ms": 1,
+        "p95_ms": 3,
+        "max_ms": 10,
+        "muestras": 200
+      },
+      "ocr_rapido": {
+        "p50_ms": 452,
+        "p95_ms": 980,
+        "max_ms": 1408,
+        "muestras": 200
+      },
+      "registro_http_completar": {
+        "p50_ms": 29,
+        "p95_ms": 94,
+        "max_ms": 664,
+        "muestras": 94
+      },
+      "registro_http_ingreso": {
+        "p50_ms": 31,
+        "p95_ms": 81,
+        "max_ms": 5537,
+        "muestras": 95
+      },
+      "registro_ocr_profundo": {
+        "p50_ms": 61,
+        "p95_ms": 225,
+        "max_ms": 805,
+        "muestras": 95
+      },
+      "registro_verificador": {
+        "p50_ms": 159,
+        "p95_ms": 471,
+        "max_ms": 1546,
+        "muestras": 94
+      },
+      "seguidor_cuadro": {
+        "p50_ms": 0,
+        "p95_ms": 10,
+        "max_ms": 51,
+        "muestras": 200
+      },
+      "vigilante_sin_placa": {
+        "p50_ms": 6,
+        "p95_ms": 17,
+        "max_ms": 51,
+        "muestras": 200
+      }
+    },
+    "cpu": {
+      "uso_pct": 15.8,
+      "nucleos": 20
+    },
+    "detector": "license_plate_detector.pt",
+    "detector_arquitectura": "yolo26",
+    "ocr_engine": "fastalpr (cct-s-v2-global-model)",
+    "ocr_verifier": "PP-OCRv6 medium (openvino)",
+    "architecture": "Two-Phase: Fast Capture + Async OCR",
+    "camara_conectada": true,
+    "configuracion_no_sensible": {
+      "DETECTOR_BACKEND": "yolo",
+      "PLATE_DETECTOR_ARCH": "yolo26",
+      "PLATE_MODEL_PATH": "models/license_plate_detector.pt",
+      "PLATE_CONFIDENCE_THRESHOLD": 0.22,
+      "OCR_ENGINE": "plate",
+      "PLATE_OCR_HUB_MODEL": "cct-s-v2-global-model",
+      "PLATE_OCR_ONNX_PATH": "models/ocr/cct_s_v2_ecuador.onnx",
+      "PLATE_OCR_PREPROCESS": false,
+      "OCR_CONFIDENCE_THRESHOLD": 0.25,
+      "OCR_THREADS": 2,
+      "TORCH_THREADS": 4,
+      "OCR_VERIFIER_ENABLED": true,
+      "OCR_VERIFIER_MODEL": "medium",
+      "OCR_VERIFIER_ENGINE": "openvino",
+      "OCR_VERIFIER_THREADS": 4,
+      "OCR_VERIFIER_MAX_MS": 2000.0,
+      "REGISTRO_MAX_MS": 1000.0,
+      "PLATE_RECTIFIER_PATH": "models/plate_rectifier.pt",
+      "VEHICLE_ATTR_ENABLED": true,
+      "VEHICLE_CLIP_MODEL": "ViT-B-32",
+      "MOTION_GATE_ENABLED": true,
+      "MOTION_GATE_MIN_FRACTION": 0.002,
+      "MOTION_GATE_MAX_SKIP": 5,
+      "ROI_CROP_INFERENCE": true,
+      "SIN_PLACA_HABILITADO": true
+    },
+    "archivos_modelo": {
+      "PLATE_MODEL_PATH": {
+        "existe": true,
+        "sha256": "3667d8168e8a5a62fddf0992546efa0dc60f37578c9e95e8c0cbc92d4ed74c5c"
+      },
+      "PLATE_OCR_ONNX_PATH": {
+        "existe": false,
+        "sha256": null
+      },
+      "PLATE_RECTIFIER_PATH": {
+        "existe": false,
+        "sha256": null
+      }
+    },
+    "python": "3.12.15"
+  },
+  "almacenamiento": {
+    "precapturas_motor": "services/anpr/media",
+    "evidencia_listas_volumen": "anpr_listas_evidencia",
+    "destino": "/app/evidencia-listas",
+    "evidencia": "docs/resultados/evidencias_listas_2026-10-28.json"
+  },
+  "hechos_fuentes": [
+    {
+      "hecho": "Consultas externas placa y cédula retiradas: tres rutas antiguas devuelven 410 sin cargar proveedores",
+      "fuente": "backend/src/interfaz/http/rutas/listas.ts"
+    },
+    {
+      "hecho": "Guardia también tiene padron:gestionar y alertas:gestionar en la matriz vigente",
+      "fuente": "backend/src/dominio/permisos.ts"
+    },
+    {
+      "hecho": "CPU de equipoVM/backend/ANPR se mide directamente cada15s; no requiere Prometheus",
+      "fuente": "backend/src/infraestructura/servicios/recursosCpu.ts"
+    },
+    {
+      "hecho": "Cinco servicios en Compose; Redis, Prometheus y Grafana no forman parte del despliegue actual",
+      "fuente": "docker-compose.yml"
+    },
+    {
+      "hecho": "Esquema PG idempotente con migración campos permisos y evidencias listas al arranque; no corresponde etiquetarlo simplemente esquema v12 de SQL Server",
+      "fuente": "backend/src/infraestructura/db.ts"
+    },
+    {
+      "hecho": "El módulo web de evaluación y sus rutas fueron retirados; siguen los scripts experimentales",
+      "fuente": "backend/src/app.ts"
+    },
+    {
+      "hecho": "OCRselectivo preserva texto general como observación, umbral0.90 heurístico, separa formato y confianza visual; no es SelectiveNet entrenada",
+      "fuente": "services/anpr/app/dominio/texto_observado.py"
+    },
+    {
+      "hecho": "El dashboardGuardia Registros de acceso cuenta el total histórico con estadosprocesado/nolegible/pendienteOCR",
+      "fuente": "backend/src/infraestructura/persistencia/panelSql.ts"
+    }
+  ],
+  "limites": [
+    "Una ventana de métricas del motor con servicios activos no demuestra un rendimiento estable ni debe mezclarse con benchmarks controlados.",
+    "REGISTRO_MAX_MS=1000 es presupuesto de espera, no garantía de captura a persistencia en menos de un segundo.",
+    "El detector productivo .pt se ejecuta en PyTorch CPU; no trasladar la latencia de benchmarkOpenVINO al runtime actual.",
+    "El OCR especializado promovido es global; el modelo ecuatoriano y el rectificador aprendido no existen en el contenedor productivo.",
+    "El piloto10positivos+1rótulo es desarrollo con una matrícula presente en entrenamiento, no holdout ni prueba de generalización.",
+    "docs/MONITORING.md describe infraestructura antigua que no coincide con recursosCpu.ts y Composeactual.",
+    "La cámara activa es un video de prueba publicado en bucle; conexión RTSP no acredita validación en la garita real.",
+    "La política guardada actualmente es confianza; no exige siempre lectura_valida=true. El valor por omisión recomendado del código es validez_y_confianza, pero no es el vigente."
+  ],
+  "exposiciones": {
+    "postgresql": "127.0.0.1:5433 hacia5432",
+    "rtsp": "127.0.0.1:8554",
+    "interfaz": "127.0.0.1:3000",
+    "api": "0.0.0.0:5000",
+    "motor": "0.0.0.0:8000",
+    "webrtc": "0.0.0.0:8189 TCP/UDP",
+    "whep": "0.0.0.0:8889"
+  },
+  "rama_inspeccionada": "refactor/arquitectura-limpia",
+  "camara_activa_tipo": "video_de_prueba_en_bucle",
+  "politica_autorizacion_efectiva": {
+    "autorizacion_criterio": {
+      "valor": "confianza",
+      "origen": "base_datos"
+    },
+    "autorizacion_confianza_minima": {
+      "valor": "82",
+      "origen": "omision"
+    },
+    "autorizacion_confianza_fuente": {
+      "valor": "ocr",
+      "origen": "omision"
+    },
+    "verificar_vehiculo_autorizados": {
+      "valor": "true",
+      "origen": "omision"
+    }
+  },
+  "proveedor_detector_verificado": {
+    "proveedor": "Ultralytics/PyTorch CPU",
+    "evidencia": [
+      "Log del proceso en ejecución: Cargando modelo models/license_plate_detector.pt (device=cpu, conf=0.06)",
+      "Log del proceso: Detector de placas listo (512 px) en device=cpu",
+      "YoloDetector en contenedor construye YOLO(model_path) y ejecuta model.predict(device=self.device), sin exportación automática OpenVINO.",
+      "Archivo detector.pt coincide SHA256 de producción; torch2.14.1+cpu, cuda_disponible=false."
+    ],
+    "umbral_bajo_tracker": 0.06,
+    "paquete_torch": "2.14.1+cpu",
+    "cuda_disponible": false,
+    "ultralytics": "8.4.174",
+    "onnxruntime": "1.30.0",
+    "openvino": "2026.4.1",
+    "fast_plate_ocr": "1.1.0"
+  }
+}

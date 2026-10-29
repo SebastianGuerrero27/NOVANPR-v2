@@ -91,14 +91,16 @@ const AvisosQueRecibe: React.FC = () => {
             <span className="texto-secundario" style={{ fontSize: 11.5 }}>{ETIQUETA_SEVERIDAD[t.severidad]}{t.requiere_ack ? ' · requiere atención' : ''}{t.push ? ' · push' : ''}</span>
           </li>
         ))}
-        <li><span className="notif-marca-estatica sev-baja" /><span style={{ flex: 1 }}>Resultado de sus solicitudes de acceso</span><span className="texto-secundario" style={{ fontSize: 11.5 }}>Informativa · push</span></li>
+        {puede('padron:gestionar') && <li><span className="notif-marca-estatica sev-baja" /><span style={{ flex: 1 }}>Llegada de vehículos con permisos otorgados por usted</span><span className="texto-secundario" style={{ fontSize: 11.5 }}>Informativa · push</span></li>}
+        {puede('solicitudes:crear') && <li><span className="notif-marca-estatica sev-baja" /><span style={{ flex: 1 }}>Resultado de sus solicitudes de acceso</span><span className="texto-secundario" style={{ fontSize: 11.5 }}>Informativa · push</span></li>}
       </ul>
     </Tarjeta>
   );
 };
 
 const Notificaciones: React.FC = () => {
-  const { items, noLeidas, pendientes, revisadas, hayMas, cargando, cargarMas, marcarTodas } = useCentroNotificaciones();
+  const { items, noLeidas, pendientes, revisadas, hayMas, cargando, cargarMas, marcarTodas, recargar } = useCentroNotificaciones();
+  useEffect(() => { void recargar(); }, [recargar]);
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [cargandoMas, setCargandoMas] = useState(false);
   const [confirmarLimpieza, setConfirmarLimpieza] = useState(false);

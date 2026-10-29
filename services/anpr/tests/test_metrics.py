@@ -3,6 +3,7 @@ Tests para el servicio de métricas Prometheus
 """
 
 import pytest
+from prometheus_client import generate_latest
 import time
 from unittest.mock import patch, MagicMock
 from app.infraestructura.metrics import (
@@ -128,3 +129,13 @@ class TestMetricsService:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+def test_solo_se_publica_el_fps_de_la_camara_activa():
+    """Al cambiar de cámara la serie de la anterior se retira: no queda con su último valor."""
+    from app.infraestructura import metrics
+    metrics.update_fps(30.0, "1")
+    metrics.update_fps(0.0, "2")
+    series = [l for l in generate_latest(metrics.registry).decode().splitlines() if l.startswith("anpr_fps{")]
+    assert series == ['anpr_fps{camera_id="2"} 0.0']
+

@@ -47,22 +47,28 @@ export const LISTA_BLANCA: DefinicionLista = {
   tipo: 'autorizados', entidad: 'autorizado', nombre: 'lista blanca', temporal: true, permisoEdicion: 'padron:gestionar',
   campos: [
     { nombre: 'propietario', etiqueta: 'Propietario o responsable', tipo: 'nombre', max: 150, min: 3, requerido: true },
+    { nombre: 'cedula', etiqueta: 'Cédula', tipo: 'libre', max: 10 },
+    { nombre: 'institucion', etiqueta: 'Institución', tipo: 'alfanumerico', max: 150 },
+    { nombre: 'cargo', etiqueta: 'Cargo', tipo: 'alfanumerico', max: 150 },
     { nombre: 'departamento', etiqueta: 'Departamento', tipo: 'alfanumerico', max: 100 },
     { nombre: 'categoria', etiqueta: 'Categoría', tipo: 'letras', max: 20, valores: CATEGORIAS_PERMISO, omision: 'FUNCIONARIO' },
+    // Motivo habitual (trabajo, proveedor, visita…): cada ingreso del vehículo lo toma sin reescribirlo
+    { nombre: 'motivo_ingreso', etiqueta: 'Motivo de ingreso', tipo: 'libre', max: 300 },
     ...CAMPOS_VEHICULO,
   ],
 };
 
 export const LISTA_NEGRA: DefinicionLista = {
-  tipo: 'alertas', entidad: 'lista_negra', nombre: 'lista negra', temporal: false, permisoEdicion: 'alertas:gestionar',
+  tipo: 'alertas', entidad: 'lista_negra', nombre: 'lista negra', temporal: true, permisoEdicion: 'alertas:gestionar',
   campos: [
     { nombre: 'motivo', etiqueta: 'Motivo', tipo: 'libre', max: 255, min: 5, requerido: true },
     { nombre: 'nivel_alerta', etiqueta: 'Nivel', tipo: 'letras', max: 20, requerido: true, valores: NIVELES_ALERTA },
-    ...CAMPOS_VEHICULO.filter(c => c.nombre !== 'tipo_vehiculo'),
+    ...CAMPOS_VEHICULO,
   ],
 };
 
 export interface RegistroLista {
+  /** Vacía solo para permisos por nombre; se persiste como NULL. */
   placa: string;
   datos: Record<string, string | null>;
   vence: Date | null;
@@ -74,7 +80,12 @@ export interface RegistroLista {
 /** Valida y normaliza el alta o la edición de un registro de la lista. */
 export function leerRegistroLista(def: DefinicionLista, entrada: Record<string, unknown> | null | undefined): Validado<RegistroLista> {
   const body = entrada ?? {};
-  const placa = validarPlaca(body.placa);
+  if (def.tipo === 'autorizados' && body.cedula != null && String(body.cedula).trim() && !/^\d{10}$/.test(String(body.cedula).trim())) {
+    return { ok: false, error: 'Cédula: ingrese exactamente 10 dígitos, sin letras ni símbolos y conservando los ceros iniciales.' };
+  }
+  const sinPlaca = (def.tipo === 'autorizados' || def.tipo === 'alertas')
+    && (body.placa == null || (typeof body.placa === 'string' && !body.placa.trim()));
+  const placa = sinPlaca ? { ok: true as const, valor: { placa: '' } } : validarPlaca(body.placa);
   if (!placa.ok) return placa;
 
   const datos: Record<string, string | null> = {};
@@ -117,7 +128,7 @@ const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : '');
 
 /** Resumen legible de un alta para la auditoría. */
 export function describirRegistro(r: RegistroLista, describirHorario: (h: string | null) => string): string {
-  return [r.placa, r.inicio ? `desde ${iso(r.inicio)}` : '', r.vence ? `vence ${iso(r.vence)}` : '',
+  return [r.placa || `Permiso por nombre: ${r.datos.propietario} (pendiente de placa)`, r.inicio ? `desde ${iso(r.inicio)}` : '', r.vence ? `vence ${iso(r.vence)}` : '',
     r.horario ? describirHorario(r.horario) : ''].filter(Boolean).join(' · ');
 }
 

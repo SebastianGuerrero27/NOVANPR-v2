@@ -1,5 +1,5 @@
 # Base del despliegue en Kubernetes del sistema ANPR. Los nombres de los Services replican los de
-# docker-compose.yml (db, redis, backend, anpr, mediamtx, frontend) para que la configuración del
+# docker-compose.yml (db, backend, anpr, mediamtx, frontend) para que la configuración del
 # backend, del motor y de MediaMTX funcione igual en ambos entornos.
 #
 # Requisitos previos en cada namespace (ver docs/CICD.md):
@@ -16,7 +16,6 @@ labels:
 
 resources:
   - db.yaml
-  - redis.yaml
   - media-pvc.yaml
   - backend.yaml
   - anpr.yaml

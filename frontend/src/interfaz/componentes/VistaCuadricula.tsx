@@ -66,7 +66,7 @@ export const VistaCuadricula: React.FC<{ camaras: Camara[]; motorId: number | nu
         <span className="texto-secundario">Arrastre cámaras del menú lateral a las celdas. La distribución se conserva entre sesiones.</span>
         <div className="fila" role="group" aria-label="Cantidad de cámaras en la vista cuadrícula">
           {([1, 2, 4] as const).map(n => (
-            <button key={n} type="button" className={`btn btn-sm ${cantidad === n ? 'btn-navy' : 'btn-secondary'}`}
+            <button key={n} type="button" className="btn btn-sm btn-secondary btn-opcion"
               aria-pressed={cantidad === n} aria-label={`Mostrar ${n} ${n === 1 ? 'cámara' : 'cámaras'}`}
               onClick={() => cambiarCantidad(n)}>{n}</button>
           ))}

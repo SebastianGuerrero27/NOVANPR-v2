@@ -10,10 +10,22 @@ const db = () => getDB();
 /** Alarma que exige atención y nadie atendió ni se resolvió (no se puede quitar de la bandeja) */
 const PENDIENTE = 'n.requiere_ack = 1 AND n.fecha_atencion IS NULL AND n.fecha_resolucion IS NULL';
 
+// Tambi?n se aplica a avisos antiguos asignados antes de cambiar el rol o su enrutamiento.
+const VISIBLE_PARA_ROL = `(
+  NOT EXISTS (SELECT 1 FROM Usuarios receptor JOIN Roles rol ON rol.id = receptor.rol_id
+              WHERE receptor.id = @uid AND rol.codigo = 'GESTOR_PERMISOS')
+  OR n.tipo IN ('solicitud.nueva', 'solicitud.resuelta', 'padron.por_vencer')
+  OR (n.tipo = 'acceso.llegada_permiso' AND EXISTS (
+    SELECT 1 FROM VehiculosAutorizados permiso JOIN DeteccionVehiculo paso ON paso.id = n.deteccion_id
+    WHERE permiso.registrado_por = @uid
+      AND REPLACE(permiso.placa, '-', '') = REPLACE(COALESCE(paso.placa_validada, paso.placa_reconocida, ''), '-', '')
+  ))
+)`;
+
 export const repositorioNotificacionesSql: RepositorioNotificaciones = {
   async bandeja(usuarioId, c) {
     const request = db().request().input('uid', sql.Int, usuarioId).input('n', sql.Int, c.limite);
-    const filtros = ['nu.usuario_id = @uid', 'nu.fecha_eliminacion IS NULL'];
+    const filtros = ['nu.usuario_id = @uid', 'nu.fecha_eliminacion IS NULL', VISIBLE_PARA_ROL];
     if (c.antesDe !== null) { request.input('antes', sql.BigInt, c.antesDe); filtros.push('n.id < @antes'); }
     if (c.desde !== null) {
       // Recuperación: nuevas o modificadas después del último id conocido por el cliente
@@ -38,7 +50,7 @@ export const repositorioNotificacionesSql: RepositorioNotificaciones = {
         SUM(CASE WHEN ${PENDIENTE} THEN 1 ELSE 0 END) AS pendientes,
         SUM(CASE WHEN nu.fecha_lectura IS NOT NULL AND NOT (${PENDIENTE}) THEN 1 ELSE 0 END) AS revisadas
       FROM NotificacionUsuario nu JOIN Notificaciones n ON n.id = nu.notificacion_id
-      WHERE nu.usuario_id = @uid AND nu.fecha_eliminacion IS NULL`);
+      WHERE nu.usuario_id = @uid AND nu.fecha_eliminacion IS NULL AND ${VISIBLE_PARA_ROL}`);
     const f = r.recordset[0] ?? {};
     return { no_leidas: Number(f.no_leidas ?? 0), pendientes: Number(f.pendientes ?? 0), revisadas: Number(f.revisadas ?? 0) };
   },
@@ -120,31 +132,4 @@ export const repositorioNotificacionesSql: RepositorioNotificaciones = {
     await del.query(`DELETE FROM SuscripcionesPush WHERE id IN (${ids.map((_, i) => `@s${i}`).join(',')})`);
   },
 
-  async metricas(dias) {
-    const p = () => db().request().input('d', sql.Int, dias);
-    const [porSeveridad, tta, avalanchas] = await Promise.all([
-      p().query(`
-        SELECT severidad, COUNT(*) AS emitidas, SUM(repeticiones - 1) AS repeticiones_agrupadas,
-               SUM(CASE WHEN requiere_ack = 1 THEN 1 ELSE 0 END) AS con_ack,
-               SUM(CASE WHEN fecha_atencion IS NOT NULL THEN 1 ELSE 0 END) AS reconocidas,
-               SUM(CASE WHEN escalada = 1 THEN 1 ELSE 0 END) AS escaladas
-        FROM Notificaciones WHERE fecha_creacion >= DATEADD(DAY, -@d, SYSDATETIME()) AND tipo <> 'alarma.escalada'
-        GROUP BY severidad`),
-      p().query(`
-        SELECT severidad,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (fecha_atencion - fecha_creacion))) AS tta_mediana_s,
-          percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (fecha_atencion - fecha_creacion))) AS tta_p95_s
-        FROM Notificaciones
-        WHERE fecha_creacion >= DATEADD(DAY, -@d, SYSDATETIME()) AND fecha_atencion IS NOT NULL
-        GROUP BY severidad`),
-      p().query(`
-        SELECT COUNT(*) AS ventanas_avalancha FROM (
-          SELECT date_bin(INTERVAL '10 minutes', fecha_creacion, TIMESTAMP '2000-01-01') AS ventana, COUNT(*) AS n
-          FROM Notificaciones
-          WHERE fecha_creacion >= DATEADD(DAY, -@d, SYSDATETIME()) AND severidad IN ('critica', 'alta')
-          GROUP BY date_bin(INTERVAL '10 minutes', fecha_creacion, TIMESTAMP '2000-01-01')
-        ) v WHERE v.n > 10`),
-    ]);
-    return { porSeveridad: porSeveridad.recordset, tta: tta.recordset, avalanchas: avalanchas.recordset[0] };
-  },
 };

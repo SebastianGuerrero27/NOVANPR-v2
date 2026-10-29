@@ -38,10 +38,13 @@ describe('RBAC · matriz rol → permiso', () => {
     ['Guardia', 'operacion:monitorear', true],
     ['Guardia', 'detecciones:validar', true],
     ['Guardia', 'listas:ver', true],
+    ['Guardia', 'alertas:restringir', true],
+    ['Guardia', 'alertas:gestionar', true],
+    ['GestorPermisos', 'alertas:restringir', false],
     ['Guardia', 'solicitudes:crear', true],
     ['Guardia', 'avisos:garita', true],
     ['Guardia', 'avisos:padron', true],
-    ['Guardia', 'padron:gestionar', false],
+    ['Guardia', 'padron:gestionar', true],
     ['Guardia', 'solicitudes:resolver', false],
     ['Guardia', 'accesos:excepcion', false],
     ['Guardia', 'usuarios:gestionar', false],
@@ -55,7 +58,7 @@ describe('RBAC · matriz rol → permiso', () => {
   });
 
   it('enruta notificaciones por permiso', () => {
-    expect(rolesCon('padron:gestionar').sort()).toEqual(['Admin', 'GestorPermisos']);
+    expect(rolesCon('padron:gestionar').sort()).toEqual(['Admin', 'GestorPermisos', 'Guardia']);
     expect(rolesCon('avisos:padron').sort()).toEqual(['Admin', 'Guardia']);
     expect(rolesCon('avisos:acceso').sort()).toEqual(['Admin', 'Guardia']);
     expect(rolesCon('alarmas:escalamiento')).toEqual(['Admin']);
