@@ -1,0 +1,12 @@
+{
+  "modo": "aislado",
+  "resultados": {
+    "renombre_conserva_oid_filas_columnas_fk_indices_secuencia": true,
+    "idempotente": true,
+    "escritura_y_secuencia_funcionan": true,
+    "conflicto_rechazado_sin_perdida": true,
+    "esquema_suelto_no_crea_tabla_paralela": true,
+    "instalacion_nueva_y_reinicio_completos": true
+  },
+  "escrituras_datos_reales": 0
+}

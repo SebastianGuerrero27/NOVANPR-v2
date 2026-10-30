@@ -6,7 +6,7 @@ import { escalarPendientes, notificar, purgarAntiguas } from './notificaciones';
 /**
  * Tareas periódicas del centro de notificaciones:
  *   - cada 15 s: escalamiento de alarmas críticas/altas no reconocidas (ISA-18.2);
- *   - cada hora: resumen diario de permisos por vencer para el gestor de accesos (una vez por
+ *   - cada hora: resumen diario de permisos por vencer para quien gestiona el padrón (una vez por
  *     día gracias a la clave de supresión) y depuración según la retención configurada.
  * Son seguras con varias instancias del backend (UPDATE … OUTPUT atómico y claves diarias).
  */
@@ -26,7 +26,7 @@ function enSerie(nombre: string, tarea: () => Promise<unknown>): () => Promise<v
 export async function resumenPermisosPorVencer(): Promise<void> {
   const dias = config.entero('aviso_vencimiento_dias');
   const r = await getDB().request().query(`
-    SELECT COUNT(*) AS n, MIN(fecha_vencimiento) AS primero FROM VehiculosAutorizados
+    SELECT COUNT(*) AS n, MIN(fecha_vencimiento) AS primero FROM ListaBlanca
     WHERE activo IS TRUE AND fecha_vencimiento >= ${hoyLocalSql()}
       AND fecha_vencimiento <= ${hoyLocalSql()} + (${Number(dias)} * INTERVAL '1 day')`);
   const n = Number(r.recordset[0]?.n ?? 0);

@@ -18,6 +18,17 @@ export function datosRegistro(d: Record<string, any>) {
     motivo: datoRegistro(d.motivo_ingreso, d.autorizado_motivo),
   };
 }
+/**
+ * Fila del reporte de Registro de Salidas: los datos del registro más la cédula y el modelo, que
+ * son opcionales. Una cédula vaciada a propósito en el paso ('') no se repone desde el permiso.
+ */
+export function datosReporteSalida(d: Record<string, any>) {
+  return {
+    ...datosRegistro(d),
+    cedula: d.cedula_ingreso === '' ? null : datoRegistro(d.cedula_ingreso, d.autorizado_cedula),
+    modelo: datoRegistro(d.vehiculo_modelo, d.autorizado_modelo),
+  };
+}
 export function faltantesIngreso(d: Record<string, any>): string[] {
   const campos = datosRegistro(d);
   const etiquetas = { nombre: 'Nombre', placa: 'Placa', tipo: 'Tipo de vehículo', marca: 'Marca', motivo: 'Motivo' };

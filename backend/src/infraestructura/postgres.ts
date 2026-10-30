@@ -1,4 +1,9 @@
-import { Pool, PoolClient, QueryResult } from 'pg';
+import { Pool, PoolClient, QueryResult, types } from 'pg';
+
+// Las columnas DATE (vigencias de permisos y solicitudes) son días del calendario: viajan como
+// 'AAAA-MM-DD'. Con el lector por omisión de node-postgres eran la medianoche UTC del servidor y,
+// mostradas en America/Guayaquil, aparecían un día antes (29 oct → «28 oct»).
+types.setTypeParser(types.builtins.DATE, (valor: string) => valor);
 
 type Parametro = { valor: unknown };
 

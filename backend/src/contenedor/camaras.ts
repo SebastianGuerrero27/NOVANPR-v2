@@ -9,12 +9,11 @@ import { camaraDeseada, guardarCamaraMotor, motorProcesa, sincronizarCamaraMotor
 import { destinoRtsp, diagnosticar, probarConexion, registrarConexion } from '../infraestructura/servicios/conectividadCamaras';
 import { custodiaCredenciales } from '../infraestructura/servicios/custodiaCredenciales';
 import {
-  camaraDeRuta, camaraVideoDeRuta, crearRutaPrueba, eliminarRutaPrueba, emitirTicket, esMotor, estadoRuta, rutaCamara, rutaVista, sincronizarRutas,
+  camaraDeRuta, crearRutaPrueba, eliminarRutaPrueba, emitirTicket, esMotor, estadoRuta, rutaCamara, rutaVista, sincronizarRutas,
   ticketValido, urlLecturaMotor, urlWebrtcPublica,
 } from '../infraestructura/servicios/medios';
 import { cambiarCamaraAnpr, estadoServicioAnpr, fijarZonasAnpr, urlPublicaAnpr } from '../infraestructura/servicios/servicioAnpr';
 import { verificarRed } from '../infraestructura/servicios/redCamaras';
-import { videosPrueba } from '../infraestructura/servicios/videosPrueba';
 
 /**
  * Raíz de composición del módulo de cámaras, monitoreo y medios: conecta los casos de uso con
@@ -40,7 +39,6 @@ const video: PuertoServidorVideo = {
   eliminarRutaPrueba,
   estadoRuta,
   camaraDeRuta,
-  camaraVideoDeRuta,
 };
 
 const tickets: PuertoTickets = { emitir: emitirTicket, valido: ticketValido, esMotor };
@@ -58,6 +56,6 @@ const motor: PuertoMotorAnpr = {
 
 const comunes = { repositorio: repositorioCamarasSql, video, tickets, motor, auditoria: auditoriaSql, eventos: eventosSocket };
 
-export const camaras = casosCamaras({ ...comunes, conectividad, custodia: custodiaCredenciales, videos: videosPrueba });
+export const camaras = casosCamaras({ ...comunes, conectividad, custodia: custodiaCredenciales });
 export const monitoreo = casosMonitoreo(comunes);
 export const medios = casosMedios({ video, tickets });

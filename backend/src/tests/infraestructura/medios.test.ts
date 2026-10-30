@@ -16,7 +16,7 @@ jest.mock('../../infraestructura/db', () => ({
 
 interface MediamtxSimulado {
   rutas: Map<string, string>;
-  /** Orden runOnInit de las rutas que publica FFmpeg (cámaras de video) */
+  /** Orden runOnInit de las rutas (solo las de versiones anteriores, que publicaban un video) */
   ordenes: Map<string, string>;
   /** Rutas cuya alta o cambio falla («*» = todas) */
   fallar: Set<string>;
@@ -111,20 +111,12 @@ describe('MediaMTX · publicación de las cámaras', () => {
     expect(avisos).toEqual([]);
   });
 
-  it('cámara de video: la publica FFmpeg dentro de MediaMTX con el usuario del motor, sin fuente externa', async () => {
-    process.env.ANPR_SERVICE_TOKEN = 'token+de/servicio=';
-    const mtx = await mediamtx({ cam_4: 'rtsp://10.0.0.4/vieja' });
-    const archivo = `${'b'.repeat(32)}.mp4`;
-    mockCamaras.splice(0, mockCamaras.length, { id: 4, rtsp_url: `video://${archivo}`, rtsp_url_vista: null });
-    await sincronizarRutas();
-    mtx.solicitudes.length = 0;
+  it('una ruta que publicaba un video (versión anterior) se reemplaza por la fuente RTSP de la cámara', async () => {
+    const mtx = await mediamtx({ cam_4: 'publisher' });
+    mockCamaras.splice(0, mockCamaras.length, { id: 4, rtsp_url: 'rtsp://admin:clave@10.0.0.4/101', rtsp_url_vista: null });
     await sincronizarRutas();
     await mtx.cerrar();
-    expect(mtx.rutas.get('cam_4')).toBe('publisher');
-    expect(mtx.ordenes.get('cam_4')).toBe(`ffmpeg -hide_banner -loglevel error -re -stream_loop -1 -i /videos/${archivo} -c copy -f rtsp `
-      + '-rtsp_transport tcp rtsp://anpr:token%2Bde%2Fservicio%3D@127.0.0.1:8554/cam_4');
-    // Ya publicada: la siguiente sincronización solo consulta
-    expect(mtx.solicitudes).toEqual(['GET /v3/config/paths/list']);
+    expect(mtx.rutas.get('cam_4')).toBe('rtsp://admin:clave@10.0.0.4/101');
     expect(avisos).toEqual([]);
   });
 

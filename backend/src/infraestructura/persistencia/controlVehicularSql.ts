@@ -17,7 +17,7 @@ export const repositorioControlVehicularSql: RepositorioControlVehicular = {
                d.tipo_vehiculo, d.vehiculo_tipo, d.vehiculo_marca, d.estado_validacion, d.evidencia_lectura,
                v.propietario, v.tipo_vehiculo AS autorizado_tipo, v.marca AS autorizado_marca, a.motivo AS alerta_motivo
         FROM DeteccionVehiculo d
-        LEFT JOIN VehiculosAutorizados v ON v.id = d.vehiculo_autorizado_id
+        LEFT JOIN ListaBlanca v ON v.id = d.vehiculo_autorizado_id
         LEFT JOIN ListaNegra a ON a.id = d.alerta_id
         WHERE d.fecha_hora_ingreso >= @desde AND d.fecha_hora_ingreso <= @hasta
           AND d.estado_procesamiento IN ('procesado', 'no_legible')

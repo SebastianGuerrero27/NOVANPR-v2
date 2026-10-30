@@ -28,8 +28,14 @@ export const DEFINICIONES: Definicion[] = [
   {
     clave: 'registro_publico_habilitado', tipo: 'booleano', grupo: 'Acceso y cuentas',
     etiqueta: 'Registro público de cuentas',
-    descripcion: 'Permite que el personal cree su cuenta desde la pantalla de acceso (queda con rol Guardia tras verificar el correo).',
+    descripcion: 'Permite crear una cuenta desde la pantalla de acceso eligiendo Guardia o Gestor de permisos.',
     env: 'REGISTRO_PUBLICO_HABILITADO', omision: 'true',
+  },
+  {
+    clave: 'registro_verificacion_email_habilitada', tipo: 'booleano', grupo: 'Acceso y cuentas',
+    etiqueta: 'Verificación de correo en el registro',
+    descripcion: 'Al activarla, las cuentas deben verificar su correo para ingresar; requiere el correo saliente (SMTP). Desactivada permite registrarse e ingresar sin enviar un correo de verificación.',
+    env: 'REGISTRO_VERIFICACION_EMAIL_HABILITADA', omision: 'false',
   },
   {
     clave: 'dominios_correo', tipo: 'lista', grupo: 'Acceso y cuentas',
@@ -109,8 +115,8 @@ export const DEFINICIONES: Definicion[] = [
   },
   {
     clave: 'notif_reincidencia_umbral', tipo: 'entero', grupo: 'Notificaciones',
-    etiqueta: 'Intentos denegados que avisan al gestor de accesos',
-    descripcion: 'Cuando una misma placa sin permiso intenta ingresar este número de veces en 24 horas, se avisa al gestor de accesos para que la registre o investigue.',
+    etiqueta: 'Intentos denegados que avisan a la garita',
+    descripcion: 'Cuando una misma placa sin permiso intenta ingresar este número de veces en 24 horas, se avisa al guardia y al administrador: si el vehículo es legítimo, el guardia pide su permiso al gestor de permisos; si no, lo informa. El gestor de permisos solo otorga permisos, no decide los ingresos.',
     env: 'NOTIF_REINCIDENCIA_UMBRAL', omision: '3', min: 2, max: 20,
   },
   {

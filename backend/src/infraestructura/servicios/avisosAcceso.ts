@@ -10,8 +10,8 @@ import { notificar } from './notificaciones';
  * Traduce la decisión de un paso vehicular en notificaciones para el personal:
  *
  *   alerta                       → acceso.alerta_seguridad   (avisos:seguridad, prioridad según nivel)
- *   no_reconocido + restricción  → acceso.restringido        (avisos:acceso: garita y gestor de accesos)
- *   no_reconocido                → acceso.no_registrado      (avisos:acceso) + reincidencia al gestor
+ *   no_reconocido + restricción  → acceso.restringido        (avisos:acceso: garita y administrador)
+ *   no_reconocido                → acceso.no_registrado      (avisos:acceso) + reincidencia a la garita
  *   pendiente por vehículo (R4)  → acceso.vehiculo_no_coincide
  *   pendiente por lectura (R3/R6)→ acceso.confirmacion       (avisos:garita)
  *   autorizado                   → acceso.llegada_permiso    (garita y quien otorgó el permiso)
@@ -179,8 +179,9 @@ export async function notificarPermisoOtorgado(p: PermisoOtorgado, autor: { id: 
 }
 
 /**
- * Una placa sin permiso que insiste (≥ umbral intentos en 24 h) se reporta al gestor de
- * accesos una vez al día: o es un vehículo legítimo que falta registrar o un caso a investigar.
+ * Una placa sin permiso que insiste (≥ umbral intentos en 24 h) se reporta a la garita y al
+ * administrador (avisos:acceso) una vez al día: si el vehículo es legítimo, el guardia pide su
+ * permiso al gestor de permisos, que solo otorga permisos y no decide los ingresos; si no, se informa.
  */
 async function revisarReincidencia(placa: string): Promise<void> {
   try {

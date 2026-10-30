@@ -68,7 +68,8 @@ describe('API · integración', () => {
     ['post', '/api/vehiculos-autorizados', {}, { Admin: 400, GestorPermisos: 400, Guardia: 403 }],
     ['post', '/api/blacklist', {}, { Admin: 400, GestorPermisos: 403, Guardia: 400 }],
     ['put', '/api/blacklist/1', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
-    ['delete', '/api/blacklist/1', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
+    // Sin motivo: el retiro ya no lo exige, así que llega a la base (simulada)
+    ['delete', '/api/blacklist/1', {}, { Admin: PERMITIDO, GestorPermisos: 403, Guardia: 403 }],
     ['get', '/api/vehiculos-autorizados', {}, { Admin: 200, GestorPermisos: 200, Guardia: 200 }],
     ['post', '/api/solicitudes-acceso', {}, { Admin: 400, GestorPermisos: 403, Guardia: 400 }],
     ['post', '/api/solicitudes-acceso/5/rechazar', {}, { Admin: 400, GestorPermisos: 400, Guardia: 403 }],

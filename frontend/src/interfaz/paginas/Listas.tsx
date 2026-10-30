@@ -14,8 +14,12 @@ import { FormularioLista, RUTA_API, TipoLista } from '../componentes/FormularioL
 import { useNotificar } from '../componentes/Notificaciones';
 import { CeldaEvidenciaLista } from '../componentes/EvidenciaLista';
 import { ImportarPermisos } from '../componentes/ImportarPermisos';
+import { RegistradoPor } from '../componentes/RegistradoPor';
+import { AccionesPermiso, useAccionesPermiso } from '../componentes/AccionesPermiso';
 
 type Vigencia = 'todas' | 'vigentes' | 'por_vencer' | 'vencidas';
+/** Estado de «Mis permisos» (valores de la API: retirados = desactivados). */
+type EstadoPermisos = 'activos' | 'retirados' | 'todos';
 
 /** El plazo de "por vencer" lo define la configuración del sistema (lo calcula la API). */
 function vigenciaDe(r: RegistroLista): Exclude<Vigencia, 'todas'> {
@@ -25,6 +29,7 @@ function vigenciaDe(r: RegistroLista): Exclude<Vigencia, 'todas'> {
 
 const InsigniaVigencia: React.FC<{ r: RegistroLista }> = ({ r }) => {
   const v = vigenciaDe(r);
+  if (r.activo === false) return <span className="insignia neutro" title="No autoriza el ingreso; se puede activar de nuevo">Desactivado</span>;
   if (v === 'vencidas') return <span className="insignia neutro">Vencida · {fecha(r.fecha_vencimiento)}</span>;
   if (r.pendiente_inicio) return <span className="insignia info">Desde {fecha(r.fecha_inicio)}</span>;
   if (!r.fecha_vencimiento) return <span className="insignia autorizado">Permanente</span>;
@@ -34,12 +39,12 @@ const InsigniaVigencia: React.FC<{ r: RegistroLista }> = ({ r }) => {
 function aCsv(tipo: TipoLista, filas: RegistroLista[]): Blob {
   const c = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const cab = tipo === 'autorizados'
-    ? ['ID', 'Nombres', 'Cédula', 'Institución', 'Cargo', 'Placa', 'Marca', 'Modelo', 'Tipo', 'Color', 'Departamento', 'Vigente desde', 'Vigente hasta', 'Horario', 'Observaciones', 'Ingresos', 'Registrado por', 'Fecha de registro']
-    : ['Placa', 'Motivo', 'Nivel', 'Tipo', 'Marca', 'Modelo', 'Color', 'Vigente desde', 'Vigente hasta', 'Horario', 'Observaciones', 'Detecciones', 'Registrado por', 'Fecha de registro'];
+    ? ['ID', 'Nombres', 'Cédula', 'Institución', 'Cargo', 'Placa', 'Marca', 'Modelo', 'Tipo', 'Color', 'Departamento', 'Vigente desde', 'Vigente hasta', 'Horario', 'Observaciones', 'Ingresos', 'Registrado por', 'Correo', 'Fecha de registro']
+    : ['Placa', 'Motivo', 'Nivel', 'Tipo', 'Marca', 'Modelo', 'Color', 'Vigente desde', 'Vigente hasta', 'Horario', 'Observaciones', 'Detecciones', 'Registrado por', 'Correo', 'Fecha de registro'];
   const lineas = filas.map(r => (tipo === 'autorizados'
     ? [r.id, r.propietario, r.cedula, r.institucion, r.cargo, r.placa, r.marca, r.modelo, r.tipo_vehiculo, r.color, r.departamento,
-      r.fecha_inicio?.slice(0, 10), r.fecha_vencimiento?.slice(0, 10), r.horario_texto, r.observaciones, r.ingresos, r.registrado_por_email, fecha(r.fecha_registro)]
-    : [r.placa, r.motivo, r.nivel_alerta, r.tipo_vehiculo, r.marca, r.modelo, r.color, r.fecha_inicio?.slice(0, 10), r.fecha_vencimiento?.slice(0, 10), r.horario_texto, r.observaciones, r.ingresos, r.registrado_por_email, fecha(r.fecha_registro)]
+      r.fecha_inicio?.slice(0, 10), r.fecha_vencimiento?.slice(0, 10), r.horario_texto, r.observaciones, r.ingresos, r.registrado_por_nombre, r.registrado_por_email, fecha(r.fecha_registro)]
+    : [r.placa, r.motivo, r.nivel_alerta, r.tipo_vehiculo, r.marca, r.modelo, r.color, r.fecha_inicio?.slice(0, 10), r.fecha_vencimiento?.slice(0, 10), r.horario_texto, r.observaciones, r.ingresos, r.registrado_por_nombre, r.registrado_por_email, fecha(r.fecha_registro)]
   ).map(c).join(','));
   return new Blob(['﻿' + [cab.map(c).join(','), ...lineas].join('\n')], { type: 'text/csv;charset=utf-8' });
 }
@@ -68,7 +73,11 @@ const Listas: React.FC<{ tipo?: TipoLista; incrustada?: boolean; soloMios?: bool
   const [editando, setEditando] = useState<RegistroLista | 'nuevo' | null>(null);
   const [retirando, setRetirando] = useState<RegistroLista | null>(null);
   const [importando, setImportando] = useState(false);
-  const { datos, cargando, error, recargar } = useConsulta<RegistroLista[]>(() => api.get(soloMios ? '/vehiculos-autorizados/mis-permisos' : RUTA_API[tipo]).then(r => r.data), [tipo, soloMios]);
+  // «Mis permisos» también muestra los desactivados, para volver a activarlos o renovarlos
+  const [estado, setEstado] = useState<EstadoPermisos>('activos');
+  const { datos, cargando, error, recargar } = useConsulta<RegistroLista[]>(() => (soloMios
+    ? api.get('/vehiculos-autorizados/mis-permisos', { params: { estado } }) : api.get(RUTA_API[tipo])).then(r => r.data), [tipo, soloMios, estado]);
+  const acciones = useAccionesPermiso(() => recargar(true));
   const diferido = useDiferido(() => recargar(true), 800);
   useReconexion(() => recargar(true));
   useEvento<{ lista: string }>('listas:actualizadas', e => { if (e.lista === (tipo === 'alertas' ? 'lista_negra' : 'autorizado')) diferido(); });
@@ -134,6 +143,9 @@ const Listas: React.FC<{ tipo?: TipoLista; incrustada?: boolean; soloMios?: bool
               { valor: 'por_vencer', etiqueta: `Por vencer (${conteo.por_vencer})` },
               { valor: 'vencidas', etiqueta: `Vencidas (${conteo.vencidas})` },
             ]} />
+            {soloMios && <Segmentado<EstadoPermisos> valor={estado} onCambiar={setEstado} opciones={[
+              { valor: 'activos', etiqueta: 'Activos' }, { valor: 'retirados', etiqueta: 'Desactivados' }, { valor: 'todos', etiqueta: 'Todos' },
+            ]} />}
           </div>
           <div className="tabla-contenedor">
             <table className="tabla">
@@ -142,11 +154,11 @@ const Listas: React.FC<{ tipo?: TipoLista; incrustada?: boolean; soloMios?: bool
                   ? <><th>ID</th><th>Nombres y apellidos</th><th>Cédula</th><th>Institución</th><th>Cargo</th><th>Placa</th><th>Vehículo</th><th>Placa recortada</th><th>Marca</th><th>Modelo</th><th>Tipo</th><th>Color</th></>
                   : <><th>Placa</th><th>Vehículo</th><th>Placa recortada</th><th>Motivo</th><th>Nivel</th></>}
                 <th>Vigencia</th><th className="num ocultar-movil">{tipo === 'autorizados' ? 'Ingresos' : 'Detecciones'}</th>
-                <th className="ocultar-movil">Registro</th>{puedeEditar && <th>Acciones</th>}
+                <th className="ocultar-movil">Registrado por</th>{puedeEditar && <th>Acciones</th>}
               </tr></thead>
               <tbody>
                 {cargando && !datos ? <FilasEsqueleto columnas={(tipo === 'autorizados' ? 15 : 8) + (puedeEditar ? 1 : 0)} /> : filas.map(r => (
-                  <tr key={r.id} className={r.vigente ? '' : 'inactivo'}>
+                  <tr key={r.id} className={r.vigente && r.activo !== false ? '' : 'inactivo'}>
                     {tipo === 'autorizados' ? (
                       <>
                         <td className="num texto-secundario">{r.id}</td>
@@ -169,20 +181,21 @@ const Listas: React.FC<{ tipo?: TipoLista; incrustada?: boolean; soloMios?: bool
                     )}
                     <td><InsigniaVigencia r={r} /></td>
                     <td className="num ocultar-movil">{r.ingresos > 0 && verIngresos && r.placa ? <Link to={`/historial?placa=${r.placa}`} title="Ver ingresos en el historial completo">{numero(r.ingresos)}</Link> : numero(r.ingresos)}</td>
-                    <td className="ocultar-movil"><span className="texto-secundario">{fecha(r.fecha_registro)}</span><span className="secundario">{r.registrado_por_email ?? '—'}</span></td>
-                    {puedeEditar && (
-                      <td className="acciones-celda">
+                    <td className="ocultar-movil"><RegistradoPor r={r} /></td>
+                    {puedeEditar && (tipo === 'autorizados'
+                      // Lista blanca: las mismas acciones para el administrador y el gestor (desactivar, activar, renovar)
+                      ? <td className="acciones-celda"><AccionesPermiso r={r} onAccion={acciones.abrir} puedeEliminar={puede('padron:supervisar')} /></td>
+                      : <td className="acciones-celda">
                         <button className="btn btn-ghost btn-sm btn-icono" onClick={() => setEditando(r)} title="Editar" aria-label="Editar"><Edit3 size={15} /></button>
                         <button className="btn btn-ghost btn-sm btn-icono" onClick={() => setRetirando(r)} title="Retirar de la lista" aria-label="Retirar"><Trash2 size={15} color="var(--alerta)" /></button>
-                      </td>
-                    )}
+                      </td>)}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           {datos && filas.length === 0 && (
-            <Vacio titulo={datos.length ? 'Sin coincidencias' : tipo === 'autorizados' ? 'La lista blanca está vacía' : 'La lista negra está vacía'}
+            <Vacio titulo={datos.length ? 'Sin coincidencias' : soloMios && estado === 'retirados' ? 'No tiene permisos desactivados' : tipo === 'autorizados' ? 'La lista blanca está vacía' : 'La lista negra está vacía'}
               texto={datos.length ? 'Ajuste la búsqueda o el filtro de vigencia.' : puedeEditar ? 'Use “Agregar” para registrar el primero.' : undefined} />
           )}
         </Tarjeta>
@@ -197,12 +210,13 @@ const Listas: React.FC<{ tipo?: TipoLista; incrustada?: boolean; soloMios?: bool
           if (r.resumen.crear + r.resumen.reactivar) notificar('exito', 'Permisos importados', `${r.resumen.crear} creados y ${r.resumen.reactivar} reactivados desde ${r.archivo}.`);
         }} />
       )}
+      {acciones.dialogo}
       {retirando && (
-        // Un permiso de la lista blanca se retira sin motivo (se puede reactivar); la lista negra lo exige
-        <Confirmar titulo="Retirar de la lista" pedirMotivo={tipo === 'alertas'} peligro textoBoton="Retirar"
+        // Retirar es inmediato en las dos listas: sin motivo (la auditoría guarda quién y qué placa)
+        <Confirmar titulo="Retirar de la lista" peligro textoBoton="Retirar"
           mensaje={<>Se retirará {tipo === 'autorizados' ? 'el permiso de ' : ''}<b>{retirando.placa ? formatearPlaca(retirando.placa) : retirando.propietario}</b> de la lista. El historial de ingresos se conserva.</>}
-          onConfirmar={async motivo => {
-            try { await api.delete(`${RUTA_API[tipo]}/${retirando.id}`, tipo === 'alertas' ? { data: { motivo } } : undefined); } catch (e) { throw new Error(mensajeError(e)); }
+          onConfirmar={async () => {
+            try { await api.delete(`${RUTA_API[tipo]}/${retirando.id}`); } catch (e) { throw new Error(mensajeError(e)); }
             recargar(true);
             notificar('exito', `${retirando.placa ? formatearPlaca(retirando.placa) : retirando.propietario} retirado de la lista`);
           }}

@@ -55,7 +55,7 @@ Solo existen **tres roles** (migración `db/migration_v6_tres_roles.sql`: `OPERA
    a quien lo otorgó. Enlace: `/listas/autorizados?q=<placa>`.
 2. Llega el vehículo y el paso queda **autorizado** (lectura automática, validación o registro
    manual) → notificación `acceso.llegada_permiso` **solo** al usuario que otorgó el permiso
-   (`VehiculosAutorizados.registrado_por`). Las entradas repetidas dentro de 30 min se agrupan.
+   (`ListaBlanca.registrado_por`). Las entradas repetidas dentro de 30 min se agrupan.
 
 El enrutamiento de notificaciones también se hace **por permiso** (no por rol): cada tipo de
 notificación declara el permiso de sus destinatarios (ver [NOTIFICACIONES.md](NOTIFICACIONES.md)).

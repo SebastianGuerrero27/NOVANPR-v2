@@ -11,16 +11,18 @@ import { actorDe, controlador, idDe } from '../respuesta';
  *   GET    /:id    detalle de un registro
  *   POST   /       alta (reactiva el registro si la placa se había retirado)
  *   PUT    /:id    edición
- *   DELETE /:id    retiro (baja lógica) con motivo
+ *   DELETE /:id    retiro (baja lógica; en la lista blanca, «desactivar»), motivo opcional
  *
  * Solo lista blanca:
  *   POST   /importar        permisos desde un .xlsx o .csv (id, nombres, cedula, institucion, cargo,
  *                           placa, marca, modelo, tipo, color); ?simular=si es la vista previa
+ *   GET    /mis-permisos    los que otorgó el usuario (?estado=activos|retirados|todos; activos por omisión)
+ *   POST   /:id/reactivar   vuelve a activar un permiso desactivado con sus mismos datos (motivo
+ *                           auditado): el administrador, cualquiera; los demás, solo los suyos
  *
  * Solo lista blanca, administrador (padron:supervisar):
  *   GET    /registro        permisos de todos los usuarios (?usuario=, ?estado=activos|retirados|todos)
  *                           y el resumen de lo que otorgó cada gestor
- *   POST   /:id/reactivar   reactiva un permiso retirado con sus mismos datos (motivo auditado)
  *   DELETE /:id/definitivo  elimina un permiso retirado o vencido sin ingresos en el historial
  *
  * Lectura: listas:ver. Cambios: el permiso de cada lista (padron:gestionar para la lista
@@ -52,7 +54,12 @@ function crearRouter(def: DefinicionLista): Router {
     }));
 
   if (def.tipo === 'autorizados') router.get('/mis-permisos', ...lectura, controlador(contexto, 'No se pudieron consultar sus permisos.', async (req, res) => {
-    res.json(await listas.listar(def, actorDe(req), true));
+    res.json(await listas.misPermisos(req.query, actorDe(req)));
+  }));
+
+  if (def.tipo === 'autorizados') router.post('/:id(\\d+)/reactivar', ...edicion, controlador(contexto, 'No se pudo activar el permiso.', async (req, res) => {
+    const id = idDe(req, res);
+    if (id !== null) res.json({ message: 'Permiso activado.', item: await listas.reactivar(def, id, req.body?.motivo, actorDe(req)) });
   }));
 
   // Importación desde Excel/CSV: el cuerpo es el archivo; ?simular=si devuelve la vista previa sin guardar
@@ -67,10 +74,6 @@ function crearRouter(def: DefinicionLista): Router {
     const supervision = [authMiddleware, requierePermiso('padron:supervisar')];
     router.get('/registro', ...supervision, controlador(contexto, 'No se pudo consultar el registro de permisos.', async (req, res) => {
       res.json(await listas.registroPermisos(req.query));
-    }));
-    router.post('/:id(\\d+)/reactivar', ...supervision, controlador(contexto, 'No se pudo reactivar el permiso.', async (req, res) => {
-      const id = idDe(req, res);
-      if (id !== null) res.json({ message: 'Permiso reactivado.', item: await listas.reactivar(def, id, req.body?.motivo, actorDe(req)) });
     }));
     router.delete('/:id(\\d+)/definitivo', ...supervision, controlador(contexto, 'No se pudo eliminar el permiso.', async (req, res) => {
       const id = idDe(req, res);
@@ -106,7 +109,7 @@ function crearRouter(def: DefinicionLista): Router {
     const id = idDe(req, res);
     if (id === null) return;
     await listas.retirar(def, id, req.body?.motivo, actorDe(req));
-    res.json({ message: 'Registro retirado de la lista.' });
+    res.json({ message: def.tipo === 'autorizados' ? 'Permiso desactivado.' : 'Registro retirado de la lista.' });
   }));
 
   return router;

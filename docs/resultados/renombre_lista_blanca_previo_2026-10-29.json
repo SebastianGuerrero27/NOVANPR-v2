@@ -1,0 +1,90 @@
+{
+  "fecha_local": "2026-10-29",
+  "antes": {
+    "oid": 16581,
+    "base": "ANPR_ECU911",
+    "esquema": "public",
+    "filas": 4,
+    "huella_filas": "9051077b864559b437b10c66175b52d5",
+    "columnas_sha256": "c91de17073c045b5412ae591f2dff77f50437c413a06c1562245a65d0ad1cd0f",
+    "referencias": [
+      {
+        "oid": 16625,
+        "conrelid": 16600,
+        "confrelid": 16581,
+        "conkey": [
+          10
+        ],
+        "confkey": [
+          1
+        ],
+        "confupdtype": "a",
+        "confdeltype": "a"
+      },
+      {
+        "oid": 16721,
+        "conrelid": 16694,
+        "confrelid": 16581,
+        "conkey": [
+          21
+        ],
+        "confkey": [
+          1
+        ],
+        "confupdtype": "a",
+        "confdeltype": "a"
+      }
+    ],
+    "indices": [
+      {
+        "indexrelid": 16590,
+        "indisunique": true,
+        "indisprimary": true,
+        "indkey": "1"
+      },
+      {
+        "indexrelid": 16592,
+        "indisunique": true,
+        "indisprimary": false,
+        "indkey": "2"
+      },
+      {
+        "indexrelid": 16769,
+        "indisunique": false,
+        "indisprimary": false,
+        "indkey": "2 6"
+      },
+      {
+        "indexrelid": 73743,
+        "indisunique": true,
+        "indisprimary": false,
+        "indkey": "19"
+      }
+    ],
+    "secuencia": "public.vehiculosautorizados_id_seq"
+  },
+  "rutas_antes": {
+    "/api/vehiculos-autorizados": {
+      "http": 200,
+      "registros": 0
+    },
+    "/api/vehiculos-autorizados/mis-permisos": {
+      "http": 200,
+      "registros": 0
+    },
+    "/api/blacklist": {
+      "http": 200,
+      "registros": 0
+    },
+    "/api/detecciones?pagina=1&tamano=1": {
+      "http": 200
+    },
+    "/api/panel/accesos": {
+      "http": 200
+    },
+    "/api/solicitudes-acceso": {
+      "http": 200,
+      "registros": 0
+    }
+  }
+}

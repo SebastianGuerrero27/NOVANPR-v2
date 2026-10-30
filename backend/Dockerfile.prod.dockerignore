@@ -5,4 +5,5 @@
 !backend/tsconfig.json
 !backend/src
 !backend/scripts/supervisar.cjs
+!backend/assets
 !db

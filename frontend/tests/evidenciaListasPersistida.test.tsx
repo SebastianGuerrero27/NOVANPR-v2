@@ -68,7 +68,8 @@ describe('Evidencia conservada de lista blanca y lista negra', () => {
     expect(screen.getByText('Placa ingresada').closest('td')).toHaveClass('evidencia-capturada');
     fireEvent.click(screen.getByRole('button', { name: 'Ampliar foto del vehículo PBA1234' }));
     expect(screen.getByRole('dialog', { name: 'Evidencia de PBA1234' })).toBeInTheDocument();
-    expect(get).toHaveBeenCalledWith(tipo === 'autorizados' ? '/vehiculos-autorizados/mis-permisos' : '/blacklist');
+    if (tipo === 'autorizados') expect(get).toHaveBeenCalledWith('/vehiculos-autorizados/mis-permisos', { params: { estado: 'activos' } });
+    else expect(get).toHaveBeenCalledWith('/blacklist');
   });
 
   it.each(['autorizados', 'alertas'] as const)('conserva fotos al editar %s y Escape cierra sólo el zoom', tipo => {

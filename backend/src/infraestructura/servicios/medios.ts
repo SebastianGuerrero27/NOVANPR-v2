@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import sql from '../postgres';
 import { getDB } from '../db';
-import { type AlcanceTicket, archivoDeVideo, enmascararEnTexto, fuenteParaMediamtx } from '../../dominio/camaras';
+import { type AlcanceTicket, enmascararEnTexto, fuenteParaMediamtx } from '../../dominio/camaras';
 import { revelar } from './custodiaCredenciales';
 import { verificarRed } from './redCamaras';
 
@@ -14,11 +14,6 @@ import { verificarRed } from './redCamaras';
  * conexión por flujo (bajo demanda) y la reparte sin transcodificar. Las rutas se administran por
  * la API interna de MediaMTX a partir de la base de datos: las credenciales se descifran solo al
  * entregarlas a MediaMTX y nunca se escriben en archivos de configuración.
- *
- * Una cámara de prueba con un video cargado (`video://<archivo>`) no tiene fuente externa: su ruta
- * se publica desde el propio MediaMTX con FFmpeg, que lee el archivo en /videos (montaje de solo
- * lectura de VIDEOS_PRUEBA_DIR) en bucle y a velocidad real, sin recodificar. FFmpeg publica con
- * el usuario del motor; la API (que contiene el comando) no se expone fuera de la red de Docker.
  */
 const API = () => (process.env.MEDIAMTX_API_URL || 'http://localhost:9997').replace(/\/$/, '');
 const RTSP_INTERNA = () => (process.env.MEDIAMTX_RTSP_URL || 'rtsp://localhost:8554').replace(/\/$/, '');
@@ -60,17 +55,11 @@ const configRuta = (source: string) => ({
   sourceOnDemandCloseAfter: '15s',
 });
 
-/** Ruta de una cámara de video: la publica FFmpeg dentro de MediaMTX (sourceOnDemand no aplica). */
-export const configVideo = (nombre: string, archivo: string) => ({
-  source: 'publisher',
-  sourceOnDemand: false,
-  runOnInit: `ffmpeg -hide_banner -loglevel error -re -stream_loop -1 -i /videos/${archivo} -c copy -f rtsp -rtsp_transport tcp `
-    + `rtsp://${USUARIO_MOTOR}:${encodeURIComponent(token())}@127.0.0.1:8554/${nombre}`,
-  runOnInitRestart: true,
-});
-
 type ConfigRuta = { source: string; runOnInit?: string };
-/** Lo que distingue dos configuraciones de una ruta: la fuente y, si la hay, la orden que la publica. */
+/**
+ * Lo que distingue dos configuraciones de una ruta: la fuente y la orden de publicación (una ruta
+ * con orden, de una versión anterior, se reemplaza por la fuente de la cámara).
+ */
 const claveConfig = (c: ConfigRuta) => `${c.source}|${c.runOnInit ?? ''}`;
 
 /** Rutas configuradas en MediaMTX (nombre → fuente y orden de publicación). */
@@ -93,11 +82,6 @@ export function sincronizarRutas(): Promise<void> {
       const deseadas = new Map<string, ConfigRuta>();
       for (const c of camaras.recordset) {
         try {
-          const archivo = archivoDeVideo(c.rtsp_url);
-          if (archivo) {
-            deseadas.set(rutaCamara(c.id), configVideo(rutaCamara(c.id), archivo));
-            continue;
-          }
           const principal = revelar(c.rtsp_url);
           const vista = c.rtsp_url_vista ? revelar(c.rtsp_url_vista) : null;
           // Protección contra SSRF: MediaMTX no abre destinos fuera de las redes permitidas
@@ -124,7 +108,7 @@ export function sincronizarRutas(): Promise<void> {
       for (const [nombre, config] of deseadas) {
         if (!actuales.has(nombre)) await aplicar(nombre, () => api('POST', `/v3/config/paths/add/${nombre}`, config));
         else if (actuales.get(nombre) !== claveConfig(config)) {
-          // Reemplazar (no combinar): pasar de fuente externa a publicador exige quitar los campos anteriores
+          // Reemplazar (no combinar): no quedan campos de la configuración anterior
           await aplicar(nombre, () => api('POST', `/v3/config/paths/replace/${nombre}`, config));
         }
       }
@@ -205,15 +189,6 @@ export function esMotor(usuario: string, clave: string): boolean {
   const esperado = Buffer.from(token());
   const recibido = Buffer.from(clave || '');
   return usuario === USUARIO_MOTOR && esperado.length > 0 && esperado.length === recibido.length && crypto.timingSafeEqual(esperado, recibido);
-}
-
-/** Cámara de video de prueba habilitada cuya ruta es esta cam_<id> (la única que se puede publicar). */
-export async function camaraVideoDeRuta(ruta: string): Promise<number | null> {
-  const m = ruta.match(/^cam_(\d+)$/);
-  if (!m) return null;
-  const r = await getDB().request().input('id', sql.Int, Number(m[1]))
-    .query("SELECT id FROM Camaras WHERE id = @id AND activa = 1 AND rtsp_url LIKE 'video://%'");
-  return r.recordset[0]?.id ?? null;
 }
 
 /** Cámara registrada (habilitada) a la que corresponde una ruta cam_<id>. */

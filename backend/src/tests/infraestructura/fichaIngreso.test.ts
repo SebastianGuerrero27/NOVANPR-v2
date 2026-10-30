@@ -6,16 +6,28 @@ it('editar una celda conserva los datos del padrón que la ficha aún no contien
   const dto = presentarDeteccion({ id: 15, estado_validacion: 'autorizado', estado_procesamiento: 'procesado',
     vehiculo_autorizado_id: 7, propietario: 'Ana Torres', autorizado_cedula: '0102030405', autorizado_institucion: 'ECU 911',
     autorizado_cargo: 'Analista', departamento: 'Tecnología', autorizado_horario: null,
-    datos_permiso: { marca: 'Mazda', cedula: '0123456789' }, vehiculo_marca: 'Mazda',
+    cedula_ingreso: '0123456789', vehiculo_marca: 'Mazda',
   });
   expect(dto.datos_permiso).toMatchObject({ propietario: 'Ana Torres', cedula: '0123456789', institucion: 'ECU 911', cargo: 'Analista', departamento: 'Tecnología', marca: 'Mazda' });
 });
 
-it('conserva el borrado explícito de una cédula sin reponer el dato del padrón', () => {
-  const dto = presentarDeteccion({ id: 15, estado_validacion: 'autorizado', vehiculo_autorizado_id: 7,
-    autorizado_cedula: '0102030405', datos_permiso: { cedula: null },
+it('conserva el borrado explícito de una cédula (vacía) sin reponer el dato del padrón; sin escribir (NULL) lo toma del padrón', () => {
+  const vaciada = presentarDeteccion({ id: 15, estado_validacion: 'autorizado', vehiculo_autorizado_id: 7,
+    autorizado_cedula: '0102030405', cedula_ingreso: '',
   });
-  expect(dto.datos_permiso.cedula).toBeNull();
+  expect(vaciada.datos_permiso.cedula).toBeNull();
+  const sinEscribir = presentarDeteccion({ id: 15, estado_validacion: 'autorizado', vehiculo_autorizado_id: 7,
+    autorizado_cedula: '0102030405', cedula_ingreso: null,
+  });
+  expect(sinEscribir.datos_permiso.cedula).toBe('0102030405');
+});
+
+it('cada campo del formulario sale de su columna: vigencia como AAAA-MM-DD y sin padrón ni ficha no hay datos', () => {
+  const dto = presentarDeteccion({ id: 16, persona_ingreso: 'Rosa Vera', institucion_ingreso: 'ECU 911', categoria_permiso: 'VISITANTE',
+    observaciones_permiso: 'Placa sucia', vigencia_desde: new Date('2026-10-24T00:00:00Z'), vigencia_hasta: '2026-10-31', motivo_ingreso: 'Reunión' });
+  expect(dto.datos_permiso).toMatchObject({ propietario: 'Rosa Vera', institucion: 'ECU 911', categoria: 'VISITANTE', observaciones: 'Placa sucia',
+    fecha_inicio: '2026-10-24', fecha_fin: '2026-10-31', motivo_ingreso: 'Reunión', horario: null });
+  expect(presentarDeteccion({ id: 17 }).datos_permiso).toBeNull();
 });
 
 

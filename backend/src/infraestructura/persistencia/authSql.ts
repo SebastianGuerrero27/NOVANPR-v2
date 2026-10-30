@@ -1,6 +1,6 @@
 import sql, { PostgresRequest } from '../postgres';
 import { getDB } from '../db';
-import { ROL_POR_CODIGO } from '../../dominio/permisos';
+import { CODIGO_POR_ROL, ROL_POR_CODIGO } from '../../dominio/permisos';
 import type { CuentaAcceso, CuentaPropia, RepositorioAuth } from '../../aplicacion/auth';
 import { buscarEnlace, emitirEnlace, enlaceReciente } from './enlacesSql';
 
@@ -110,11 +110,22 @@ export const repositorioAuthSql: RepositorioAuth = {
   },
 
   async registrar(c) {
-    const ins = await datosCuenta(db().request(), c, await rolId('GUARDIA'))
+    if (c.rol !== 'Guardia' && c.rol !== 'GestorPermisos') throw new Error('Rol de registro público inválido.');
+    const ins = await datosCuenta(db().request(), c, await rolId(CODIGO_POR_ROL[c.rol]))
+      .input('estado', sql.VarChar(20), c.requiereVerificacion ? 'pendiente' : 'activo')
       .query(`INSERT INTO Usuarios (email, nombre_completo, cargo, password_hash, rol_id, estado, email_verificado, fecha_cambio_password)
               OUTPUT INSERTED.id
-              VALUES (@email, @nombre, @cargo, @hash, @rol, 'pendiente', FALSE, SYSDATETIME())`);
+              VALUES (@email, @nombre, @cargo, @hash, @rol, @estado, FALSE, SYSDATETIME())`);
     return ins.recordset[0].id;
+  },
+
+  async activarPendienteSinVerificacion(id, passwordHashActual) {
+    const r = await db().request().input('id', sql.Int, id).input('hash', sql.VarChar(100), passwordHashActual)
+      .query(`UPDATE Usuarios SET estado = 'activo', fecha_actualizacion = CURRENT_TIMESTAMP
+        WHERE id = @id AND estado = 'pendiente' AND bloqueado = FALSE
+          AND (bloqueado_hasta IS NULL OR bloqueado_hasta <= CURRENT_TIMESTAMP)
+          AND password_hash = @hash RETURNING id`);
+    return r.recordset.length > 0;
   },
 
   async registrarIntentoFallido(id, intentos, bloquear, minutos) {

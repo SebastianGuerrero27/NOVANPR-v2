@@ -5,7 +5,8 @@ import type {
 import { NOMBRE_ROL, type Permiso, permisosDe, type Rol } from '../dominio/permisos';
 import {
   bloqueoTemporalVigente, type DatosPerfil, enlaceVencido, evaluarIntentoFallido, HORAS_VERIFICACION, leerPerfil,
-  leerRegistro, minutosRestantes, MINUTOS_RESTABLECIMIENTO, normalizarCorreo, RE_TOKEN_ENLACE, validarPassword,
+  leerRegistro, leerRolRegistroPublico, minutosRestantes, MINUTOS_RESTABLECIMIENTO, normalizarCorreo, RE_TOKEN_ENLACE, validarPassword,
+  type RolRegistroPublico,
 } from '../dominio/usuarios';
 
 /**
@@ -97,6 +98,8 @@ export interface EnlaceGuardado {
 /** Cuenta que crea la propia persona (elige su contraseña); el rol lo fija el flujo. */
 export type CuentaPropia = Omit<NuevaCuenta, 'rol'>;
 
+export type CuentaRegistroPublico = CuentaPropia & { rol: RolRegistroPublico; requiereVerificacion: boolean };
+
 export interface RepositorioAuth {
   /** ¿Existe alguna cuenta con rol de administrador, en cualquier estado? */
   hayAdministrador(): Promise<boolean>;
@@ -108,8 +111,10 @@ export interface RepositorioAuth {
    * comprobar que no exista ninguno: false si otra solicitud simultánea lo creó antes.
    */
   crearPrimerAdministrador(c: CuentaPropia): Promise<boolean>;
-  /** Registro público: rol Guardia, estado pendiente y correo sin verificar; devuelve el id */
-  registrar(c: CuentaPropia): Promise<number>;
+  /** Registro público: rol permitido, activo o pendiente según política; correo no verificado. */
+  registrar(c: CuentaRegistroPublico): Promise<number>;
+  /** Tras comprobar la contraseña, activa sólo la misma cuenta pendiente y no bloqueada. */
+  activarPendienteSinVerificacion(id: number, passwordHashActual: string): Promise<boolean>;
   /** Contraseña incorrecta: guarda el contador y, si corresponde, el bloqueo temporal */
   registrarIntentoFallido(id: number, intentos: number, bloquear: boolean, minutosBloqueo: number): Promise<void>;
   /** Inicio de sesión correcto: reinicia los intentos, quita el bloqueo temporal y anota la fecha */
@@ -133,6 +138,7 @@ export interface RepositorioAuth {
 /** Parámetros del sistema que rigen las cuentas (configuración editable por el administrador). */
 export interface PuertoParametrosCuentas {
   registroHabilitado(): boolean;
+  verificacionEmailRequerida(): boolean;
   dominiosPermitidos(): string[];
   unidadInstitucional(): string;
   maxIntentos(): number;
@@ -156,6 +162,8 @@ export interface DependenciasAuth {
   urlFrontend: () => string;
   /** Fallo en un flujo de respuesta genérica: se registra en el log y la respuesta no cambia */
   registrarFallo: (contexto: string, error: unknown) => void;
+  /** Renueva la caché de estado cuando un ingreso correcto activa una cuenta anterior. */
+  alActivarCuenta?: (id: number) => void;
 }
 
 // ─── Respuestas ──────────────────────────────────────────────────────────────
@@ -208,11 +216,13 @@ export function casosAuth(d: DependenciasAuth) {
   }
 
   return {
+    verificacionEmailRequerida: () => d.parametros.verificacionEmailRequerida(),
     /** Datos públicos para la pantalla de acceso (¿falta la configuración inicial?, ¿registro?, ¿SMTP?). */
     async estado() {
       return {
         configuracion_inicial_requerida: !(await d.repositorio.hayAdministrador()),
         registro_habilitado: d.parametros.registroHabilitado(),
+        verificacion_email_requerida: d.parametros.verificacionEmailRequerida(),
         smtp_configurado: d.correo.smtpConfigurado(),
         dominios_permitidos: d.parametros.dominiosPermitidos(),
         unidad_institucional: d.parametros.unidadInstitucional(),
@@ -277,14 +287,26 @@ export function casosAuth(d: DependenciasAuth) {
         throw new RechazoAutenticacion('credenciales', CREDENCIALES_INVALIDAS);
       }
 
-      // Contraseña correcta: el estado de la cuenta se revela solo a quien conoce la contraseña
-      if (u.estado === 'pendiente' || !u.email_verificado) {
+      // Contraseña correcta: la suspensión de correo nunca reactiva una cuenta dada de baja.
+      if (u.estado !== 'activo' && u.estado !== 'pendiente') {
+        await d.auditoria.acceso(visitante, email, u.id, false, 'inactivo');
+        throw new RechazoAutenticacion('inactiva', 'La cuenta está inactiva. Contacte al administrador.');
+      }
+      const requiereVerificacion = d.parametros.verificacionEmailRequerida();
+      if (requiereVerificacion && (u.estado === 'pendiente' || !u.email_verificado)) {
         await d.auditoria.acceso(visitante, email, u.id, false, 'no_verificado');
         throw new RechazoAutenticacion('no_verificado', 'Debe verificar su correo antes de ingresar.', 'EMAIL_NO_VERIFICADO');
       }
-      if (u.estado !== 'activo') {
-        await d.auditoria.acceso(visitante, email, u.id, false, 'inactivo');
-        throw new RechazoAutenticacion('inactiva', 'La cuenta está inactiva. Contacte al administrador.');
+      if (!requiereVerificacion && u.estado === 'pendiente') {
+        const activada = await d.repositorio.activarPendienteSinVerificacion(u.id, u.password_hash);
+        if (!activada) {
+          await d.auditoria.acceso(visitante, email, u.id, false, 'sesion_inactiva');
+          throw new RechazoAutenticacion('sesion_inactiva', 'La cuenta cambió mientras ingresaba. Intente nuevamente.');
+        }
+        u.estado = 'activo';
+        d.alActivarCuenta?.(u.id);
+        await d.auditoria.cuenta(visitante, 'CUENTA_ACTIVADA_SIN_VERIFICACION', { id: u.id, email },
+          'Contraseña confirmada; verificación por correo desactivada');
       }
 
       const s = sesion(u);
@@ -293,21 +315,32 @@ export function casosAuth(d: DependenciasAuth) {
       return s;
     },
 
-    /** Registro público (rol Guardia): la cuenta queda pendiente hasta verificar el correo. Devuelve si el correo salió. */
-    async registrar(entrada: unknown, visitante: Visitante): Promise<{ enviado: boolean }> {
+    /** Registro público con rol permitido y verificación de correo configurable. */
+    async registrar(entrada: unknown, visitante: Visitante): Promise<{
+      enviado: boolean; verificacion_email_requerida: boolean; rol: RolRegistroPublico; activo: boolean;
+    }> {
       if (!d.parametros.registroHabilitado()) {
         throw errorProhibido('El registro público está deshabilitado. Solicite su cuenta al administrador.');
       }
-      const datos = leerRegistro(cuerpo(entrada), d.parametros.dominiosPermitidos());
+      const b = cuerpo(entrada);
+      const datos = leerRegistro(b, d.parametros.dominiosPermitidos());
       if (!datos.ok) throw errorValidacion(datos.error);
+      const rol = leerRolRegistroPublico(b.rol);
+      if (!rol.ok) throw errorValidacion(rol.error);
       const { email, nombre_completo, cargo, password } = datos.valor;
       if (await d.repositorio.porEmail(email)) throw errorConflicto('Ya existe una cuenta con ese correo.');
-      const id = await d.repositorio.registrar({ email, nombre_completo, cargo, passwordHash: await d.claves.cifrar(password) });
-      const { token, hash } = d.tokens.generar();
-      await d.repositorio.emitirEnlace('verificacion', id, hash, HORAS_VERIFICACION * 60);
-      const enviado = await d.correo.verificacionCuenta(email, nombre_completo, enlace('verificar-email', token), HORAS_VERIFICACION);
-      await d.auditoria.cuenta(visitante, 'REGISTRO', { id, email }, 'Registro público; pendiente de verificación');
-      return { enviado };
+      const requiereVerificacion = d.parametros.verificacionEmailRequerida();
+      const id = await d.repositorio.registrar({ email, nombre_completo, cargo, rol: rol.valor,
+        requiereVerificacion, passwordHash: await d.claves.cifrar(password) });
+      let enviado = false;
+      if (requiereVerificacion) {
+        const { token, hash } = d.tokens.generar();
+        await d.repositorio.emitirEnlace('verificacion', id, hash, HORAS_VERIFICACION * 60);
+        enviado = await d.correo.verificacionCuenta(email, nombre_completo, enlace('verificar-email', token), HORAS_VERIFICACION);
+      }
+      await d.auditoria.cuenta(visitante, 'REGISTRO', { id, email },
+        `Registro público; rol ${rol.valor}; ${requiereVerificacion ? 'pendiente de verificación' : 'cuenta activa sin verificación de correo'}`);
+      return { enviado, verificacion_email_requerida: requiereVerificacion, rol: rol.valor, activo: !requiereVerificacion };
     },
 
     /** Activa la cuenta con el token del correo de verificación. */
@@ -330,6 +363,7 @@ export function casosAuth(d: DependenciasAuth) {
      * la respuesta es la misma exista o no la cuenta.
      */
     async reenviarVerificacion(email: unknown): Promise<void> {
+      if (!d.parametros.verificacionEmailRequerida()) return;
       try {
         const u = await d.repositorio.porEmail(normalizarCorreo(email));
         if (!u || u.email_verificado) return;

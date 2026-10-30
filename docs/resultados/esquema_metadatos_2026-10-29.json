@@ -1,0 +1,3602 @@
+{
+  "fecha_local": "2026-10-29",
+  "base": "ANPR_ECU911",
+  "esquema": "public",
+  "tablas": [
+    {
+      "table_name": "auditoriaaccesos"
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo"
+    },
+    {
+      "table_name": "auditoriaconsultapropietario"
+    },
+    {
+      "table_name": "auditoriadescartes"
+    },
+    {
+      "table_name": "auditoriaoperaciones"
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo"
+    },
+    {
+      "table_name": "auditoriausuarios"
+    },
+    {
+      "table_name": "auditoriausuariosarchivo"
+    },
+    {
+      "table_name": "camaras"
+    },
+    {
+      "table_name": "clavesservicio"
+    },
+    {
+      "table_name": "configuracionsistema"
+    },
+    {
+      "table_name": "deteccionvehiculo"
+    },
+    {
+      "table_name": "listablanca"
+    },
+    {
+      "table_name": "listanegra"
+    },
+    {
+      "table_name": "notificaciones"
+    },
+    {
+      "table_name": "notificacionusuario"
+    },
+    {
+      "table_name": "restablecimientopassword"
+    },
+    {
+      "table_name": "roles"
+    },
+    {
+      "table_name": "solicitudesacceso"
+    },
+    {
+      "table_name": "suscripcionespush"
+    },
+    {
+      "table_name": "usuarios"
+    },
+    {
+      "table_name": "verificacionemail"
+    }
+  ],
+  "columnas": [
+    {
+      "table_name": "auditoriaaccesos",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "auditoriaaccesos",
+      "column_name": "fecha",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "auditoriaaccesos",
+      "column_name": "email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "auditoriaaccesos",
+      "column_name": "usuario_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "auditoriaaccesos",
+      "column_name": "exito",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "auditoriaaccesos",
+      "column_name": "motivo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "auditoriaaccesos",
+      "column_name": "ip",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 45,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "auditoriaaccesos",
+      "column_name": "user_agent",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo",
+      "column_name": "fecha",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo",
+      "column_name": "email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo",
+      "column_name": "usuario_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo",
+      "column_name": "exito",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo",
+      "column_name": "motivo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo",
+      "column_name": "ip",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 45,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo",
+      "column_name": "user_agent",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "auditoriaaccesosarchivo",
+      "column_name": "fecha_archivado",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "auditoriaconsultapropietario",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "auditoriaconsultapropietario",
+      "column_name": "usuario_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "auditoriaconsultapropietario",
+      "column_name": "usuario_nombre",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "auditoriaconsultapropietario",
+      "column_name": "placa",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "auditoriaconsultapropietario",
+      "column_name": "motivo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "auditoriaconsultapropietario",
+      "column_name": "deteccion_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "auditoriaconsultapropietario",
+      "column_name": "proveedor",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "auditoriaconsultapropietario",
+      "column_name": "resultado",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "auditoriaconsultapropietario",
+      "column_name": "fecha",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "auditoriadescartes",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "auditoriadescartes",
+      "column_name": "tracking_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "auditoriadescartes",
+      "column_name": "motivo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "auditoriadescartes",
+      "column_name": "texto_candidato",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "auditoriadescartes",
+      "column_name": "confianza",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "auditoriadescartes",
+      "column_name": "fuente",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "auditoriadescartes",
+      "column_name": "camara_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "auditoriadescartes",
+      "column_name": "fecha_registro",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "auditoriaoperaciones",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "auditoriaoperaciones",
+      "column_name": "fecha",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "auditoriaoperaciones",
+      "column_name": "usuario_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "auditoriaoperaciones",
+      "column_name": "usuario_email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "auditoriaoperaciones",
+      "column_name": "accion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "auditoriaoperaciones",
+      "column_name": "entidad",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 40,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "auditoriaoperaciones",
+      "column_name": "entidad_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "auditoriaoperaciones",
+      "column_name": "detalle",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "auditoriaoperaciones",
+      "column_name": "ip",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 45,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "fecha",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "usuario_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "usuario_email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "accion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "entidad",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 40,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "entidad_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "detalle",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "ip",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 45,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "auditoriaoperacionesarchivo",
+      "column_name": "fecha_archivado",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "auditoriausuarios",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "auditoriausuarios",
+      "column_name": "fecha",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "auditoriausuarios",
+      "column_name": "accion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "auditoriausuarios",
+      "column_name": "actor_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "auditoriausuarios",
+      "column_name": "actor_email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "auditoriausuarios",
+      "column_name": "objetivo_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "auditoriausuarios",
+      "column_name": "objetivo_email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "auditoriausuarios",
+      "column_name": "detalle",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "auditoriausuarios",
+      "column_name": "ip",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 45,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "fecha",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "accion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "actor_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "actor_email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "objetivo_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "objetivo_email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "detalle",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "ip",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 45,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "auditoriausuariosarchivo",
+      "column_name": "fecha_archivado",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "nombre",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "ip",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 45,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "rtsp_url",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 512,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "ubicacion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "activa",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "true",
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "created_at",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "estado",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "YES",
+      "column_default": "'ACTIVA'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "ultimo_ping",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "tiempo_respuesta_ms",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "mensaje_ping",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 11
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "registrado_por",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 12
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "fecha_actualizacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 13
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "direccion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "is_nullable": "NO",
+      "column_default": "'ingreso'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 14
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "roi",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 1000,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 15
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "rtsp_url_vista",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 512,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 16
+    },
+    {
+      "table_name": "camaras",
+      "column_name": "exclusiones",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 17
+    },
+    {
+      "table_name": "clavesservicio",
+      "column_name": "clave",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 60,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "clavesservicio",
+      "column_name": "valor",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 1000,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "clavesservicio",
+      "column_name": "fecha_creacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "configuracionsistema",
+      "column_name": "clave",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 60,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "configuracionsistema",
+      "column_name": "valor",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "configuracionsistema",
+      "column_name": "actualizado_por",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "configuracionsistema",
+      "column_name": "fecha_actualizacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "confianza_deteccion",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "confianza_ocr",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "tracking_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "'-1'::integer",
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "fuente",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": "'rtsp'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "tipo_movimiento",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "is_nullable": "NO",
+      "column_default": "'ingreso'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "estado_validacion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 30,
+      "is_nullable": "YES",
+      "column_default": "'no_reconocido'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "camara_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "alerta_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "vehiculo_autorizado_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "estado_procesamiento",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 30,
+      "is_nullable": "YES",
+      "column_default": "'pendiente_ocr'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 11
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "ruta_imagen_ingreso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 12
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "ruta_imagen_placa",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 13
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "fecha_hora_ingreso",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 14
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "placa_reconocida",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 15
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "fecha_hora_procesamiento",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 16
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "validado_manualmente",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "false",
+      "is_identity": "NO",
+      "ordinal_position": 17
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "placa_validada",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 18
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "usuario_validador_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 19
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "tipo_vehiculo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 20
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "placa_ocr_original",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 21
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "confianza_ocr_original",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 22
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "decision_automatica",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 30,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 23
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "lectura_verificador",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 24
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "latencia_ms",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 25
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "luminancia_media",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 26
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "distancia_estimada_m",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 27
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "ancho_placa_px",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 28
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "nitidez",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 29
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "velocidad_px_s",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 30
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "modelo_detector",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 32
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "modelo_ocr",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 33
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "fecha_validacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 34
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "vehiculo_tipo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 35
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "vehiculo_color",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 30,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 36
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "vehiculo_marca",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 37
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "vehiculo_modelo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 38
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "vehiculo_atributos_json",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 39
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "verificacion_vehiculo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 40
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "verificacion_detalle",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 41
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "lectura_valida",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 42
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "evidencia_lectura",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 1500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 43
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "restriccion_acceso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 30,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 44
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "persona_ingreso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 45
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "motivo_ingreso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 300,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 46
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "fecha_hora_salida",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 47
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "cedula_ingreso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 49
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "institucion_ingreso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 50
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "cargo_ingreso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 51
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "departamento_ingreso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 52
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "categoria_permiso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 53
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "observaciones_permiso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 54
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "vigencia_desde",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 55
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "vigencia_hasta",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 56
+    },
+    {
+      "table_name": "deteccionvehiculo",
+      "column_name": "horario_permiso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 600,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 57
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "placa",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "propietario",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "departamento",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "tipo_vehiculo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "activo",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "true",
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "fecha_registro",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "marca",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "modelo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "color",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 30,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "registrado_por",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 11
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "fecha_actualizacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 12
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "fecha_vencimiento",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 13
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "observaciones",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 14
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "categoria",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "NO",
+      "column_default": "'FUNCIONARIO'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 15
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "fecha_inicio",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 16
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "horario",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 600,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 17
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "solicitud_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 18
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "cedula",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 19
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "institucion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 20
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "cargo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 21
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "ruta_evidencia_vehiculo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 22
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "ruta_evidencia_placa",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 23
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "fecha_evidencia_vehiculo",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 24
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "fecha_evidencia_placa",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 25
+    },
+    {
+      "table_name": "listablanca",
+      "column_name": "motivo_ingreso",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 300,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 26
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "placa",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "motivo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "nivel_alerta",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "YES",
+      "column_default": "'ALTA'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "fecha_registro",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "activo",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": "true",
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "marca",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "modelo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "color",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 30,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "registrado_por",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "fecha_actualizacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 11
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "fecha_vencimiento",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 12
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "observaciones",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 13
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "tipo_vehiculo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 14
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "fecha_inicio",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 15
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "horario",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 600,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 16
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "ruta_evidencia_vehiculo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 17
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "ruta_evidencia_placa",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 18
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "fecha_evidencia_vehiculo",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 19
+    },
+    {
+      "table_name": "listanegra",
+      "column_name": "fecha_evidencia_placa",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 20
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "tipo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 40,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "severidad",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "titulo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "mensaje",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 500,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "enlace",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 200,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "datos",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 1000,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "clave_dedup",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 120,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "repeticiones",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "1",
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "requiere_ack",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "false",
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "deteccion_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 11
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "fecha_creacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 12
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "fecha_ultima",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 13
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "atendida_por",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 14
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "fecha_atencion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 15
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "fecha_resolucion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 16
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "escalada",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "false",
+      "is_identity": "NO",
+      "ordinal_position": 17
+    },
+    {
+      "table_name": "notificaciones",
+      "column_name": "fecha_escalamiento",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 18
+    },
+    {
+      "table_name": "notificacionusuario",
+      "column_name": "notificacion_id",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "notificacionusuario",
+      "column_name": "usuario_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "notificacionusuario",
+      "column_name": "fecha_lectura",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "notificacionusuario",
+      "column_name": "fecha_eliminacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "restablecimientopassword",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "restablecimientopassword",
+      "column_name": "usuario_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "restablecimientopassword",
+      "column_name": "token_hash",
+      "data_type": "character",
+      "udt_name": "bpchar",
+      "character_maximum_length": 64,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "restablecimientopassword",
+      "column_name": "fecha_creacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "restablecimientopassword",
+      "column_name": "fecha_expiracion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "restablecimientopassword",
+      "column_name": "usado",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "false",
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "restablecimientopassword",
+      "column_name": "fecha_uso",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "roles",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "roles",
+      "column_name": "codigo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "roles",
+      "column_name": "nombre",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "roles",
+      "column_name": "descripcion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "placa",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "propietario",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "departamento",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "categoria",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "NO",
+      "column_default": "'VISITANTE'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "motivo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 300,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "tipo_vehiculo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "marca",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "modelo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "color",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 30,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "fecha_inicio",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 11
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "fecha_fin",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 12
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "horario",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 600,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 13
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "deteccion_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 14
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "estado",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "NO",
+      "column_default": "'pendiente'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 15
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "solicitado_por",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 16
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "fecha_solicitud",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 17
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "resuelto_por",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 18
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "fecha_resolucion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 19
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "comentario_resolucion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 300,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 20
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "vehiculo_autorizado_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 21
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "version",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "1",
+      "is_identity": "NO",
+      "ordinal_position": 22
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "cedula",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 23
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "institucion",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 24
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "cargo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 25
+    },
+    {
+      "table_name": "solicitudesacceso",
+      "column_name": "observaciones",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 26
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "usuario_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "endpoint",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 600,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "endpoint_hash",
+      "data_type": "character",
+      "udt_name": "bpchar",
+      "character_maximum_length": 64,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "p256dh",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 200,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "auth",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "user_agent",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "fecha_creacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "fecha_ultimo_uso",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "suscripcionespush",
+      "column_name": "fallos",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "0",
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "nombre_completo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 150,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "cargo",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "password_hash",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "rol_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "estado",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "is_nullable": "NO",
+      "column_default": "'pendiente'::character varying",
+      "is_identity": "NO",
+      "ordinal_position": 7
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "email_verificado",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "false",
+      "is_identity": "NO",
+      "ordinal_position": 8
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "bloqueado",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "false",
+      "is_identity": "NO",
+      "ordinal_position": 9
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "bloqueado_hasta",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 10
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "intentos_fallidos",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "0",
+      "is_identity": "NO",
+      "ordinal_position": 11
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "fecha_ultimo_acceso",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 12
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "fecha_cambio_password",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 13
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "creado_por",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 14
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "fecha_creacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 15
+    },
+    {
+      "table_name": "usuarios",
+      "column_name": "fecha_actualizacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 16
+    },
+    {
+      "table_name": "verificacionemail",
+      "column_name": "id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "YES",
+      "ordinal_position": 1
+    },
+    {
+      "table_name": "verificacionemail",
+      "column_name": "usuario_id",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "table_name": "verificacionemail",
+      "column_name": "token_hash",
+      "data_type": "character",
+      "udt_name": "bpchar",
+      "character_maximum_length": 64,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "table_name": "verificacionemail",
+      "column_name": "fecha_creacion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "is_identity": "NO",
+      "ordinal_position": 4
+    },
+    {
+      "table_name": "verificacionemail",
+      "column_name": "fecha_expiracion",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "table_name": "verificacionemail",
+      "column_name": "usado",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "is_nullable": "NO",
+      "column_default": "false",
+      "is_identity": "NO",
+      "ordinal_position": 6
+    },
+    {
+      "table_name": "verificacionemail",
+      "column_name": "fecha_uso",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "character_maximum_length": null,
+      "is_nullable": "YES",
+      "column_default": null,
+      "is_identity": "NO",
+      "ordinal_position": 7
+    }
+  ],
+  "claves_foraneas": [
+    {
+      "conname": "auditoriaaccesos_usuario_id_fkey",
+      "tabla": "auditoriaaccesos",
+      "definicion": "FOREIGN KEY (usuario_id) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "auditoriaaccesosarchivo_usuario_id_fkey",
+      "tabla": "auditoriaaccesosarchivo",
+      "definicion": "FOREIGN KEY (usuario_id) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "auditoriaconsultapropietario_usuario_id_fkey",
+      "tabla": "auditoriaconsultapropietario",
+      "definicion": "FOREIGN KEY (usuario_id) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "auditoriaoperaciones_usuario_id_fkey",
+      "tabla": "auditoriaoperaciones",
+      "definicion": "FOREIGN KEY (usuario_id) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "auditoriaoperacionesarchivo_usuario_id_fkey",
+      "tabla": "auditoriaoperacionesarchivo",
+      "definicion": "FOREIGN KEY (usuario_id) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "auditoriausuarios_actor_id_fkey",
+      "tabla": "auditoriausuarios",
+      "definicion": "FOREIGN KEY (actor_id) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "auditoriausuariosarchivo_actor_id_fkey",
+      "tabla": "auditoriausuariosarchivo",
+      "definicion": "FOREIGN KEY (actor_id) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "camaras_registrado_por_fkey",
+      "tabla": "camaras",
+      "definicion": "FOREIGN KEY (registrado_por) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "configuracionsistema_actualizado_por_fkey",
+      "tabla": "configuracionsistema",
+      "definicion": "FOREIGN KEY (actualizado_por) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "deteccionvehiculo_alerta_id_fkey",
+      "tabla": "deteccionvehiculo",
+      "definicion": "FOREIGN KEY (alerta_id) REFERENCES listanegra(id)"
+    },
+    {
+      "conname": "deteccionvehiculo_camara_id_fkey",
+      "tabla": "deteccionvehiculo",
+      "definicion": "FOREIGN KEY (camara_id) REFERENCES camaras(id)"
+    },
+    {
+      "conname": "deteccionvehiculo_usuario_validador_id_fkey",
+      "tabla": "deteccionvehiculo",
+      "definicion": "FOREIGN KEY (usuario_validador_id) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "deteccionvehiculo_vehiculo_autorizado_id_fkey",
+      "tabla": "deteccionvehiculo",
+      "definicion": "FOREIGN KEY (vehiculo_autorizado_id) REFERENCES listablanca(id)"
+    },
+    {
+      "conname": "vehiculosautorizados_registrado_por_fkey",
+      "tabla": "listablanca",
+      "definicion": "FOREIGN KEY (registrado_por) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "listanegra_registrado_por_fkey",
+      "tabla": "listanegra",
+      "definicion": "FOREIGN KEY (registrado_por) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "notificaciones_atendida_por_fkey",
+      "tabla": "notificaciones",
+      "definicion": "FOREIGN KEY (atendida_por) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "notificaciones_deteccion_id_fkey",
+      "tabla": "notificaciones",
+      "definicion": "FOREIGN KEY (deteccion_id) REFERENCES deteccionvehiculo(id) ON DELETE SET NULL"
+    },
+    {
+      "conname": "notificacionusuario_notificacion_id_fkey",
+      "tabla": "notificacionusuario",
+      "definicion": "FOREIGN KEY (notificacion_id) REFERENCES notificaciones(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "notificacionusuario_usuario_id_fkey",
+      "tabla": "notificacionusuario",
+      "definicion": "FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "restablecimientopassword_usuario_id_fkey",
+      "tabla": "restablecimientopassword",
+      "definicion": "FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "solicitudesacceso_deteccion_id_fkey",
+      "tabla": "solicitudesacceso",
+      "definicion": "FOREIGN KEY (deteccion_id) REFERENCES deteccionvehiculo(id) ON DELETE SET NULL"
+    },
+    {
+      "conname": "solicitudesacceso_resuelto_por_fkey",
+      "tabla": "solicitudesacceso",
+      "definicion": "FOREIGN KEY (resuelto_por) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "solicitudesacceso_solicitado_por_fkey",
+      "tabla": "solicitudesacceso",
+      "definicion": "FOREIGN KEY (solicitado_por) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "solicitudesacceso_vehiculo_autorizado_id_fkey",
+      "tabla": "solicitudesacceso",
+      "definicion": "FOREIGN KEY (vehiculo_autorizado_id) REFERENCES listablanca(id)"
+    },
+    {
+      "conname": "suscripcionespush_usuario_id_fkey",
+      "tabla": "suscripcionespush",
+      "definicion": "FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "usuarios_creado_por_fkey",
+      "tabla": "usuarios",
+      "definicion": "FOREIGN KEY (creado_por) REFERENCES usuarios(id)"
+    },
+    {
+      "conname": "usuarios_rol_id_fkey",
+      "tabla": "usuarios",
+      "definicion": "FOREIGN KEY (rol_id) REFERENCES roles(id)"
+    },
+    {
+      "conname": "verificacionemail_usuario_id_fkey",
+      "tabla": "verificacionemail",
+      "definicion": "FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE"
+    }
+  ],
+  "restricciones": [
+    {
+      "tabla": "auditoriaaccesos",
+      "conname": "auditoriaaccesos_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "auditoriaaccesosarchivo",
+      "conname": "auditoriaaccesosarchivo_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "auditoriaconsultapropietario",
+      "conname": "auditoriaconsultapropietario_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "auditoriadescartes",
+      "conname": "auditoriadescartes_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "auditoriaoperaciones",
+      "conname": "auditoriaoperaciones_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "auditoriaoperacionesarchivo",
+      "conname": "auditoriaoperacionesarchivo_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "auditoriausuarios",
+      "conname": "auditoriausuarios_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "auditoriausuariosarchivo",
+      "conname": "auditoriausuariosarchivo_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "camaras",
+      "conname": "camaras_direccion_check",
+      "contype": "c",
+      "definicion": "CHECK (((direccion)::text = ANY ((ARRAY['ingreso'::character varying, 'salida'::character varying])::text[])))"
+    },
+    {
+      "tabla": "camaras",
+      "conname": "camaras_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "clavesservicio",
+      "conname": "clavesservicio_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (clave)"
+    },
+    {
+      "tabla": "configuracionsistema",
+      "conname": "configuracionsistema_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (clave)"
+    },
+    {
+      "tabla": "deteccionvehiculo",
+      "conname": "deteccionvehiculo_tipo_movimiento_check",
+      "contype": "c",
+      "definicion": "CHECK (((tipo_movimiento)::text = ANY ((ARRAY['ingreso'::character varying, 'salida'::character varying])::text[])))"
+    },
+    {
+      "tabla": "deteccionvehiculo",
+      "conname": "deteccionvehiculo_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "listablanca",
+      "conname": "vehiculosautorizados_categoria_check",
+      "contype": "c",
+      "definicion": "CHECK (((categoria)::text = ANY ((ARRAY['EMERGENCIA'::character varying, 'OFICIAL'::character varying, 'CONTRATISTA'::character varying, 'PROVEEDOR'::character varying, 'VISITANTE'::character varying, 'FUNCIONARIO'::character varying])::text[])))"
+    },
+    {
+      "tabla": "listablanca",
+      "conname": "vehiculosautorizados_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "listablanca",
+      "conname": "vehiculosautorizados_placa_key",
+      "contype": "u",
+      "definicion": "UNIQUE (placa)"
+    },
+    {
+      "tabla": "listanegra",
+      "conname": "listanegra_nivel_alerta_check",
+      "contype": "c",
+      "definicion": "CHECK (((nivel_alerta)::text = ANY ((ARRAY['MEDIA'::character varying, 'ALTA'::character varying, 'CRITICA'::character varying])::text[])))"
+    },
+    {
+      "tabla": "listanegra",
+      "conname": "listanegra_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "listanegra",
+      "conname": "listanegra_placa_key",
+      "contype": "u",
+      "definicion": "UNIQUE (placa)"
+    },
+    {
+      "tabla": "notificaciones",
+      "conname": "notificaciones_severidad_check",
+      "contype": "c",
+      "definicion": "CHECK (((severidad)::text = ANY ((ARRAY['baja'::character varying, 'media'::character varying, 'alta'::character varying, 'critica'::character varying])::text[])))"
+    },
+    {
+      "tabla": "notificaciones",
+      "conname": "notificaciones_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "notificacionusuario",
+      "conname": "notificacionusuario_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (notificacion_id, usuario_id)"
+    },
+    {
+      "tabla": "restablecimientopassword",
+      "conname": "restablecimientopassword_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "roles",
+      "conname": "roles_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "roles",
+      "conname": "roles_codigo_key",
+      "contype": "u",
+      "definicion": "UNIQUE (codigo)"
+    },
+    {
+      "tabla": "solicitudesacceso",
+      "conname": "solicitudesacceso_estado_check",
+      "contype": "c",
+      "definicion": "CHECK (((estado)::text = ANY ((ARRAY['cancelada'::character varying, 'rechazada'::character varying, 'aprobada'::character varying, 'pendiente'::character varying])::text[])))"
+    },
+    {
+      "tabla": "solicitudesacceso",
+      "conname": "solicitudesacceso_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "suscripcionespush",
+      "conname": "suscripcionespush_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "suscripcionespush",
+      "conname": "suscripcionespush_endpoint_hash_key",
+      "contype": "u",
+      "definicion": "UNIQUE (endpoint_hash)"
+    },
+    {
+      "tabla": "usuarios",
+      "conname": "usuarios_estado_check",
+      "contype": "c",
+      "definicion": "CHECK (((estado)::text = ANY ((ARRAY['inactivo'::character varying, 'activo'::character varying, 'pendiente'::character varying])::text[])))"
+    },
+    {
+      "tabla": "usuarios",
+      "conname": "usuarios_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    },
+    {
+      "tabla": "usuarios",
+      "conname": "usuarios_email_key",
+      "contype": "u",
+      "definicion": "UNIQUE (email)"
+    },
+    {
+      "tabla": "verificacionemail",
+      "conname": "verificacionemail_pkey",
+      "contype": "p",
+      "definicion": "PRIMARY KEY (id)"
+    }
+  ]
+}

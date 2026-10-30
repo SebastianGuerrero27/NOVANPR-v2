@@ -58,13 +58,13 @@ export interface Deteccion {
   validacion: { usuario: { id: number; nombre: string; email: string } | null; fecha: string } | null;
 }
 
-export type OrigenPaso = 'camara' | 'video' | 'manual';
+export type OrigenPaso = 'camara' | 'manual';
 
 /** Totales del historial completo con los filtros aplicados (GET /detecciones/historial/resumen). */
 export interface ResumenHistorial {
   total: number; ingresos: number; salidas: number; con_salida: number;
   autorizados: number; alertas: number; no_registrados: number; pendientes: number; sin_lectura: number;
-  placas: number; camara: number; video_prueba: number; manuales: number;
+  placas: number; camara: number; manuales: number;
   primero: string | null; ultimo: string | null;
 }
 
@@ -77,7 +77,7 @@ export interface DeteccionDetalle extends Deteccion {
   };
   captura: {
     luminancia_media: number | null; distancia_estimada_m: number | null; ancho_placa_px: number | null;
-    nitidez: number | null; velocidad_px_s: number | null; condicion_clima: string | null;
+    nitidez: number | null; velocidad_px_s: number | null;
   };
   auditoria: { fecha: string; accion: string; usuario_email: string | null; detalle: string | null }[];
   pasos_anteriores: Deteccion[];
@@ -152,8 +152,6 @@ export interface Camara {
   roi: [number, number][] | null;
   /** Zonas de exclusión (polígonos normalizados): ahí no cuenta el movimiento ni se buscan placas */
   exclusiones?: [number, number][][];
-  /** Cámara de prueba alimentada por un video cargado (no hay equipo físico) */
-  es_video?: boolean;
 }
 
 export interface Conteos {

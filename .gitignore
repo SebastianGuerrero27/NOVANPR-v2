@@ -118,3 +118,11 @@ dataset/prueba_ecuador_real/
 # Videos reales de la garita (placas: datos personales, LOPDP) y lo que se extrae de ellos
 dataset/videos_garita/
 dataset/garita/
+
+# Archivos locales de diagnóstico, cachés y evidencia operativa sin anonimizar
+backend/tmp/
+.mypy_cache/
+**/vitest.config.*.timestamp-*.mjs
+dataset/images/
+docs/figuras/figura34_deteccion_ocr.jpg
+docs/figuras/figura34_evidencia.txt

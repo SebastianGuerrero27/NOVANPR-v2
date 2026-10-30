@@ -6,6 +6,9 @@ import { urlMedia } from './servicios/media';
 import { datoRegistro, datosRegistro, faltantesRegistro } from '../dominio/registroCompleto';
 import { validarHorario } from '../dominio/horario';
 
+/** Columna DATE como AAAA-MM-DD (null sin fecha). */
+const dia = (v: unknown): string | null => (v ? new Date(v as string).toISOString().slice(0, 10) : null);
+
 /**
  * Representación única de una detección para la API y los eventos en tiempo real. Las imágenes
  * se entregan con URL firmada y temporal (infraestructura/servicios/media.ts) y el motivo de revisión se explica
@@ -18,13 +21,24 @@ export function presentarDeteccion(d: Fila, detalle = false): DeteccionDTO {
   const datosPadron = d.vehiculo_autorizado_id ? {
     propietario: d.propietario, cedula: d.autorizado_cedula, institucion: d.autorizado_institucion,
     cargo: d.autorizado_cargo, departamento: d.departamento,
-    fecha_inicio: d.autorizado_inicio ? new Date(d.autorizado_inicio).toISOString().slice(0, 10) : '',
-    fecha_fin: d.autorizado_vence ? new Date(d.autorizado_vence).toISOString().slice(0, 10) : '',
+    fecha_inicio: dia(d.autorizado_inicio) ?? '',
+    fecha_fin: dia(d.autorizado_vence) ?? '',
     horario: d.autorizado_horario ?? null,
   } : null;
-  const datosPermiso = d.datos_permiso ? { ...datosPadron, ...d.datos_permiso } : datosPadron;
+  // Formulario «Autorizar ingreso» guardado en el paso, una columna por campo. Lo que nunca se
+  // escribió (NULL) se completa con el permiso de la lista blanca; '' (vaciado a propósito) queda vacío.
+  const ficha = Object.entries({
+    propietario: d.persona_ingreso, cedula: d.cedula_ingreso, institucion: d.institucion_ingreso, cargo: d.cargo_ingreso,
+    departamento: d.departamento_ingreso, categoria: d.categoria_permiso, observaciones: d.observaciones_permiso,
+    fecha_inicio: dia(d.vigencia_desde), fecha_fin: dia(d.vigencia_hasta), horario: d.horario_permiso,
+  }).filter(([, v]) => v !== null && v !== undefined);
+  const datosPermiso: Record<string, any> | null = ficha.length ? {
+    ...datosPadron, ...Object.fromEntries(ficha.map(([k, v]) => [k, v === '' ? null : v])),
+    motivo_ingreso: d.motivo_ingreso ?? null, tipo_vehiculo: d.vehiculo_tipo ?? d.tipo_vehiculo ?? null,
+    marca: d.vehiculo_marca ?? null, modelo: d.vehiculo_modelo ?? null, color: d.vehiculo_color ?? null,
+  } : datosPadron;
   if (datosPermiso) {
-    // La ficha conserva el JSON que validó el dominio; el navegador recibe las franjas ya interpretadas.
+    // La columna guarda el JSON que validó el dominio; el navegador recibe las franjas ya interpretadas.
     const interpretado = validarHorario(datosPermiso.horario);
     datosPermiso.horario = interpretado.horario;
     if (interpretado.error) datosPermiso.horario_error = 'El horario guardado no es válido. Seleccione un horario antes de guardar.';
@@ -47,7 +61,7 @@ export function presentarDeteccion(d: Fila, detalle = false): DeteccionDTO {
     fecha_hora_procesamiento: d.fecha_hora_procesamiento,
     // Los registros anteriores a la corrección pueden guardar la URL de lectura (con credenciales)
     fuente: d.fuente ? normalizarFuente(d.fuente) : null,
-    // Cámara en vivo, video de prueba o registro manual: separa los datos reales de los de prueba
+    // Cámara en vivo o registro manual
     origen: origenDe(d.fuente),
     tracking_id: d.tracking_id,
     imagen_vehiculo: urlMedia(d.ruta_imagen_ingreso),
@@ -90,7 +104,6 @@ export function presentarDeteccion(d: Fila, detalle = false): DeteccionDTO {
     captura: {
       luminancia_media: d.luminancia_media, distancia_estimada_m: d.distancia_estimada_m,
       ancho_placa_px: d.ancho_placa_px, nitidez: d.nitidez, velocidad_px_s: d.velocidad_px_s,
-      condicion_clima: d.condicion_clima,
     },
   };
 }

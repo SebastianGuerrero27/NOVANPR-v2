@@ -8,10 +8,31 @@ const fHora = new Intl.DateTimeFormat('es-EC', { timeZone: ZONA, hour: '2-digit'
 const fDiaCorto = new Intl.DateTimeFormat('es-EC', { timeZone: ZONA, weekday: 'short', day: '2-digit' });
 const fNumero = new Intl.NumberFormat('es-EC');
 
-export const fecha = (v?: string | Date | null) => (v ? fFecha.format(new Date(v)) : '—');
-export const fechaHora = (v?: string | Date | null) => (v ? fFechaHora.format(new Date(v)) : '—');
-export const hora = (v?: string | Date | null) => (v ? fHora.format(new Date(v)) : '—');
-export const diaCorto = (isoFecha: string) => fDiaCorto.format(new Date(`${isoFecha}T12:00:00-05:00`));
+/** Día del calendario sin hora (columnas DATE de la API: vigencias de permisos y solicitudes). */
+const RE_DIA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Instante de un valor de la API. Un día 'AAAA-MM-DD' se toma al mediodía de Ecuador para que se
+ * muestre ese mismo día (como medianoche UTC aparecía el anterior). null si no es una fecha válida.
+ */
+function instante(v: string | Date): Date | null {
+  const d = typeof v === 'string' && RE_DIA.test(v) ? new Date(`${v}T12:00:00-05:00`) : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Formatea sin interrumpir la vista: una fecha vacía o inválida se muestra como «—». */
+const formatear = (f: Intl.DateTimeFormat) => (v?: string | Date | null) => {
+  const d = v ? instante(v) : null;
+  return d ? f.format(d) : '—';
+};
+
+export const fecha = formatear(fFecha);
+export const fechaHora = formatear(fFechaHora);
+export const hora = formatear(fHora);
+export const diaCorto = (isoFecha: string) => formatear(fDiaCorto)(isoFecha);
+
+/** 'AAAA-MM-DD' de una fecha de la API, con o sin hora (para los campos de fecha); '' si no lo es. */
+export const diaIso = (v?: string | null): string => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : '');
 export const numero = (v?: number | null) => (v === null || v === undefined ? '—' : fNumero.format(v));
 /** Códec de video legible a partir del FOURCC que informa FFmpeg (hevc, hev1, avc1, h264…). */
 export function codecVideo(v?: string | null): string {

@@ -64,17 +64,11 @@ Desktop. Todos los comandos se ejecutan desde la carpeta raíz del proyecto
 La cámara debe ser alcanzable desde este equipo: si figura **SIN_CONEXION**, revise la red o VLAN
 de cámaras y vuelva a probar con **Ping**. El motor se reconecta solo cuando vuelve la señal.
 
-### Pasar del video de prueba al flujo real
+### Solo el flujo RTSP
 
-Cada paso guarda su origen: **cámara en vivo** (RTSP), **video de prueba** (cámara creada con un
-video cargado) o **registro manual**. Así los datos de prueba no se mezclan con los reales.
-
-1. Abra **Historial Completo**: el recuadro bajo la consulta indica qué procesa el motor. Si dice
-   *video de prueba*, pulse **Usar «Garita»** (o cambie la cámara en **Monitoreo**).
-2. Para ver solo los datos reales, pulse **Ver solo el flujo real** (filtro *Origen: cámara en
-   vivo*) o escriba en la consulta inteligente «cámara en vivo hoy».
-3. Los pasos registrados antes con el video de prueba quedan marcados como tales (la marca se
-   aplicó una sola vez al actualizar, el 2026-10-28) y se excluyen con el mismo filtro de origen.
+Desde el 28-10-2026 el sistema procesa únicamente el flujo RTSP de las cámaras registradas: la
+cámara de prueba con un video cargado se retiró, junto con sus pasos y su archivo. Cada paso guarda
+su origen: **cámara en vivo** (RTSP) o **registro manual**.
 
 ### Prueba sin cámara real
 

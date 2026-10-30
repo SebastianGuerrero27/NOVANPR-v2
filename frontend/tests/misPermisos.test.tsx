@@ -17,7 +17,7 @@ describe('Mis permisos del gestor', () => {
     } : [{ id: 7, placa: null, propietario: 'María Pérez', vigente: true, ingresos: 0, fecha_registro: '2026-10-22T15:00:00Z' }] }));
     render(<MemoryRouter initialEntries={['/gestion-permisos?pestana=sin_permiso&usuarioId=99']}><GestionPermisos /></MemoryRouter>);
     await waitFor(() => expect(screen.getByText('María Pérez')).toBeInTheDocument());
-    expect(get).toHaveBeenCalledWith('/vehiculos-autorizados/mis-permisos');
+    expect(get).toHaveBeenCalledWith('/vehiculos-autorizados/mis-permisos', { params: { estado: 'activos' } });
     expect(screen.getByText('Pendiente de placa')).toBeInTheDocument();
     for (const nombre of ['ID', 'Nombres y apellidos', 'Cédula', 'Institución', 'Cargo', 'Placa', 'Marca', 'Modelo', 'Tipo', 'Color']) {
       expect(screen.getByRole('columnheader', { name: nombre })).toBeInTheDocument();

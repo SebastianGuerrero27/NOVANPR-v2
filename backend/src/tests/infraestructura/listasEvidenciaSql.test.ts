@@ -32,3 +32,12 @@ it('editar otra matrícula reinicia sus estados para no mostrar fotos de otro ve
   }
   expect(sql).toContain("IS DISTINCT FROM COALESCE(@placa, '')");
 });
+
+it('retirar de la lista negra no pide columnas que solo tiene la lista blanca (propietario)', async () => {
+  query.mockResolvedValue({ recordset: [{ placa: 'PBA1234' }] });
+  expect(await repositorioListasSql.retirar(LISTA_NEGRA, 5)).toBe('PBA1234');
+  expect(query.mock.calls[0][0]).not.toContain('propietario');
+  query.mockResolvedValue({ recordset: [{ placa: null, propietario: 'Ana Pérez' }] });
+  expect(await repositorioListasSql.retirar(LISTA_BLANCA, 6)).toBe('Ana Pérez');
+  expect(query.mock.calls[1][0]).toContain('DELETED.propietario');
+});

@@ -47,12 +47,27 @@ describe('Registros cerrados y movimientos pendientes', () => {
     expect(query.mock.calls[2][0]).toContain('d.estado_validacion IN (@est0)');
     expect(leerFiltros({ buscar: 'a'.repeat(101) }).ok).toBe(false);
   });
-  it('fusiona la cédula y los campos editados con la ficha existente sin reemplazar sus otros datos', async () => {
+  it('una celda editada actualiza solo su columna, sin tocar el resto del formulario ni el permiso', async () => {
     await repo.guardarDatosIngreso(15, { cedula: '0123456789', persona: 'Ana Torres', marca: 'Mazda' });
-    expect(request.input).toHaveBeenCalledWith('datosPermiso', expect.anything(), JSON.stringify({ cedula: '0123456789', propietario: 'Ana Torres', marca: 'Mazda' }));
-    expect(query.mock.calls[0][0]).toContain("COALESCE(datos_permiso, '{}'::jsonb) || CAST(@datosPermiso AS jsonb)");
-    expect(query.mock.calls[0][0]).toContain('vehiculo_marca = @marca');
-    expect(query.mock.calls[0][0]).not.toContain('VehiculosAutorizados');
+    expect(request.input).toHaveBeenCalledWith('cedula_ingreso', expect.anything(), '0123456789');
+    const sentencia = query.mock.calls[0][0];
+    expect(sentencia).toContain('cedula_ingreso = @cedula_ingreso');
+    expect(sentencia).toContain('persona_ingreso = @persona');
+    expect(sentencia).toContain('vehiculo_marca = @marca');
+    expect(sentencia).not.toContain('institucion_ingreso');
+    expect(sentencia).not.toContain('ListaBlanca');
+  });
+  it('el formulario «Autorizar ingreso» guarda cada campo en su columna; un dato del permiso vaciado queda como texto vacío', async () => {
+    await repo.guardarDatosIngreso(15, { cedula: null, ficha: { institucion: 'ECU 911', cargo: null, departamento: null, categoria: 'FUNCIONARIO',
+      observaciones: null, vigenciaDesde: '2026-10-24', vigenciaHasta: null, horario: '[]' } });
+    expect(request.input).toHaveBeenCalledWith('cedula_ingreso', expect.anything(), '');
+    expect(request.input).toHaveBeenCalledWith('institucion_ingreso', expect.anything(), 'ECU 911');
+    expect(request.input).toHaveBeenCalledWith('cargo_ingreso', expect.anything(), '');
+    expect(request.input).toHaveBeenCalledWith('vigencia_desde', 'DATE', '2026-10-24');
+    expect(request.input).toHaveBeenCalledWith('vigencia_hasta', 'DATE', null);
+    expect(request.input).toHaveBeenCalledWith('horario_permiso', expect.anything(), '[]');
+    expect(query.mock.calls[0][0]).toContain('categoria_permiso = @categoria_permiso');
+    expect(query.mock.calls[0][0]).not.toContain('datos_permiso');
   });
 });
 

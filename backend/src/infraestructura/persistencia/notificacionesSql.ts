@@ -16,7 +16,7 @@ const VISIBLE_PARA_ROL = `(
               WHERE receptor.id = @uid AND rol.codigo = 'GESTOR_PERMISOS')
   OR n.tipo IN ('solicitud.nueva', 'solicitud.resuelta', 'padron.por_vencer')
   OR (n.tipo = 'acceso.llegada_permiso' AND EXISTS (
-    SELECT 1 FROM VehiculosAutorizados permiso JOIN DeteccionVehiculo paso ON paso.id = n.deteccion_id
+    SELECT 1 FROM ListaBlanca permiso JOIN DeteccionVehiculo paso ON paso.id = n.deteccion_id
     WHERE permiso.registrado_por = @uid
       AND REPLACE(permiso.placa, '-', '') = REPLACE(COALESCE(paso.placa_validada, paso.placa_reconocida, ''), '-', '')
   ))

@@ -1,7 +1,9 @@
 import React from 'react';
-import { fecha, fechaIsoLocal } from '../../dominio/formato';
+import { diaIso, fecha, fechaIsoLocal } from '../../dominio/formato';
 import { CampoFecha } from './campos';
-export const VigenciaPermiso: React.FC<{ prefijo: string; inicio: string; fin: string; onCambiar: (inicio: string, fin: string) => void; titulo?: string }> = ({ prefijo, inicio, fin, onCambiar, titulo = 'Vigencia del permiso' }) => {
+export const VigenciaPermiso: React.FC<{ prefijo: string; inicio: string; fin: string; onCambiar: (inicio: string, fin: string) => void; titulo?: string }> = ({ prefijo, inicio: inicioRecibido, fin: finRecibido, onCambiar, titulo = 'Vigencia del permiso' }) => {
+  // Una fecha que llega con hora (2026-10-29T00:00:00Z) se toma por su día: nunca debe tumbar el formulario
+  const inicio = diaIso(inicioRecibido), fin = diaIso(finRecibido);
   const hoy = fechaIsoLocal(), efectivo = inicio || hoy;
   const finDe = (dias: number | null) => (dias === null ? '' : fechaIsoLocal(new Date(new Date(`${hoy}T12:00:00-05:00`).getTime() + (dias - 1) * 86400000)));
   const rapido = (dias: number | null) => onCambiar(hoy, finDe(dias));
@@ -20,6 +22,6 @@ export const VigenciaPermiso: React.FC<{ prefijo: string; inicio: string; fin: s
       <CampoFecha id={`${prefijo}-vence`} etiqueta="Vigente hasta" nombre="Fecha de vencimiento" valor={fin} min={efectivo} deshabilitado={!fin} onCambiar={v => onCambiar(inicio, v)} error={fin && efectivo > fin ? 'El vencimiento no puede ser anterior al inicio.' : null} ayuda="El último día seleccionado también está incluido." />
     </div>
     <label className="fila" style={{ marginTop: 10 }}><input type="checkbox" checked={!fin} onChange={e => onCambiar(inicio, e.target.checked ? '' : efectivo)} /> Sin fecha de vencimiento</label>
-    <p className="texto-secundario" style={{ marginTop: 10 }}>Desde {fecha(`${efectivo}T12:00:00-05:00`)}{fin ? ` hasta ${fecha(`${fin}T12:00:00-05:00`)} inclusive` : ', sin vencimiento'}.</p>
+    <p className="texto-secundario" style={{ marginTop: 10 }}>Desde {fecha(efectivo)}{fin ? ` hasta ${fecha(fin)} inclusive` : ', sin vencimiento'}.</p>
   </fieldset>;
 };

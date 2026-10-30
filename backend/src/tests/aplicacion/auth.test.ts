@@ -23,7 +23,7 @@ const enlace = (parcial: Partial<EnlaceGuardado> = {}): EnlaceGuardado => ({
   email: 'guardia@ecu911.gob.ec', nombre_completo: 'Luis Mendoza', ...parcial,
 });
 
-function preparar(guardada: CuentaAcceso | null = cuenta()) {
+function preparar(guardada: CuentaAcceso | null = cuenta(), verificarCorreo = true) {
   const repositorio: jest.Mocked<RepositorioAuth> = {
     hayAdministrador: jest.fn().mockResolvedValue(true),
     porEmail: jest.fn().mockResolvedValue(guardada),
@@ -31,6 +31,7 @@ function preparar(guardada: CuentaAcceso | null = cuenta()) {
     credenciales: jest.fn().mockResolvedValue({ id: 7, email: 'guardia@ecu911.gob.ec', nombre_completo: 'Luis Mendoza', password_hash: `bcrypt(${CLAVE})` }),
     crearPrimerAdministrador: jest.fn().mockResolvedValue(true),
     registrar: jest.fn().mockResolvedValue(21),
+    activarPendienteSinVerificacion: jest.fn().mockResolvedValue(true),
     registrarIntentoFallido: jest.fn().mockResolvedValue(undefined),
     registrarAcceso: jest.fn().mockResolvedValue(undefined),
     actualizarPerfil: jest.fn().mockResolvedValue(undefined),
@@ -60,16 +61,18 @@ function preparar(guardada: CuentaAcceso | null = cuenta()) {
   const sesiones = { firmar: jest.fn().mockReturnValue('jwt.firmado') };
   const parametros = {
     registroHabilitado: jest.fn().mockReturnValue(true),
+    verificacionEmailRequerida: jest.fn().mockReturnValue(verificarCorreo),
     dominiosPermitidos: jest.fn().mockReturnValue(['ecu911.gob.ec']),
     unidadInstitucional: jest.fn().mockReturnValue('ECU 911 Zonal 8'),
     maxIntentos: jest.fn().mockReturnValue(5),
     minutosBloqueo: jest.fn().mockReturnValue(15),
   };
   const registrarFallo = jest.fn();
+  const alActivarCuenta = jest.fn();
   const casos = casosAuth({
-    repositorio, auditoria, correo, tokens, claves, sesiones, parametros, registrarFallo, urlFrontend: () => 'https://anpr.ecu911.gob.ec',
+    repositorio, auditoria, correo, tokens, claves, sesiones, parametros, registrarFallo, alActivarCuenta, urlFrontend: () => 'https://anpr.ecu911.gob.ec',
   });
-  return { casos, repositorio, auditoria, correo, tokens, claves, sesiones, parametros, registrarFallo };
+  return { casos, repositorio, auditoria, correo, tokens, claves, sesiones, parametros, registrarFallo, alActivarCuenta };
 }
 
 /** Error con el que falla la promesa (ErrorAplicacion o RechazoAutenticacion). */
@@ -83,7 +86,7 @@ describe('Casos de uso · autenticación', () => {
     const { casos, repositorio } = preparar();
     repositorio.hayAdministrador.mockResolvedValue(false);
     expect(await casos.estado()).toEqual({
-      configuracion_inicial_requerida: true, registro_habilitado: true, smtp_configurado: true,
+      configuracion_inicial_requerida: true, registro_habilitado: true, verificacion_email_requerida: true, smtp_configurado: true,
       dominios_permitidos: ['ecu911.gob.ec'], unidad_institucional: 'ECU 911 Zonal 8',
     });
   });
@@ -236,20 +239,20 @@ describe('Casos de uso · autenticación', () => {
 
     it('crea la cuenta pendiente, emite el enlace de 24 h, envía el correo y audita sin actor', async () => {
       const { casos, repositorio, correo, auditoria } = preparar(null);
-      expect(await casos.registrar(DATOS, VISITANTE)).toEqual({ enviado: true });
+      expect(await casos.registrar(DATOS, VISITANTE)).toEqual({ enviado: true, verificacion_email_requerida: true, rol: 'Guardia', activo: false });
       expect(repositorio.registrar).toHaveBeenCalledWith({
-        email: 'carlos@ecu911.gob.ec', nombre_completo: 'Carlos Andrade', cargo: 'Guardia de garita', passwordHash: `bcrypt(${CLAVE})`,
+        email: 'carlos@ecu911.gob.ec', nombre_completo: 'Carlos Andrade', cargo: 'Guardia de garita', passwordHash: `bcrypt(${CLAVE})`, rol: 'Guardia', requiereVerificacion: true,
       });
       expect(repositorio.emitirEnlace).toHaveBeenCalledWith('verificacion', 21, 'h'.repeat(64), 24 * 60);
       expect(correo.verificacionCuenta).toHaveBeenCalledWith('carlos@ecu911.gob.ec', 'Carlos Andrade',
         `https://anpr.ecu911.gob.ec/verificar-email?token=${'b'.repeat(64)}`, 24);
-      expect(auditoria.cuenta).toHaveBeenCalledWith(VISITANTE, 'REGISTRO', { id: 21, email: 'carlos@ecu911.gob.ec' }, 'Registro público; pendiente de verificación');
+      expect(auditoria.cuenta).toHaveBeenCalledWith(VISITANTE, 'REGISTRO', { id: 21, email: 'carlos@ecu911.gob.ec' }, 'Registro público; rol Guardia; pendiente de verificación');
     });
 
     it('si el correo no sale lo informa (la cuenta igual se crea)', async () => {
       const { casos, correo } = preparar(null);
       correo.verificacionCuenta.mockResolvedValue(false);
-      expect(await casos.registrar(DATOS, VISITANTE)).toEqual({ enviado: false });
+      expect(await casos.registrar(DATOS, VISITANTE)).toEqual({ enviado: false, verificacion_email_requerida: true, rol: 'Guardia', activo: false });
     });
   });
 
@@ -427,5 +430,105 @@ describe('Casos de uso · autenticación', () => {
       expect(correo.passwordCambiada).toHaveBeenCalledWith('guardia@ecu911.gob.ec', 'Luis Mendoza');
       expect(auditoria.cuenta).toHaveBeenCalledWith(GUARDIA, 'PASSWORD_CAMBIADA', { id: 7, email: 'guardia@ecu911.gob.ec' });
     });
+  });
+});
+
+
+describe('Registro con roles y verificación de correo suspendida', () => {
+  const DATOS = { nombre_completo: 'Ana Gestora', email: 'ana@ecu911.gob.ec', password: CLAVE };
+
+  it.each(['Guardia', 'GestorPermisos'] as const)('crea %s activa sin correo ni token y sin afirmar verificación', async rol => {
+    const { casos, repositorio, correo, tokens } = preparar(null, false);
+    expect(await casos.registrar({ ...DATOS, rol }, VISITANTE)).toEqual({
+      enviado: false, verificacion_email_requerida: false, rol, activo: true,
+    });
+    expect(repositorio.registrar).toHaveBeenCalledWith({
+      email: DATOS.email, nombre_completo: DATOS.nombre_completo, cargo: null,
+      rol, requiereVerificacion: false, passwordHash: `bcrypt(${CLAVE})`,
+    });
+    expect(tokens.generar).not.toHaveBeenCalled();
+    expect(repositorio.emitirEnlace).not.toHaveBeenCalled();
+    expect(correo.verificacionCuenta).not.toHaveBeenCalled();
+  });
+
+  it.each(['Admin', 'ADMIN', 'admin', 'GESTOR_PERMISOS', '', null, 1, { rol: 'Admin' }])('rechaza rol público %j antes de crear la cuenta', async rol => {
+    const { casos, repositorio, claves, tokens } = preparar(null, false);
+    expect((await fallo(casos.registrar({ ...DATOS, rol }, VISITANTE))).tipo).toBe('validacion');
+    expect(repositorio.registrar).not.toHaveBeenCalled();
+    expect(claves.cifrar).not.toHaveBeenCalled();
+    expect(tokens.generar).not.toHaveBeenCalled();
+  });
+
+  it('el estado público publica si se necesita correo y conserva Guardia para clientes sin rol', async () => {
+    const { casos } = preparar(null, false);
+    expect(await casos.estado()).toMatchObject({ verificacion_email_requerida: false });
+    expect(await casos.registrar(DATOS, VISITANTE)).toMatchObject({ rol: 'Guardia', activo: true });
+  });
+
+  it('puede reactivarse la verificación para una nueva cuenta Gestor', async () => {
+    const { casos, parametros, repositorio, correo } = preparar(null, false);
+    parametros.verificacionEmailRequerida.mockReturnValue(true);
+    expect(await casos.registrar({ ...DATOS, rol: 'GestorPermisos' }, VISITANTE)).toEqual({
+      enviado: true, verificacion_email_requerida: true, rol: 'GestorPermisos', activo: false,
+    });
+    expect(repositorio.registrar).toHaveBeenCalledWith(expect.objectContaining({ requiereVerificacion: true, rol: 'GestorPermisos' }));
+    expect(correo.verificacionCuenta).toHaveBeenCalledTimes(1);
+  });
+
+  it('ingresa una cuenta activa no verificada sin enviar correo; al habilitarlo vuelve a exigirlo', async () => {
+    const { casos, parametros, repositorio, correo } = preparar(cuenta({ email_verificado: false }), false);
+    expect((await casos.login({ email: 'guardia@ecu911.gob.ec', password: CLAVE }, VISITANTE)).user.rol).toBe('Guardia');
+    expect(repositorio.activarPendienteSinVerificacion).not.toHaveBeenCalled();
+    expect(correo.verificacionCuenta).not.toHaveBeenCalled();
+    parametros.verificacionEmailRequerida.mockReturnValue(true);
+    expect((await fallo(casos.login({ email: 'guardia@ecu911.gob.ec', password: CLAVE }, VISITANTE))).codigo).toBe('EMAIL_NO_VERIFICADO');
+  });
+
+  it('activa una cuenta anterior pendiente sólo después de confirmar contraseña e invalida caché', async () => {
+    const anterior = cuenta({ estado: 'pendiente', email_verificado: false, rol: 'GestorPermisos' });
+    const { casos, repositorio, alActivarCuenta, correo, auditoria } = preparar(anterior, false);
+    expect((await casos.login({ email: anterior.email, password: CLAVE }, VISITANTE)).user.rol).toBe('GestorPermisos');
+    expect(repositorio.activarPendienteSinVerificacion).toHaveBeenCalledWith(7, `bcrypt(${CLAVE})`);
+    expect(alActivarCuenta).toHaveBeenCalledWith(7);
+    expect(anterior.email_verificado).toBe(false);
+    expect(anterior.estado).toBe('activo');
+    expect(auditoria.cuenta).toHaveBeenCalledWith(VISITANTE, 'CUENTA_ACTIVADA_SIN_VERIFICACION',
+      { id: 7, email: anterior.email }, 'Contraseña confirmada; verificación por correo desactivada');
+    expect(correo.verificacionCuenta).not.toHaveBeenCalled();
+  });
+
+  it('contraseña incorrecta no activa una cuenta pendiente', async () => {
+    const { casos, repositorio, alActivarCuenta } = preparar(cuenta({ estado: 'pendiente', email_verificado: false }), false);
+    expect((await fallo(casos.login({ email: 'guardia@ecu911.gob.ec', password: NUEVA }, VISITANTE))).motivo).toBe('credenciales');
+    expect(repositorio.activarPendienteSinVerificacion).not.toHaveBeenCalled();
+    expect(alActivarCuenta).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { estado: 'inactivo', email_verificado: false },
+    { estado: 'pendiente', email_verificado: false, bloqueado: true },
+    { estado: 'pendiente', email_verificado: false, bloqueado_hasta: new Date(Date.now() + 60000) },
+  ])('la suspensión del correo no omite el estado o bloqueo: %j', async cambio => {
+    const { casos, repositorio, sesiones } = preparar(cuenta(cambio), false);
+    await expect(casos.login({ email: 'guardia@ecu911.gob.ec', password: CLAVE }, VISITANTE)).rejects.toBeInstanceOf(RechazoAutenticacion);
+    expect(repositorio.activarPendienteSinVerificacion).not.toHaveBeenCalled();
+    expect(sesiones.firmar).not.toHaveBeenCalled();
+  });
+
+  it('no emite sesión si la cuenta cambia durante su activación', async () => {
+    const { casos, repositorio, sesiones, alActivarCuenta } = preparar(cuenta({ estado: 'pendiente', email_verificado: false }), false);
+    repositorio.activarPendienteSinVerificacion.mockResolvedValue(false);
+    expect((await fallo(casos.login({ email: 'guardia@ecu911.gob.ec', password: CLAVE }, VISITANTE))).motivo).toBe('sesion_inactiva');
+    expect(sesiones.firmar).not.toHaveBeenCalled();
+    expect(alActivarCuenta).not.toHaveBeenCalled();
+  });
+
+  it('reenviar con correo suspendido es un no-op sin proveedor ni token', async () => {
+    const { casos, repositorio, correo, tokens } = preparar(cuenta({ estado: 'pendiente', email_verificado: false }), false);
+    await casos.reenviarVerificacion('guardia@ecu911.gob.ec');
+    expect(repositorio.porEmail).not.toHaveBeenCalled();
+    expect(tokens.generar).not.toHaveBeenCalled();
+    expect(repositorio.emitirEnlace).not.toHaveBeenCalled();
+    expect(correo.verificacionCuenta).not.toHaveBeenCalled();
   });
 });

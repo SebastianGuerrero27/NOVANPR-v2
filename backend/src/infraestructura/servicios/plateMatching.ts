@@ -56,7 +56,7 @@ export async function findPermisoExacto(db: PostgresPool, placa: string): Promis
     .query(`
       SELECT TOP 1 id, placa, propietario, departamento, tipo_vehiculo, marca, modelo, color,
              categoria, fecha_inicio, fecha_vencimiento, horario, registrado_por
-      FROM VehiculosAutorizados
+      FROM ListaBlanca
       WHERE activo = 1 AND REPLACE(REPLACE(placa, '-', ''), ' ', '') = @placa
     `);
   return result.recordset[0] ?? null;

@@ -66,21 +66,22 @@ describe('Detecciones · filtros del historial completo', () => {
   });
 
   it('lee movimiento, origen, franja, placa aproximada y orden; rechaza valores fuera de las listas', () => {
-    const f = leerFiltros({ placa: 'pba-12', aproximada: 'si', movimiento: 'salida', origen: 'video', hora_desde: '22:00', hora_hasta: '06:00', orden: 'antiguo' });
-    expect(f).toMatchObject({ ok: true, valor: { placa: 'PBA12', aproximada: true, movimiento: 'salida', origen: 'video', horaDesde: 1320, horaHasta: 360, orden: 'antiguo' } });
+    const f = leerFiltros({ placa: 'pba-12', aproximada: 'si', movimiento: 'salida', origen: 'manual', hora_desde: '22:00', hora_hasta: '06:00', orden: 'antiguo' });
+    expect(f).toMatchObject({ ok: true, valor: { placa: 'PBA12', aproximada: true, movimiento: 'salida', origen: 'manual', horaDesde: 1320, horaHasta: 360, orden: 'antiguo' } });
     // Sin placa, "aproximada" no es un filtro
     expect(leerFiltros({ aproximada: 'si' })).toMatchObject({ ok: true, valor: { placa: null } });
     expect((leerFiltros({ aproximada: 'si' }) as { valor: object }).valor).not.toHaveProperty('aproximada');
     expect(leerFiltros({ movimiento: 'entrada' }).ok).toBe(false);
     expect(leerFiltros({ origen: 'webcam' }).ok).toBe(false);
+    // El sistema solo procesa el flujo RTSP: ya no hay pasos de un video de prueba
+    expect(leerFiltros({ origen: 'video' }).ok).toBe(false);
     expect(leerFiltros({ orden: 'placa' }).ok).toBe(false);
     expect(leerFiltros({ hora_hasta: '25:00' }).ok).toBe(false);
   });
 
-  it('origen del paso según su fuente: cámara en vivo por omisión, video de prueba y registro manual', () => {
+  it('origen del paso según su fuente: cámara en vivo por omisión y registro manual', () => {
     expect(origenDe('rtsp')).toBe('camara');
     expect(origenDe(null)).toBe('camara');
-    expect(origenDe('video')).toBe('video');
     expect(origenDe('manual')).toBe('manual');
   });
 });

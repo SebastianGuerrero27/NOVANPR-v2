@@ -1,0 +1,314 @@
+{
+ "fecha": "2026-10-28",
+ "que_se_midio": "Motor ANPR de producción (imagen anpr-motor:produccion) sobre el video real de la garita, a velocidad real, con backend simulado (scripts/evaluar_secuencias.py). Motor en vivo detenido durante la medición.",
+ "video": "ENTRADA_ECU_001, 19-10-2026 07:40–08:10 (30 min, 1080p, 30 fps, día). Fuera de git por datos personales.",
+ "verdad_de_terreno": "12 pasos: 8 autos con placa legible, 1 auto con placa sucia, 3 sin placa que leer (emblema «T5 EVO», moto de frente, marco de concesionario). Placas etiquetadas por inspección visual de las fichas de cada paso; la secuencia etiquetada está en dataset/garita (ignorada por git).",
+ "configuracion": {
+  "espera_verificador_s": 2.0,
+  "torch_threads": 4,
+  "presupuesto_registro_s": 1.0,
+  "ventana_antiduplicados_s": 35.0
+ },
+ "metricas_pasada_formal": {
+  "1_recall_deteccion_por_paso": {
+   "valor": 0.9167,
+   "ic95": [
+    0.6461,
+    0.9851
+   ],
+   "n": 12,
+   "exitos": 11
+  },
+  "2_precision_registros": {
+   "valor": 1.0,
+   "ic95": [
+    0.7575,
+    1.0
+   ],
+   "n": 12,
+   "exitos": 12
+  },
+  "3_falsas_detecciones_por_hora": {
+   "valor": 0.0,
+   "ic95": [
+    0.0,
+    7.33
+   ],
+   "eventos": 0,
+   "horas": 0.5004
+  },
+  "4_transcripcion_exacta_de_pasos_registrados": {
+   "valor": 0.8333,
+   "ic95": [
+    0.552,
+    0.953
+   ],
+   "n": 12,
+   "exitos": 10
+  },
+  "5_reconocimiento_exacto_punta_a_punta": {
+   "valor": 0.875,
+   "ic95": [
+    0.5291,
+    0.9776
+   ],
+   "n": 8,
+   "exitos": 7
+  },
+  "7_duplicados_por_paso_registrado": 0.0,
+  "8_latencia_captura_a_lectura_en_vivo": {
+   "p50_ms": 256,
+   "p95_ms": 712,
+   "p99_ms": 1119,
+   "n": 32
+  },
+  "9_latencia_captura_a_registro": {
+   "p50_ms": 485,
+   "p95_ms": 1583,
+   "p99_ms": 1583,
+   "n": 10
+  },
+  "10_cuadros": {
+   "fps_recibidos": 30.0,
+   "fps_analizados": 11.4,
+   "descartados_pct": 62.1
+  }
+ },
+ "etapas_ms": {
+  "detector": {
+   "p50_ms": 109,
+   "p95_ms": 138,
+   "max_ms": 202,
+   "muestras": 200
+  },
+  "movimiento": {
+   "p50_ms": 4,
+   "p95_ms": 4,
+   "max_ms": 7,
+   "muestras": 200
+  },
+  "pistas": {
+   "p50_ms": 0,
+   "p95_ms": 0,
+   "max_ms": 0,
+   "muestras": 200
+  },
+  "seguimiento": {
+   "p50_ms": 2,
+   "p95_ms": 3,
+   "max_ms": 4,
+   "muestras": 200
+  },
+  "ocr_rapido": {
+   "p50_ms": 113,
+   "p95_ms": 283,
+   "max_ms": 530,
+   "muestras": 200
+  },
+  "registro_http_completar": {
+   "p50_ms": 0,
+   "p95_ms": 0,
+   "max_ms": 0,
+   "muestras": 10
+  },
+  "registro_http_ingreso": {
+   "p50_ms": 0,
+   "p95_ms": 0,
+   "max_ms": 0,
+   "muestras": 10
+  },
+  "registro_ocr_profundo": {
+   "p50_ms": 85,
+   "p95_ms": 365,
+   "max_ms": 365,
+   "muestras": 10
+  },
+  "registro_verificador": {
+   "p50_ms": 276,
+   "p95_ms": 394,
+   "max_ms": 394,
+   "muestras": 9
+  },
+  "seguidor_cuadro": {
+   "p50_ms": 0,
+   "p95_ms": 4,
+   "max_ms": 7,
+   "muestras": 200
+  },
+  "vigilante_sin_placa": {
+   "p50_ms": 4,
+   "p95_ms": 6,
+   "max_ms": 10,
+   "muestras": 200
+  }
+ },
+ "detalle_pasos": [
+  {
+   "paso": 1,
+   "caso": "placa sucia (no legible con certeza)",
+   "detectado": true,
+   "registros": [
+    "errónea"
+   ],
+   "confirmada_por_el_motor": false,
+   "latencia_registro_s": 0.594
+  },
+  {
+   "paso": 2,
+   "caso": "placa legible",
+   "detectado": true,
+   "registros": [
+    "correcta"
+   ],
+   "confirmada_por_el_motor": true,
+   "latencia_registro_s": 0.64
+  },
+  {
+   "paso": 3,
+   "caso": "placa legible",
+   "detectado": true,
+   "registros": [
+    "correcta"
+   ],
+   "confirmada_por_el_motor": true,
+   "latencia_registro_s": 0.204
+  },
+  {
+   "paso": 4,
+   "caso": "placa legible",
+   "detectado": true,
+   "registros": [
+    "errónea"
+   ],
+   "confirmada_por_el_motor": false,
+   "latencia_registro_s": 0.485
+  },
+  {
+   "paso": 5,
+   "caso": "placa legible",
+   "detectado": true,
+   "registros": [
+    "correcta"
+   ],
+   "confirmada_por_el_motor": true,
+   "latencia_registro_s": 0.357
+  },
+  {
+   "paso": 6,
+   "caso": "placa legible",
+   "detectado": true,
+   "registros": [
+    "correcta"
+   ],
+   "confirmada_por_el_motor": true,
+   "latencia_registro_s": 1.583
+  },
+  {
+   "paso": 7,
+   "caso": "placa legible",
+   "detectado": true,
+   "registros": [
+    "correcta"
+   ],
+   "confirmada_por_el_motor": true,
+   "latencia_registro_s": 0.329
+  },
+  {
+   "paso": 8,
+   "caso": "placa legible",
+   "detectado": true,
+   "registros": [
+    "correcta"
+   ],
+   "confirmada_por_el_motor": true,
+   "latencia_registro_s": 0.465
+  },
+  {
+   "paso": 9,
+   "caso": "sin placa que leer",
+   "detectado": true,
+   "registros": [
+    "sin placa"
+   ],
+   "confirmada_por_el_motor": false,
+   "latencia_registro_s": null
+  },
+  {
+   "paso": 10,
+   "caso": "sin placa que leer",
+   "detectado": false,
+   "registros": [
+    "sin placa"
+   ],
+   "confirmada_por_el_motor": false,
+   "latencia_registro_s": null
+  },
+  {
+   "paso": 11,
+   "caso": "placa legible",
+   "detectado": true,
+   "registros": [
+    "correcta"
+   ],
+   "confirmada_por_el_motor": true,
+   "latencia_registro_s": 0.594
+  },
+  {
+   "paso": 12,
+   "caso": "sin placa que leer",
+   "detectado": true,
+   "registros": [
+    "sin placa"
+   ],
+   "confirmada_por_el_motor": false,
+   "latencia_registro_s": 0.594
+  }
+ ],
+ "operacion_en_vivo_2026-10-28": {
+  "que_es": "Registros que el sistema completo (motor + backend) guardó en la base procesando el mismo video en bucle de 16:32 a 21:41 (≈11 vueltas).",
+  "registros": 128,
+  "lecturas_correctas": 80,
+  "lecturas_erroneas": 19,
+  "sin_lectura": 29,
+  "correctas_por_paso_legible_de_11": {
+   "3": 11,
+   "4": 11,
+   "5": 7,
+   "6": 11,
+   "7": 9,
+   "8": 10,
+   "9": 11,
+   "12": 10
+  },
+  "confirmadas_por_el_motor": {
+   "correctas": 70,
+   "erroneas": 0
+  }
+ },
+ "combinado": {
+  "lectura_exacta_placas_legibles": {
+   "exitos": 87,
+   "n": 96,
+   "pct": 90.6,
+   "ic95_wilson": [
+    83.1,
+    95.0
+   ],
+   "nota": "8 vehículos x 12 pasadas del mismo video: mide la estabilidad entre pasadas, no la generalización a vehículos nuevos."
+  },
+  "lecturas_erroneas_confirmadas_por_el_motor": {
+   "exitos": 0,
+   "n": 77,
+   "pct": 0.0,
+   "ic95_wilson": [
+    0.0,
+    4.8
+   ]
+  }
+ },
+ "limitaciones": [
+  "Un solo video diurno de 30 min y 8 placas legibles distintas: sin noche, lluvia ni contraluz.",
+  "Las pasadas repiten los mismos vehículos; los intervalos de confianza no cubren vehículos nuevos.",
+  "Intervalos de los pasos tomados del detector de vehículos con un margen de ±2 s."
+ ]
+}

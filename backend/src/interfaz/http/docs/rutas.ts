@@ -31,7 +31,7 @@ const FILTROS_DETECCIONES: Record<string, CampoDoc> = {
   aproximada: { tipo: 'string', descripcion: 'La placa tolera confusiones del OCR (O/0, I/1, B/8, S/5…)', valores: ['si'] },
   buscar: { tipo: 'string', descripcion: 'Placa, titular, cédula, marca, modelo o motivo de ingreso', ejemplo: 'María Pérez' },
   movimiento: { tipo: 'string', descripcion: 'Tipo de movimiento', valores: ['ingreso', 'salida'] },
-  origen: { tipo: 'string', descripcion: 'Cámara en vivo (RTSP), video de prueba o registro manual', valores: ['camara', 'video', 'manual'] },
+  origen: { tipo: 'string', descripcion: 'Cámara en vivo (RTSP) o registro manual', valores: ['camara', 'manual'] },
   hora_desde: { tipo: 'string', descripcion: 'Franja horaria local: desde (HH:MM)', ejemplo: '08:00' },
   hora_hasta: { tipo: 'string', descripcion: 'Franja horaria local: hasta, incluido su minuto (HH:MM); menor que la inicial cruza la medianoche', ejemplo: '10:00' },
   cerrados: { tipo: 'string', descripcion: 'Ingresos con (si) o sin (no) hora de salida', valores: ['si', 'no'] },
@@ -158,10 +158,9 @@ function rutasLista(prefijo: string, etiqueta: string, nombre: string, permiso: 
     {
       metodo: 'delete', ruta: `${prefijo}/:id(\\d+)`, etiqueta, acceso: permiso,
       resumen: `Retiro (baja lógica) de un registro de la ${nombre}`,
-      cuerpo: { motivo: permiso === 'alertas:gestionar'
-        ? { tipo: 'string', descripcion: 'Motivo del retiro (mínimo 5 caracteres)', requerido: true, ejemplo: 'Vehículo recuperado' }
-        : { tipo: 'string', descripcion: 'Motivo del retiro (opcional; si se envía, mínimo 5 caracteres)', ejemplo: 'Finalizó el contrato' } },
-      respuestas: { 400: 'Falta el motivo', 404: 'Registro no encontrado' },
+      cuerpo: { motivo: { tipo: 'string', descripcion: 'Motivo del retiro (opcional; si se envía, mínimo 5 caracteres)',
+        ejemplo: permiso === 'alertas:gestionar' ? 'Vehículo recuperado' : 'Finalizó el contrato' } },
+      respuestas: { 400: 'Motivo inválido', 404: 'Registro no encontrado' },
     },
   ];
 }
@@ -178,7 +177,7 @@ export const RUTAS: RutaDoc[] = [
   {
     metodo: 'get', ruta: '/api/auth/estado', etiqueta: 'Autenticación', acceso: 'publica',
     resumen: 'Estado del sistema para la pantalla de inicio de sesión',
-    descripcion: 'Indica si falta la configuración inicial, si el registro público está habilitado, si hay SMTP y los dominios permitidos.',
+    descripcion: 'Indica si falta la configuración inicial, si el registro público está habilitado, si se requiere verificar el correo, si hay SMTP y los dominios permitidos.',
   },
   {
     metodo: 'post', ruta: '/api/auth/configuracion-inicial', etiqueta: 'Autenticación', acceso: 'publica',
@@ -207,13 +206,13 @@ export const RUTAS: RutaDoc[] = [
   },
   {
     metodo: 'post', ruta: '/api/auth/registro', etiqueta: 'Autenticación', acceso: 'publica',
-    resumen: 'Registro público de una cuenta (rol Guardia)',
-    descripcion: 'Crea la cuenta pendiente y envía el correo de verificación. Requiere que el registro público esté habilitado.',
+    resumen: 'Registro público como Guardia o Gestor de permisos',
+    descripcion: 'Requiere registro público habilitado. La verificación por correo está desactivada por omisión: crea la cuenta activa sin enviar correo ni emitir token. Al habilitarla, crea la cuenta pendiente y envía el enlace. La respuesta incluye enviado, verificacion_email_requerida, rol y activo.',
     cuerpo: {
-      email: { tipo: 'string', formato: 'email', requerido: true, descripcion: 'Correo electrónico válido; no se restringe el dominio en las cuentas creadas por administración.', ejemplo: 'guardia@ejemplo.com' },
+      email: { tipo: 'string', formato: 'email', requerido: true, descripcion: 'Correo electrónico válido, sujeto a los dominios configurados para el registro público.', ejemplo: 'guardia@ecu911.gob.ec' },
       nombre_completo: { tipo: 'string', requerido: true, descripcion: 'Nombres y apellidos: letras, espacios y . \' - & (3 a 150)', ejemplo: 'Carlos Andrade' },
       password: { tipo: 'string', formato: 'password', requerido: true, descripcion: '10 a 128 caracteres con mayúscula, minúscula, número y símbolo' },
-      cargo: { tipo: 'string', descripcion: 'Letras, números, espacios y . , / # ( ) - (máx. 100)', ejemplo: 'Guardia de garita' },
+      rol: { tipo: 'string', valores: ['Guardia', 'GestorPermisos'], descripcion: 'Rol elegido. Ausente conserva Guardia para clientes anteriores; Admin y cualquier otro valor se rechazan.', ejemplo: 'Guardia' },
     },
     respuestas: { 201: 'Cuenta creada', 400: 'Datos inválidos', 403: 'Registro público deshabilitado', 409: 'Ya existe una cuenta con ese correo' },
   },
@@ -226,7 +225,7 @@ export const RUTAS: RutaDoc[] = [
   {
     metodo: 'post', ruta: '/api/auth/reenviar-verificacion', etiqueta: 'Autenticación', acceso: 'publica',
     resumen: 'Envía un nuevo enlace de verificación',
-    descripcion: 'La respuesta es siempre genérica; máximo un reenvío por minuto.',
+    descripcion: 'La respuesta es genérica; máximo un reenvío por minuto cuando la verificación está habilitada. Desactivada no genera tokens ni envía correo.',
     cuerpo: { email: { tipo: 'string', formato: 'email', ejemplo: 'guardia@ecu911.gob.ec' } },
   },
   {
@@ -375,19 +374,6 @@ export const RUTAS: RutaDoc[] = [
     respuestas: { 201: 'Cámara registrada', 400: 'Datos inválidos' },
   },
   {
-    metodo: 'post', ruta: '/api/camaras/video-prueba', etiqueta: 'Cámaras', acceso: 'camaras:gestionar',
-    resumen: 'Cámara de prueba con un video cargado',
-    descripcion: 'El cuerpo es el archivo de video (MP4, MKV o MOV; se comprueba su firma, no la extensión) con su Content-Type, '
-      + 'y los datos van en la consulta. El servidor de medios lo publica en bucle en cam_<id>: el motor ANPR y el monitoreo en vivo '
-      + 'lo procesan como una cámara real. Solo disponible si el servidor define VIDEOS_PRUEBA_DIR (máximo VIDEOS_PRUEBA_MAX_MB, 2048 MB por omisión).',
-    consulta: {
-      nombre: { tipo: 'string', descripcion: 'Nombre de la cámara (3–100 caracteres)', ejemplo: 'Garita video 19-10' },
-      ubicacion: { tipo: 'string', descripcion: 'Ubicación (3–150 caracteres)', ejemplo: 'Entrada ECU 911 Ambato' },
-      direccion: { tipo: 'string', descripcion: 'ingreso (por omisión) o salida', ejemplo: 'ingreso' },
-    },
-    respuestas: { 201: 'Cámara de prueba creada', 400: 'Datos inválidos, tamaño excesivo o archivo que no es video', 409: 'Función deshabilitada en este servidor' },
-  },
-  {
     metodo: 'put', ruta: '/api/camaras/:id(\\d+)', etiqueta: 'Cámaras', acceso: 'camaras:gestionar',
     resumen: 'Edita una cámara',
     descripcion: 'Si cambia la URL, la conectividad vuelve a verificarse en segundo plano.',
@@ -531,7 +517,7 @@ export const RUTAS: RutaDoc[] = [
   {
     metodo: 'get', ruta: '/api/detecciones/historial/resumen', etiqueta: 'Detecciones', acceso: 'operacion:monitorear',
     resumen: 'Totales del historial completo con los mismos filtros',
-    descripcion: 'Registros, ingresos y salidas, estados, pasos sin lectura, placas distintas, origen (cámara, video de prueba, manual) y período.',
+    descripcion: 'Registros, ingresos y salidas, estados, pasos sin lectura, placas distintas, origen (cámara o manual) y período.',
     consulta: FILTROS_DETECCIONES,
     respuestas: { 400: 'Filtro inválido' },
   },
@@ -549,6 +535,14 @@ export const RUTAS: RutaDoc[] = [
     descripcion: 'La exportación queda registrada en la auditoría.',
     consulta: FILTROS_DETECCIONES,
     archivo: 'text/csv',
+  },
+  {
+    metodo: 'get', ruta: '/api/detecciones/registros.pdf', etiqueta: 'Detecciones', acceso: 'operacion:monitorear',
+    resumen: 'Reporte PDF de Registro de Salidas',
+    descripcion: 'Solo registros completos con salida, con los mismos filtros. Encabezado con el logo del ECU 911, período y quién lo '
+      + 'elabora; columnas Cédula, Titular, Placa, Motivo, Fecha, Hora de entrada, Hora de salida, Vehículo, Marca y Modelo. Queda en la auditoría.',
+    consulta: FILTROS_DETECCIONES,
+    archivo: 'application/pdf',
   },
   {
     metodo: 'get', ruta: '/api/detecciones/buscar-placa/:placa', etiqueta: 'Detecciones', acceso: 'operacion:monitorear',
@@ -664,10 +658,30 @@ export const RUTAS: RutaDoc[] = [
     respuestas: { 400: 'Filtro inválido' },
   },
   {
-    metodo: 'post', ruta: '/api/vehiculos-autorizados/:id(\\d+)/reactivar', etiqueta: 'Lista blanca', acceso: 'padron:supervisar',
-    resumen: 'Reactiva un permiso retirado con sus mismos datos',
+    metodo: 'get', ruta: '/api/vehiculos-autorizados/mis-permisos', etiqueta: 'Lista blanca', acceso: 'listas:ver',
+    resumen: 'Permisos que otorgó el usuario',
+    descripcion: 'Los permisos con placa o por nombre que registró quien consulta, con la marca `activo`. Activos por omisión; '
+      + 'con `retirados` o `todos` también los desactivados, para volver a activarlos o renovarlos.',
+    consulta: { estado: { tipo: 'string', descripcion: 'Por omisión `activos`', valores: ['activos', 'retirados', 'todos'] } },
+    respuestas: { 400: 'Estado inválido' },
+  },
+  {
+    metodo: 'post', ruta: '/api/vehiculos-autorizados/:id(\\d+)/placa', etiqueta: 'Lista blanca', acceso: 'detecciones:validar',
+    resumen: 'Completa la placa de un permiso otorgado por nombre',
+    descripcion: 'El guardia asigna la placa después de verificar a la persona (identidad_confirmada: true). Queda en la auditoría.',
+    cuerpo: {
+      placa: { tipo: 'string', requerido: true, descripcion: 'Placa ANT', ejemplo: 'PBA1234' },
+      identidad_confirmada: { tipo: 'boolean', requerido: true, descripcion: 'Debe ser true' },
+    },
+    respuestas: { 400: 'Placa inválida o identidad sin confirmar', 404: 'Permiso no encontrado', 409: 'El permiso ya tiene placa o la placa pertenece a otro permiso' },
+  },
+  {
+    metodo: 'post', ruta: '/api/vehiculos-autorizados/:id(\\d+)/reactivar', etiqueta: 'Lista blanca', acceso: 'padron:gestionar',
+    resumen: 'Vuelve a activar un permiso desactivado con sus mismos datos',
+    descripcion: 'El administrador (padron:supervisar) activa cualquiera; los demás, solo los permisos que otorgaron. Un permiso '
+      + 'vencido no se activa: se renueva con una vigencia nueva. Queda en la auditoría.',
     cuerpo: { motivo: { tipo: 'string', descripcion: 'Motivo de la reactivación (opcional; si se envía, mínimo 5 caracteres)', ejemplo: 'Renovó el contrato' } },
-    respuestas: { 400: 'Motivo demasiado corto', 404: 'Registro no encontrado', 409: 'Ya está activo u otra persona tiene la cédula' },
+    respuestas: { 400: 'Motivo demasiado corto', 403: 'El permiso lo otorgó otro usuario', 404: 'Registro no encontrado', 409: 'Ya está activo, vencido u otra persona tiene la cédula' },
   },
   {
     metodo: 'delete', ruta: '/api/vehiculos-autorizados/:id(\\d+)/definitivo', etiqueta: 'Lista blanca', acceso: 'padron:supervisar',
@@ -752,7 +766,43 @@ export const RUTAS: RutaDoc[] = [
     cuerpo: {
       valores: { tipo: 'object', requerido: true, descripcion: 'Mapa clave → valor', ejemplo: { aviso_vencimiento_dias: '15' } },
     },
-    respuestas: { 400: 'Sin cambios, parámetro desconocido o valor inválido' },
+    respuestas: { 400: 'Sin cambios, parámetro desconocido, valor inválido o verificación de correo sin correo saliente' },
+  },
+  {
+    metodo: 'get', ruta: '/api/configuracion/correo', etiqueta: 'Configuración', acceso: 'configuracion:gestionar',
+    resumen: 'Correo saliente (SMTP)',
+    descripcion: 'Cuenta guardada en Configuración (servidor, puerto, cuenta, remitente, habilitado, última prueba), sin la contraseña: '
+      + 'solo indica si hay una guardada y si se puede descifrar. Incluye de dónde sale hoy el correo (sistema, entorno o ninguno).',
+  },
+  {
+    metodo: 'put', ruta: '/api/configuracion/correo', etiqueta: 'Configuración', acceso: 'configuracion:gestionar',
+    resumen: 'Guarda el correo saliente (SMTP)',
+    descripcion: 'La contraseña se cifra (AES-256-GCM) y nunca se devuelve; vacía conserva la guardada. En smtp.gmail.com se exige '
+      + 'una contraseña de aplicación de 16 letras (los espacios se quitan). El cambio queda en la auditoría sin la contraseña.',
+    cuerpo: {
+      servidor: { tipo: 'string', requerido: true, descripcion: 'Nombre o IP del servidor SMTP', ejemplo: 'smtp.gmail.com' },
+      puerto: { tipo: 'integer', requerido: true, descripcion: '587 (STARTTLS) o 465 (SSL)', ejemplo: 587 },
+      usuario: { tipo: 'string', requerido: true, descripcion: 'Cuenta con que se autentica', ejemplo: 'anpr.zonal3@gmail.com' },
+      clave: { tipo: 'string', descripcion: 'Contraseña o contraseña de aplicación; obligatoria la primera vez' },
+      remitente_nombre: { tipo: 'string', descripcion: 'Nombre que ve el destinatario (por omisión, Sistema ANPR · ECU 911)' },
+      remitente_correo: { tipo: 'string', descripcion: 'Dirección del remitente (por omisión, la cuenta)' },
+      habilitado: { tipo: 'boolean', descripcion: 'false deja regir las variables SMTP_* del servidor' },
+    },
+    respuestas: { 400: 'Dato inválido o falta la contraseña', 409: 'Deshabilitarla dejaría la verificación de correo sin correo saliente' },
+  },
+  {
+    metodo: 'delete', ruta: '/api/configuracion/correo', etiqueta: 'Configuración', acceso: 'configuracion:gestionar',
+    resumen: 'Quita el correo saliente guardado',
+    descripcion: 'Vuelven a regir las variables SMTP_* del servidor. Queda en la auditoría.',
+    respuestas: { 404: 'No hay cuenta guardada', 409: 'La verificación de correo quedaría sin correo saliente' },
+  },
+  {
+    metodo: 'post', ruta: '/api/configuracion/correo/probar', etiqueta: 'Configuración', acceso: 'configuracion:gestionar',
+    resumen: 'Envía un correo de prueba',
+    descripcion: 'Usa la cuenta vigente. Responde { ok, detalle, correo }: si el servidor rechaza el envío, ok es false y el detalle '
+      + 'explica la causa (p. ej. contraseña de aplicación de Google). El resultado se guarda como última prueba y en la auditoría.',
+    cuerpo: { destino: { tipo: 'string', descripcion: 'Correo de destino (por omisión, el de quien la pide)' } },
+    respuestas: { 400: 'Correo de destino inválido', 409: 'No hay correo saliente configurado' },
   },
 
   // ─── Auditoría ──────────────────────────────────────────────────────────────

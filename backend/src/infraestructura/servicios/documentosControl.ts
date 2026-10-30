@@ -18,7 +18,8 @@ const RUTAS_LOGO = [
 ];
 
 let logo: Buffer | null | undefined;
-function leerLogo(): Buffer | null {
+/** Logo del ECU 911 (backend/assets; en la imagen de producción, /app/assets); null si no está. */
+export function leerLogo(): Buffer | null {
   if (logo === undefined) {
     const ruta = RUTAS_LOGO.find(r => fs.existsSync(r));
     logo = ruta ? fs.readFileSync(ruta) : null;

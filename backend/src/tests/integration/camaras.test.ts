@@ -49,8 +49,6 @@ jest.mock('../../infraestructura/db', () => {
         if (/SELECT id, nombre, rtsp_url, ip FROM Camaras WHERE activa = 1/.test(texto)) {
           return resultado([...mockBase.camaras.values()].filter(x => x.activa));
         }
-        // Cámara de video de prueba (la única ruta que se puede publicar): evalúa el LIKE de la consulta
-        if (/AND activa = 1 AND rtsp_url LIKE 'video/.test(texto)) return resultado(c?.activa && String(c.rtsp_url).startsWith('video://') ? [{ id }] : []);
         if (/SELECT id FROM Camaras WHERE id = @id AND activa = 1/.test(texto)) return resultado(c?.activa ? [{ id }] : []);
         if (/INSERT INTO Camaras \(/.test(texto)) {
           const nuevo = mockBase.siguienteId++;

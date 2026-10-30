@@ -19,7 +19,7 @@ jest.mock('../../infraestructura/db', () => {
           const codigo = ({ 1: 'ADMIN', 3: 'GUARDIA', 4: 'GESTOR_PERMISOS' } as Record<number, string>)[Number(entradas.id)];
           return { recordset: codigo ? [{ estado: 'activo', bloqueado: 0, bloqueado_hasta: null, codigo }] : [] };
         }
-        if (/INSERT INTO ConfiguracionSistema|INSERT INTO AuditoriaOperaciones/.test(texto)) mockEscrituras.push({ texto, entradas: { ...entradas } });
+        if (/INSERT INTO ConfiguracionSistema|INSERT INTO AuditoriaOperaciones|INSERT INTO ConfiguracionCorreo/.test(texto)) mockEscrituras.push({ texto, entradas: { ...entradas } });
         return { recordset: [], rowsAffected: [1] };
       },
     };
@@ -44,7 +44,7 @@ describe('API · configuración', () => {
     const r = await request(app).get('/api/configuracion').set('Authorization', token('Admin')).expect(200);
     expect(Object.keys(r.body)).toEqual(['parametros', 'entorno']);
     expect(r.body.parametros.find((p: any) => p.clave === 'sesion_horas')).toMatchObject({ tipo: 'entero', min: 1, max: 24, valor: '8', origen: 'omision' });
-    expect(Object.keys(r.body.entorno)).toEqual(['zona_horaria', 'correo_configurado', 'remitente_correo', 'frontend_url', 'entorno', 'anpr']);
+    expect(Object.keys(r.body.entorno)).toEqual(['zona_horaria', 'correo_configurado', 'remitente_correo', 'origen_correo', 'frontend_url', 'entorno', 'anpr']);
     expect(r.body.entorno.anpr).toEqual({ en_linea: false, error: 'Servicio no disponible' });
   });
 
@@ -85,5 +85,42 @@ describe('API · configuración', () => {
   it.each(['Guardia', 'GestorPermisos'] as Rol[])('solo con configuracion:gestionar: %s recibe 403', async (rol) => {
     await request(app).get('/api/configuracion').set('Authorization', token(rol)).expect(403);
     await request(app).put('/api/configuracion').set('Authorization', token(rol)).send({ valores: { sesion_horas: '10' } }).expect(403);
+    await request(app).get('/api/configuracion/correo').set('Authorization', token(rol)).expect(403);
+    await request(app).put('/api/configuracion/correo').set('Authorization', token(rol)).send({}).expect(403);
+    await request(app).post('/api/configuracion/correo/probar').set('Authorization', token(rol)).send({}).expect(403);
+  });
+
+  it('correo: sin cuenta guardada ni variables SMTP_* responde guardado null y no se puede probar', async () => {
+    const r = await request(app).get('/api/configuracion/correo').set('Authorization', token('Admin')).expect(200);
+    expect(r.body).toMatchObject({ origen_vigente: null, guardado: null, verificacion_exigida: false });
+    await request(app).post('/api/configuracion/correo/probar').set('Authorization', token('Admin')).send({}).expect(409);
+  });
+
+  it('correo: guarda la contraseña de aplicación cifrada (nunca en claro) y lo audita sin ella', async () => {
+    await request(app).put('/api/configuracion/correo').set('Authorization', token('Admin'))
+      .send({ servidor: 'smtp.gmail.com', puerto: 587, usuario: 'anpr.zonal3@gmail.com', clave: 'abcd efgh ijkl mnop' }).expect(200);
+    const alta = mockEscrituras.find(e => /INSERT INTO ConfiguracionCorreo/.test(e.texto))!;
+    expect(alta.entradas).toMatchObject({ servidor: 'smtp.gmail.com', puerto: 587, usuario: 'anpr.zonal3@gmail.com', habilitado: true, uid: 1 });
+    expect(String(alta.entradas.clave)).toMatch(/^enc\.v1\./);
+    expect(JSON.stringify(mockEscrituras)).not.toMatch(/abcdefghijklmnop|abcd efgh/);
+    expect(mockEscrituras.find(e => /AuditoriaOperaciones/.test(e.texto))?.entradas)
+      .toMatchObject({ accion: 'CONFIGURACION_CORREO', detalle: 'Correo saliente: alta anpr.zonal3@gmail.com en smtp.gmail.com:587' });
+  });
+
+  it.each([
+    [{ servidor: 'smtp.gmail.com', puerto: 587, usuario: 'anpr.zonal3@gmail.com', clave: 'ClaveDeLaCuenta1' }, /16 letras/],
+    [{ servidor: 'smtp.gmail.com', puerto: 587, usuario: 'anpr.zonal3@gmail.com' }, /«Contraseña» es obligatorio/],
+    [{ servidor: 'smtp.gmail.com', puerto: 99999, usuario: 'anpr.zonal3@gmail.com', clave: 'abcdefghijklmnop' }, /Puerto: máximo 65535/],
+  ])('correo: PUT %j → 400 sin guardar', async (cuerpo, error) => {
+    const r = await request(app).put('/api/configuracion/correo').set('Authorization', token('Admin')).send(cuerpo).expect(400);
+    expect(r.body.error).toMatch(error);
+    expect(mockEscrituras).toEqual([]);
+  });
+
+  it('exigir la verificación de correo sin correo saliente → 400', async () => {
+    const r = await request(app).put('/api/configuracion').set('Authorization', token('Admin'))
+      .send({ valores: { registro_verificacion_email_habilitada: 'true' } }).expect(400);
+    expect(r.body.error).toMatch(/Configure el correo saliente/);
+    expect(mockEscrituras).toEqual([]);
   });
 });
