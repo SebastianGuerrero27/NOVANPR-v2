@@ -3,7 +3,7 @@ FROM python:3.12.15-slim-trixie
 
 # Bibliotecas del sistema: OpenCV (libGL, glib), OpenMP (PyTorch) y FFmpeg (ffprobe para el
 # diagnóstico de flujos de cámara)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libgl1 \
     libgomp1 \

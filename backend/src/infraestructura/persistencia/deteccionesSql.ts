@@ -46,6 +46,9 @@ const orden = (f: FiltrosDetecciones) => (f.orden === 'antiguo' ? 'd.fecha_hora_
 
 const db = () => getDB();
 
+// Lote corto: entre lotes el hilo atiende a las demás peticiones
+const LOTE_EXPORTACION = 500;
+
 /** Filtros del historial, la exportación y la eliminación masiva (ya validados en el dominio). */
 function aplicarFiltros(f: FiltrosDetecciones, request: PostgresRequest): string[] {
   const w: string[] = [`d.estado_procesamiento IN ('procesado', 'no_legible', 'pendiente_ocr')`];
@@ -462,10 +465,58 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
     return r.recordset.length > 0;
   },
 
+  async cerrarIngresoConSalida(salidaId, placa, minimoSegundos) {
+    const r = await db().request()
+      .input('salida', sql.Int, salidaId).input('placa', sql.VarChar(20), placa).input('minimo', sql.Int, minimoSegundos)
+      .query(`
+        UPDATE DeteccionVehiculo d
+        SET fecha_hora_salida = s.fecha_hora_ingreso, salida_deteccion_id = s.id
+        FROM DeteccionVehiculo s
+        WHERE s.id = @salida AND d.id = (
+          SELECT i.id FROM DeteccionVehiculo i
+          WHERE REPLACE(COALESCE(i.placa_validada, i.placa_reconocida, ''), '-', '') = @placa
+            AND i.tipo_movimiento = 'ingreso' AND i.fecha_hora_salida IS NULL
+            AND i.fecha_hora_ingreso <= s.fecha_hora_ingreso - make_interval(secs => @minimo)
+          ORDER BY i.fecha_hora_ingreso DESC LIMIT 1 FOR UPDATE SKIP LOCKED)
+        RETURNING d.id`);
+    return r.recordset[0]?.id ?? null;
+  },
+
+  async ingresoCerradoPor(salidaId) {
+    const r = await db().request().input('salida', sql.Int, salidaId).query(
+      `SELECT d.id, ${PLACA_D} AS placa FROM DeteccionVehiculo d WHERE d.salida_deteccion_id = @salida`);
+    return r.recordset[0] ?? null;
+  },
+
+  async reabrirIngreso(ingresoId) {
+    await db().request().input('id', sql.Int, ingresoId).query(
+      'UPDATE DeteccionVehiculo SET fecha_hora_salida = NULL, salida_deteccion_id = NULL WHERE id = @id');
+  },
+
   async exportar(f) {
     const request = db().request();
     const w = aplicarFiltros(f, request);
     return (await request.query(`${SELECT_DETECCION} WHERE ${w.join(' AND ')} ORDER BY ${orden(f)}`)).recordset;
+  },
+
+  // Cursor en el servidor, en una transacción de solo lectura: foto consistente del historial sin traerlo entero
+  async *exportarPorLotes(f) {
+    const cliente = await db().connect();
+    try {
+      await cliente.query('BEGIN READ ONLY');
+      const request = new PostgresRequest(cliente);
+      const w = aplicarFiltros(f, request);
+      await request.query(`DECLARE exportacion NO SCROLL CURSOR FOR ${SELECT_DETECCION} WHERE ${w.join(' AND ')} ORDER BY ${orden(f)}`);
+      for (;;) {
+        const { rows } = await cliente.query(`FETCH ${LOTE_EXPORTACION} FROM exportacion`);
+        if (rows.length) yield rows;
+        if (rows.length < LOTE_EXPORTACION) break;
+      }
+    } finally {
+      // Cierra el cursor también si la descarga se canceló a mitad del recorrido
+      await cliente.query('ROLLBACK').catch(() => undefined);
+      cliente.release();
+    }
   },
 
   async historialPlaca(placa, excluirId) {
@@ -534,6 +585,10 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
         DELETE FROM DeteccionVehiculo d
         WHERE ${w.join(' AND ')}
         RETURNING d.id, d.ruta_imagen_ingreso, d.ruta_imagen_placa
+      ), reabiertos AS (
+        -- Una salida eliminada no puede seguir cerrando un ingreso
+        UPDATE DeteccionVehiculo SET fecha_hora_salida = NULL, salida_deteccion_id = NULL
+        WHERE salida_deteccion_id IN (SELECT id FROM eliminadas)
       )
       SELECT id, ruta_imagen_ingreso, ruta_imagen_placa FROM eliminadas`);
     return r.recordset;

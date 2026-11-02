@@ -26,7 +26,7 @@ const Camaras: React.FC = () => {
   const [reproduciendo, setReproduciendo] = useState<Camara | null>(null);
   const [area, setArea] = useState<Camara | null>(null);
   const motor = useConsulta<EstadoAnpr>(() => api.get('/monitoreo/estado').then(r => r.data), []);
-  useEvento('monitoreo:camara', () => motor.recargar(true));
+  useEvento('monitoreo:camaras', () => motor.recargar(true));
 
   const reemplazar = (c: Camara) => setDatos(l => l && (l.some(x => x.id === c.id) ? l.map(x => (x.id === c.id ? { ...x, ...c } : x)) : [...l, c]));
   useEvento<Camara>('camara:actualizada', reemplazar);
@@ -83,7 +83,9 @@ const Camaras: React.FC = () => {
                   return (
                     <tr key={c.id} className={c.activa ? '' : 'inactivo'}>
                       <td><strong style={{ color: 'var(--text)' }}>{c.nombre}</strong><span className="secundario">{c.ubicacion}</span>
-                        {motor.datos?.camara_activa?.id === c.id && <span className="insignia info" style={{ marginTop: 4 }}><Cpu size={12} /> Procesando en el motor ANPR</span>}
+                        {motor.datos?.camaras?.some(x => x.id === c.id) && <span className="insignia info" style={{ marginTop: 4 }}><Cpu size={12} /> Analizando placas</span>}
+                        {c.activa && !c.analisis_anpr && <span className="insignia" style={{ marginTop: 4 }} title="No registra pasos: se activa al editar la cámara">Solo video</span>}
+                        {motor.datos?.sin_capacidad?.includes(c.id) && <span className="insignia alerta" style={{ marginTop: 4 }} title="Los motores ANPR en línea ya analizan su máximo de cámaras">A la espera de capacidad</span>}
                         {c.roi && <span className="insignia" style={{ marginTop: 4 }} title="El motor solo busca placas dentro del área marcada"><Crop size={12} /> Área de interés ({c.roi.length} vértices)</span>}
                         </td>
                       <td><span className={`insignia ${c.direccion === 'salida' ? 'info' : 'autorizado'}`}>{c.direccion === 'salida' ? 'Salida' : 'Ingreso'}</span></td>

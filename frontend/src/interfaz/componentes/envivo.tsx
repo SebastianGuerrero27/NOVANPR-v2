@@ -169,6 +169,7 @@ export const ReproductorWebRTC: React.FC<{
     let timerStats: number | undefined;
     let vigilancia: number | undefined;
     let reintento: number | undefined;
+    let reintentoPistas: number | undefined;
     const v = video.current!;
     const hud: Hud = crearHud(lienzo.current!, () => (v.videoWidth ? areaVideo(v, ajusteActual.current) : null));
     let aspectoMotor: number | null = null;
@@ -244,16 +245,27 @@ export const ReproductorWebRTC: React.FC<{
           hud.fijarRetardoVideo(s?.latencia_ms != null ? s.latencia_ms / 1000 : null);
         }, 2000);
         if (mostrarHud && pistasWs) {
-          ws = new WebSocket(pistasWs);
-          ws.onmessage = ev => {
-            try {
-              const m = JSON.parse(ev.data);
-              if (typeof m.aspecto === 'number' && m.aspecto !== aspectoMotor) { aspectoMotor = m.aspecto; revisarAspecto(); }
-              const zonas = zonasDelMotor(m);
-              hud.actualizar(pistasDelMotor(m.pistas), null, zonas.roi, zonas.exclusiones);
-            } catch { /* mensaje inválido */ }
+          const abrirPistas = (url: string) => {
+            ws = new WebSocket(url);
+            ws.onmessage = ev => {
+              try {
+                const m = JSON.parse(ev.data);
+                if (typeof m.aspecto === 'number' && m.aspecto !== aspectoMotor) { aspectoMotor = m.aspecto; revisarAspecto(); }
+                const zonas = zonasDelMotor(m);
+                hud.actualizar(pistasDelMotor(m.pistas), null, zonas.roi, zonas.exclusiones);
+              } catch { /* mensaje inválido */ }
+            };
+            // El motor se reinició o la cámara aún arranca: el video sigue y las cajas vuelven solas, con un ticket nuevo
+            ws.onclose = () => {
+              hud.limpiar();
+              if (cerrado || fallido) return;
+              reintentoPistas = window.setTimeout(() => {
+                obtener().then(r => { if (!cerrado && !fallido && r.pistasWs) abrirPistas(r.pistasWs); })
+                  .catch(() => ws?.onclose?.(new CloseEvent('close')));
+              }, 3000);
+            };
           };
-          ws.onclose = () => hud.limpiar();
+          abrirPistas(pistasWs);
         }
       } catch (e) {
         // La causa del servidor de video (sin señal, ticket vencido…): mensajeError solo entiende errores de
@@ -265,6 +277,7 @@ export const ReproductorWebRTC: React.FC<{
     return () => {
       cerrado = true;
       negociacion.abort();
+      window.clearTimeout(reintentoPistas);
       window.clearTimeout(reintento);
       window.clearTimeout(vigilancia);
       window.clearInterval(timerStats);
@@ -299,11 +312,11 @@ export const ReproductorWebRTC: React.FC<{
 };
 
 /**
- * Video de la cámara que procesa el motor, con las detecciones superpuestas. Con `vista`, el
- * flujo secundario de la cámara (el motor sigue analizando el principal).
+ * Video en vivo de una cámara. Con `analizada`, además las detecciones del motor superpuestas. Con `vista`,
+ * el flujo secundario de la cámara (el motor sigue analizando el principal).
  */
-export const VisorEnVivo: React.FC<{ camaraId: number | null; vista?: boolean; pausado: boolean; claveReinicio?: unknown; onFallo: (m: string) => void }> =
-  ({ camaraId, vista = false, pausado, claveReinicio, onFallo }) => {
+export const VisorEnVivo: React.FC<{ camaraId: number | null; analizada?: boolean; vista?: boolean; pausado: boolean; claveReinicio?: unknown; onFallo: (m: string) => void }> =
+  ({ camaraId, analizada = true, vista = false, pausado, claveReinicio, onFallo }) => {
     if (!camaraId) {
       return (
         <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', background: '#050b16', borderRadius: 10 }}>
@@ -312,12 +325,12 @@ export const VisorEnVivo: React.FC<{ camaraId: number | null; vista?: boolean; p
       );
     }
     return (
-      <ReproductorWebRTC pausado={pausado} mostrarHud claveReinicio={`${camaraId}-${vista}-${String(claveReinicio)}`} onFallo={onFallo}
+      <ReproductorWebRTC pausado={pausado} mostrarHud={analizada} claveReinicio={`${camaraId}-${vista}-${analizada}-${String(claveReinicio)}`} onFallo={onFallo}
         obtener={async () => {
-          const t = (await api.post('/monitoreo/ticket', { alcance: 'stream' })).data;
+          const t = (await api.post('/monitoreo/ticket', { alcance: 'stream', camara_id: camaraId })).data;
           const q = `ticket=${encodeURIComponent(t.ticket)}`;
           const ruta = `cam_${camaraId}${vista ? '_vista' : ''}`;
-          return { whep: `${t.webrtc}/${ruta}/whep?${q}`, pistasWs: `${String(t.url).replace(/^http/, 'ws')}/ws/pistas?${q}` };
+          return { whep: `${t.webrtc}/${ruta}/whep?${q}`, pistasWs: `${String(t.url).replace(/^http/, 'ws')}/ws/pistas?${q}&camara_id=${camaraId}` };
         }} />
     );
   };

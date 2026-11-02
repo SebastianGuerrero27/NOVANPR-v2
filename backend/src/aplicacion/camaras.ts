@@ -141,21 +141,32 @@ export interface PuertoTickets {
 
 export interface EstadoMotor {
   en_linea: boolean;
+  /** Promedio de las cámaras que reciben video */
   fps_captura?: number;
   fps_procesamiento?: number;
-  /** Latencia desde la captura de cada cuadro (motor ANPR) */
-  latencia?: {
-    edad_cuadro: { p50_ms: number; p95_ms: number; max_ms: number; muestras: number } | null;
-    lectura_en_vivo: { p50_ms: number; p95_ms: number; max_ms: number; muestras: number } | null;
-    registro: { p50_ms: number; p95_ms: number; max_ms: number; muestras: number } | null;
-    cuadros_descartados_pct: number | null;
-  } | null;
   detector?: string | null;
   ocr?: string | null;
   verificador?: string | null;
-  camara_activa?: { id: number; conectada: boolean } | null;
-  /** Enlace con la cámara que procesa el motor (null sin fuente RTSP) */
-  enlace?: EnlaceVideo | null;
+  /** Cámaras en análisis, con el motor que atiende cada una */
+  camaras?: {
+    id: number;
+    motor: number;
+    conectada: boolean;
+    fps_captura: number;
+    fps_procesamiento: number;
+    /** Latencia desde la captura de cada cuadro */
+    latencia: {
+      edad_cuadro: { p50_ms: number; p95_ms: number; max_ms: number; muestras: number } | null;
+      lectura_en_vivo: { p50_ms: number; p95_ms: number; max_ms: number; muestras: number } | null;
+      registro: { p50_ms: number; p95_ms: number; max_ms: number; muestras: number } | null;
+      cuadros_descartados_pct: number | null;
+    } | null;
+    /** Enlace del motor con la cámara (null sin fuente RTSP) */
+    enlace: EnlaceVideo | null;
+  }[];
+  motores?: { indice: number; en_linea: boolean; max_camaras: number; camaras: number[]; cpu_pct: number | null }[];
+  /** Cámaras que caben en total en los motores en línea */
+  capacidad?: number;
   error?: string;
 }
 
@@ -169,25 +180,16 @@ export interface EnlaceVideo {
   ultimo_cuadro_hace_s: number | null;
 }
 
-/** Motor ANPR (microservicio de reconocimiento) y la cámara que procesa. */
+/** Motores ANPR (microservicio de reconocimiento) y las cámaras que procesan. */
 export interface PuertoMotorAnpr {
-  /** Nunca falla: si no responde, en_linea = false */
+  /** Nunca falla: si ninguno responde, en_linea = false */
   estado(): Promise<EstadoMotor>;
-  /** Cámara que debería procesar: la elegida si está habilitada, o la primera habilitada */
-  camaraDeseada(): Promise<{ id: number } | null>;
-  /** true si el motor procesa exactamente la ruta de esa cámara */
-  procesa(camara: { id: number } | null): Promise<boolean>;
-  /** Recuerda la cámara elegida (se reaplica si el motor se reinicia) */
-  guardarCamara(camaraId: number, usuarioId: number | null): Promise<void>;
-  /** Cambia la cámara del motor con sus zonas (las de la cámara anterior nunca se conservan) */
-  cambiarCamara(camara: { id: number; nombre: string; rtsp_url: string; roi: Punto[] | null; exclusiones: Punto[][] },
-    forzar: boolean): Promise<unknown>;
-  /** Aplica la región de interés y las zonas de exclusión si esa cámara es la que procesa */
-  fijarZonas(camaraId: number, roi: Punto[] | null, exclusiones: Punto[][]): Promise<unknown>;
-  /** Reaplica la cámara deseada si el motor está en otra fuente */
+  /** Reparte las cámaras con análisis entre los motores y les envía sus zonas */
   sincronizar(): Promise<unknown>;
-  /** URL del servicio vista desde el navegador (WebSocket de video) */
-  urlPublica(): string;
+  /** Cámaras con análisis que no caben en los motores en línea */
+  sinCapacidad(): number[];
+  /** URL vista desde el navegador del motor que atiende la cámara (WebSocket de video y pistas) */
+  urlPublica(camaraId?: number): string;
 }
 
 export interface DependenciasCamaras {
@@ -240,7 +242,7 @@ export function casosCamaras(d: DependenciasCamaras) {
     ping: null, rtsp: { host: null, puerto: null, en_linea: false, diagnostico: 'red_no_permitida', tiempo_ms: null, mensaje: motivo },
   });
 
-  /** MediaMTX publica las cámaras habilitadas y el motor retoma la cámara que le corresponde. */
+  /** MediaMTX publica las cámaras habilitadas y cada motor retoma las que le corresponden. */
   const sincronizar = () => enSegundoPlano(async () => {
     await d.video.sincronizarRutas();
     await d.motor.sincronizar();
@@ -273,6 +275,7 @@ export function casosCamaras(d: DependenciasCamaras) {
       rtsp: d.custodia.proteger(r.valor.rtsp),
       rtspVista: r.valor.rtspVista ? d.custodia.proteger(r.valor.rtspVista) : null,
       direccion: r.valor.direccion,
+      analisis: r.valor.analisis,
     };
   }
 
@@ -329,6 +332,7 @@ export function casosCamaras(d: DependenciasCamaras) {
         // MediaMTX reabre la cámara con la URL nueva; el motor sigue leyendo la misma ruta cam_<id>
         enSegundoPlano(() => d.video.sincronizarRutas());
       }
+      if ((actual.analisis_anpr ?? true) !== c.analisis) sincronizar();
       const camara = await obtener(id);
       difundir(camara);
       return camara;
@@ -368,11 +372,8 @@ export function casosCamaras(d: DependenciasCamaras) {
       ].filter(Boolean);
       await d.auditoria.operacion(actor, 'CAMARA_ROI', 'camara', id, `${nombre}: ${partes.join(', ')}`);
       const camara = await obtener(id);
-      // Si el motor procesa esta cámara las aplica al instante; si no, al activarla. Recibe siempre
-      // el conjunto completo: lo que no llegó en la solicitud, tal como estaba guardado
-      const roiVigente = roi ? roi.valor : camara.roi;
-      const exclusionesVigentes = exclusiones ? exclusiones.valor : camara.exclusiones;
-      enSegundoPlano(() => d.motor.fijarZonas(id, roiVigente, exclusionesVigentes));
+      // El motor que la procesa las aplica al instante
+      enSegundoPlano(() => d.motor.sincronizar());
       difundir(camara);
       return { camara, roi: roi ? roi.valor : undefined, exclusiones: exclusiones ? exclusiones.valor : undefined };
     },

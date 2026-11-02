@@ -1,0 +1,91 @@
+{
+ "etiqueta": "nueva_4_camaras_2_detectores",
+ "camaras": 4,
+ "segundos": 360,
+ "imagen_motor": "anpr-motor:produccion",
+ "detectores": "2",
+ "esperadas": 40,
+ "exactas": 38,
+ "exactitud_pct": 95.0,
+ "cpu_nucleos": {
+  "media": 9.81,
+  "p95": 12.09,
+  "max": 14.29
+ },
+ "memoria_mib": {
+  "media": 3417,
+  "max": 3619
+ },
+ "fps_analisis_medio": 0.4,
+ "reinicios_motor": "0",
+ "detalle": [
+  {
+   "camara": "1",
+   "registros": 10,
+   "exactas": 10,
+   "erroneas": 0,
+   "sin_lectura": 0,
+   "confirmadas": 9,
+   "confirmadas_erroneas": 0,
+   "fps_captura": 29.5,
+   "fps_analisis": 0.0,
+   "registro_p50_ms": 4110,
+   "registro_p95_ms": 71599,
+   "edad_cuadro_p50_ms": 34,
+   "edad_cuadro_p95_ms": 103,
+   "lectura_vivo_p50_ms": 2564,
+   "omitidas_pct": 7.2
+  },
+  {
+   "camara": "2",
+   "registros": 10,
+   "exactas": 8,
+   "erroneas": 0,
+   "sin_lectura": 2,
+   "confirmadas": 8,
+   "confirmadas_erroneas": 0,
+   "fps_captura": 26.8,
+   "fps_analisis": 0.5,
+   "registro_p50_ms": 6105,
+   "registro_p95_ms": 69666,
+   "edad_cuadro_p50_ms": 32,
+   "edad_cuadro_p95_ms": 101,
+   "lectura_vivo_p50_ms": 3272,
+   "omitidas_pct": 5.4
+  },
+  {
+   "camara": "3",
+   "registros": 11,
+   "exactas": 9,
+   "erroneas": 1,
+   "sin_lectura": 1,
+   "confirmadas": 8,
+   "confirmadas_erroneas": 0,
+   "fps_captura": 27.1,
+   "fps_analisis": 0.5,
+   "registro_p50_ms": 5840,
+   "registro_p95_ms": 65165,
+   "edad_cuadro_p50_ms": 36,
+   "edad_cuadro_p95_ms": 133,
+   "lectura_vivo_p50_ms": 2941,
+   "omitidas_pct": 8.0
+  },
+  {
+   "camara": "4",
+   "registros": 11,
+   "exactas": 11,
+   "erroneas": 0,
+   "sin_lectura": 0,
+   "confirmadas": 10,
+   "confirmadas_erroneas": 0,
+   "fps_captura": 27.6,
+   "fps_analisis": 0.6,
+   "registro_p50_ms": 3592,
+   "registro_p95_ms": 60335,
+   "edad_cuadro_p50_ms": 33,
+   "edad_cuadro_p95_ms": 88,
+   "lectura_vivo_p50_ms": 2405,
+   "omitidas_pct": 15.1
+  }
+ ]
+}

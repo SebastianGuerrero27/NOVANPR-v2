@@ -21,7 +21,8 @@ const conDatos = (request: PostgresRequest, c: DatosCamara) => request
   .input('rtsp', sql.VarChar(512), c.rtsp)
   .input('vista', sql.VarChar(512), c.rtspVista)
   .input('ubicacion', sql.NVarChar(150), c.ubicacion)
-  .input('direccion', sql.VarChar(10), c.direccion);
+  .input('direccion', sql.VarChar(10), c.direccion)
+  .input('analisis', sql.Bit, c.analisis);
 
 export const repositorioCamarasSql: RepositorioCamaras = {
   async listar() {
@@ -44,14 +45,14 @@ export const repositorioCamarasSql: RepositorioCamaras = {
 
   async crear(c, usuarioId) {
     const r = await conDatos(db().request(), c).input('usuario', sql.Int, usuarioId)
-      .query(`INSERT INTO Camaras (nombre, ip, rtsp_url, rtsp_url_vista, ubicacion, direccion, activa, estado, created_at, registrado_por)
-              OUTPUT INSERTED.id VALUES (@nombre, @ip, @rtsp, @vista, @ubicacion, @direccion, TRUE, 'SIN_VERIFICAR', GETDATE(), @usuario)`);
+      .query(`INSERT INTO Camaras (nombre, ip, rtsp_url, rtsp_url_vista, ubicacion, direccion, analisis_anpr, activa, estado, created_at, registrado_por)
+              OUTPUT INSERTED.id VALUES (@nombre, @ip, @rtsp, @vista, @ubicacion, @direccion, @analisis, TRUE, 'SIN_VERIFICAR', GETDATE(), @usuario)`);
     return r.recordset[0].id;
   },
 
   async actualizar(id, c) {
     await conDatos(db().request(), c).input('id', sql.Int, id)
-      .query(`UPDATE Camaras SET nombre = @nombre, ip = @ip, rtsp_url = @rtsp, rtsp_url_vista = @vista, ubicacion = @ubicacion, direccion = @direccion,
+      .query(`UPDATE Camaras SET nombre = @nombre, ip = @ip, rtsp_url = @rtsp, rtsp_url_vista = @vista, ubicacion = @ubicacion, direccion = @direccion, analisis_anpr = @analisis,
                 estado = CASE WHEN rtsp_url IS DISTINCT FROM CAST(@rtsp AS VARCHAR(512)) THEN 'SIN_VERIFICAR' ELSE estado END,
                 fecha_actualizacion = SYSDATETIME()
               WHERE id = @id`);

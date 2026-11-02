@@ -105,7 +105,8 @@ plates_recognized = Counter(
 
 tracking_active = Gauge(
     'anpr_tracking_active',
-    'Número de tracks activos',
+    'Número de tracks activos por cámara',
+    ['camera_id'],
     registry=registry
 )
 
@@ -235,20 +236,20 @@ def measure_frame_processing(stage: str):
 # Funciones Helper
 # =============================================================================
 
-_camara_fps: Optional[str] = None
-
-
 def update_fps(fps: float, camera_id: str = 'default'):
-    """FPS de la cámara que el motor está leyendo. Al cambiar de cámara se retira la serie de la
-    anterior: con su último valor colgado, la alerta de cámara sin video la tomaría por activa."""
-    global _camara_fps
-    if _camara_fps is not None and _camara_fps != camera_id:
+    """FPS de una cámara que el motor está leyendo."""
+    fps_gauge.labels(camera_id=camera_id).set(fps)
+
+
+def retirar_camara(camera_id: str) -> None:
+    """La cámara salió del análisis: sin retirar sus series, con el último valor colgado, la alerta de
+    cámara sin video la tomaría por activa."""
+    for gauge in (fps_gauge, tracking_active):
         try:
-            fps_gauge.remove(_camara_fps)
+            gauge.remove(camera_id)
         except KeyError:
             pass
-    _camara_fps = camera_id
-    fps_gauge.labels(camera_id=camera_id).set(fps)
+
 
 def record_detection(status: str, camera_id: str = 'default'):
     """Registra una detección"""
@@ -258,9 +259,9 @@ def record_plate_recognized(validation_status: str):
     """Registra una placa reconocida"""
     plates_recognized.labels(validation_status=validation_status).inc()
 
-def update_tracking_active(count: int):
-    """Actualiza el número de tracks activos"""
-    tracking_active.set(count)
+def update_tracking_active(count: int, camera_id: str = 'default'):
+    """Actualiza el número de tracks activos de una cámara"""
+    tracking_active.labels(camera_id=camera_id).set(count)
 
 def record_recognition_latency(seconds: float):
     """Registra la latencia de reconocimiento de punta a punta de un paso"""

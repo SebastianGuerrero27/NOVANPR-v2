@@ -65,9 +65,6 @@ async function sesionAdministrador(pool) {
 }
 
 async function crear(pool) {
-  const previa = (await pool.request().query("SELECT valor FROM ConfiguracionSistema WHERE clave = 'camara_motor_id'")).recordset[0]?.valor ?? '';
-  console.log(`cámara del motor antes de la prueba: ${previa || '(ninguna elegida)'}`);
-
   // 1. Alta con flujo principal y de vista
   const alta = await api('POST', '/camaras', { nombre: 'Hikvision simulada E2E', ubicacion: 'Laboratorio de pruebas', rtsp_url: URL_101, rtsp_url_vista: URL_102, ip: 'camara-hik' });
   ok(alta.status === 201, `alta: HTTP ${alta.status} ${alta.data?.error ?? ''}`);
@@ -99,29 +96,27 @@ async function crear(pool) {
   const v = await api('POST', `/camaras/${c.id}/video`);
   ok(v.data?.ruta === `cam_${c.id}` && v.data?.ruta_vista === `cam_${c.id}_vista`, `rutas de video: ${v.data?.ruta} y ${v.data?.ruta_vista}`);
 
-  // 6. El motor procesa el principal (H.265) a través de MediaMTX
+  // 6. El motor analiza el principal (H.265) a través de MediaMTX, junto con las demás cámaras
   const t0 = Date.now();
-  const cambio = await api('POST', '/monitoreo/camara-activa', { camara_id: c.id });
-  ok(cambio.status === 200, `motor asignado: ${cambio.data?.message ?? cambio.data?.error}`);
-  let e = null;
-  for (let i = 0; i < 40; i++) {
-    e = (await api('GET', '/monitoreo/estado')).data;
-    if (e?.camara_activa?.id === c.id && e.camara_activa.conectada && e.enlace?.fps_recibidos > 5) break;
+  let camara = null;
+  for (let i = 0; i < 60; i++) {
+    const e = (await api('GET', '/monitoreo/estado')).data;
+    camara = e?.camaras?.find(x => x.id === c.id) ?? null;
+    if (camara?.conectada && camara.enlace?.fps_recibidos > 5) break;
     await espera(500);
   }
-  ok(e?.camara_activa?.id === c.id && e.camara_activa.conectada, `el motor recibe video ${((Date.now() - t0) / 1000).toFixed(1)} s después del cambio`);
-  ok(/hevc|hev1|h265/i.test(e?.enlace?.codec ?? '') && e.enlace.ancho === 1920 && e.enlace.alto === 1080,
-    `enlace del motor: ${e?.enlace?.codec} ${e?.enlace?.ancho}×${e?.enlace?.alto}, ${e?.enlace?.fps_recibidos} fps recibidos`);
+  ok(Boolean(camara?.conectada), `el motor recibe video ${((Date.now() - t0) / 1000).toFixed(1)} s después del alta`);
+  ok(/hevc|hev1|h265/i.test(camara?.enlace?.codec ?? '') && camara.enlace.ancho === 1920 && camara.enlace.alto === 1080,
+    `enlace del motor: ${camara?.enlace?.codec} ${camara?.enlace?.ancho}×${camara?.enlace?.alto}, ${camara?.enlace?.fps_recibidos} fps recibidos`);
   console.log(`ID=${c.id}`);
-  console.log(`PREVIA=${previa}`);
 }
 
 async function estado(id) {
-  const e = (await api('GET', '/monitoreo/estado')).data;
+  const c = (await api('GET', '/monitoreo/estado')).data?.camaras?.find(x => x.id === id);
   const r1 = (await api('GET', `/camaras/video/cam_${id}/estado`)).data;
   const r2 = (await api('GET', `/camaras/video/cam_${id}_vista/estado`)).data;
-  console.log(JSON.stringify({ captura: e?.fps_captura, analisis: e?.fps_procesamiento, conectada: e?.camara_activa?.conectada, enlace: e?.enlace,
-    latencia: e?.latencia, principal: r1, vista: r2 }));
+  console.log(JSON.stringify({ captura: c?.fps_captura, analisis: c?.fps_procesamiento, conectada: c?.conectada, enlace: c?.enlace,
+    latencia: c?.latencia, principal: r1, vista: r2 }));
 }
 
 async function sonda() {
@@ -140,10 +135,11 @@ async function zonas(id) {
   const r = await api('PUT', `/camaras/${id}/roi`, { roi, exclusiones });
   ok(r.status === 200 && JSON.stringify(r.data?.camera?.exclusiones) === JSON.stringify(exclusiones),
     `zonas guardadas: HTTP ${r.status} ${r.data?.message ?? r.data?.error ?? ''}`);
-  const motor = (process.env.ANPR_SERVICE_URL || 'http://anpr:8000').replace(/\/$/, '');
+  const motor = (process.env.ANPR_SERVICE_URL || 'http://anpr:8000').split(',')[0].trim().replace(/\/$/, '');
   let activa = null;
   for (let i = 0; i < 20; i++) {
-    activa = await fetch(`${motor}/api/camera/active`).then(x => x.json()).catch(() => null);
+    const estadoMotor = await fetch(`${motor}/status`, { headers: { 'X-Servicio-Token': process.env.ANPR_SERVICE_TOKEN } }).then(x => x.json()).catch(() => null);
+    activa = estadoMotor?.camaras?.find(x => x.id === id) ?? null;
     if (JSON.stringify(activa?.exclusiones) === JSON.stringify(exclusiones)) break;
     await espera(250);
   }
@@ -156,7 +152,7 @@ async function zonas(id) {
   ok(q.status === 200 && q.data?.camera?.exclusiones?.length === 0, `zonas quitadas: ${q.data?.message ?? q.data?.error ?? ''}`);
 }
 
-async function limpiar(pool, id, previa) {
+async function limpiar(pool, id) {
   const det = (await pool.request().input('id', 'INTEGER', id).query(
     'SELECT id, placa_reconocida, confianza_ocr, lectura_valida, evidencia_lectura FROM DeteccionVehiculo WHERE camara_id = $1 ORDER BY id')).recordset;
   console.log(`detecciones registradas por la cámara simulada: ${det.length} → ${det.map(d => `${d.placa_reconocida ?? '—'}(${d.confianza_ocr?.toFixed?.(2) ?? '—'})`).join(', ')}`);
@@ -168,26 +164,16 @@ async function limpiar(pool, id, previa) {
       + ` | crudo OCR ${ev?.lectura_ocr_cruda ?? '—'}, verificador ${ev?.lectura_verificador_cruda ?? '—'},`
       + ` cuadros ${(ev?.lecturas_rapidas_crudas ?? []).join('/') || '—'} | inferidos ${JSON.stringify(ev?.caracteres_inferidos ?? null)}`);
   }
-  if (previa && Number(previa) !== id) {
-    const r = await api('POST', '/monitoreo/camara-activa', { camara_id: Number(previa) });
-    console.log(`motor devuelto a la cámara ${previa}: ${r.data?.message ?? r.data?.error}`);
-  }
   for (const d of det) {
     const r = await api('DELETE', `/detecciones/${d.id}`, { motivo: 'Prueba de punta a punta con la cámara Hikvision simulada' });
     if (r.status !== 200) console.log(`  no se pudo borrar la detección ${d.id}: ${r.data?.error}`);
   }
   const b = await api('DELETE', `/camaras/${id}`);
   ok(b.status === 200, `cámara de prueba eliminada: HTTP ${b.status} ${b.data?.error ?? ''}`);
-  if (!previa) {
-    // Antes de la prueba no había cámara elegida para el motor: se quita la que dejó la prueba
-    const r = await pool.request().input('id', 'VARCHAR', String(id))
-      .query("DELETE FROM ConfiguracionSistema WHERE clave = 'camara_motor_id' AND valor = $1");
-    console.log(`configuración del motor restaurada (${r.rowsAffected[0]} fila)`);
-  }
 }
 
 (async () => {
-  const [accion, a, b] = process.argv.slice(2);
+  const [accion, a] = process.argv.slice(2);
   let pool = null;
   try {
     pool = await conectar();
@@ -196,7 +182,7 @@ async function limpiar(pool, id, previa) {
     else if (accion === 'estado') await estado(Number(a));
     else if (accion === 'sonda') await sonda();
     else if (accion === 'zonas') await zonas(Number(a));
-    else if (accion === 'limpiar') await limpiar(pool, Number(a), b);
+    else if (accion === 'limpiar') await limpiar(pool, Number(a));
     else throw new Error(`acción desconocida: ${accion}`);
   } catch (err) {
     console.log(`✘ ${err.message}`);

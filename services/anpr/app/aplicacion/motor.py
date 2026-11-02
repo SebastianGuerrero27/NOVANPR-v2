@@ -134,6 +134,24 @@ def cpu_acumulada_s(ruta: str = "/sys/fs/cgroup/cpu.stat") -> float:
     return time.process_time()
 
 
+class UsoCpu:
+    """CPU del contenedor del motor (o de su proceso fuera de Docker) desde la consulta anterior, en % de
+    la capacidad total del equipo (todos los núcleos lógicos). Sin Prometheus: lo lee el panel de Estado
+    del sistema."""
+
+    def __init__(self) -> None:
+        self._muestra: tuple[float, float, Optional[float]] = (time.monotonic(), cpu_acumulada_s(), None)
+
+    def leer(self) -> dict:
+        nucleos = os.cpu_count() or 1
+        ahora, cpu = time.monotonic(), cpu_acumulada_s()
+        previo_t, previo_cpu, ultimo = self._muestra
+        if ahora - previo_t >= 1.0:
+            ultimo = round(max(0.0, (cpu - previo_cpu) / (ahora - previo_t)) / nucleos * 100, 1)
+            self._muestra = (ahora, cpu, ultimo)
+        return {"uso_pct": ultimo, "nucleos": nucleos}
+
+
 def _medido(funcion: Callable, *args, **kwargs) -> tuple[Any, float]:
     """Resultado de la función y su duración en milisegundos."""
     t0 = time.perf_counter()
@@ -360,8 +378,6 @@ class MotorAnpr:
         self._seguidor = SeguidorFlujo()
         #: Últimos 30 s de la cámara (2 cuadros por segundo) para la evidencia del registro manual
         self._historial = HistorialCuadros()
-        #: (hora, CPU del proceso, último %) para el uso de CPU de /status
-        self._muestra_cpu: tuple[float, float, Optional[float]] = (time.monotonic(), cpu_acumulada_s(), None)
         #: Hora de captura de los últimos cuadros analizados (índice → hora), para el registro
         self._horas_cuadro: dict[int, float] = {}
 
@@ -413,22 +429,7 @@ class MotorAnpr:
             "latencia": self.latencia(),
             "etapas_ms": self.etapas(),
             "seguidor": self._seguidor.estadisticas(),
-            "cpu": self.uso_cpu(),
-            **self.info_modelos(),
-            "architecture": "Two-Phase: Fast Capture + Async OCR",
         }
-
-    def uso_cpu(self) -> dict:
-        """CPU del contenedor del motor (o de su proceso fuera de Docker) desde la consulta anterior, en %
-        de la capacidad total del equipo (todos los núcleos lógicos). Sin Prometheus: lo lee el panel de
-        Estado del sistema."""
-        nucleos = os.cpu_count() or 1
-        ahora, cpu = time.monotonic(), cpu_acumulada_s()
-        previo_t, previo_cpu, ultimo = self._muestra_cpu
-        if ahora - previo_t >= 1.0:
-            ultimo = round(max(0.0, (cpu - previo_cpu) / (ahora - previo_t)) / nucleos * 100, 1)
-            self._muestra_cpu = (ahora, cpu, ultimo)
-        return {"uso_pct": ultimo, "nucleos": nucleos}
 
     def latencia(self) -> dict:
         """Latencia desde la captura de cada cuadro (percentiles de las últimas mediciones)."""
@@ -552,11 +553,6 @@ class MotorAnpr:
     # ─── Ciclo de vida ──────────────────────────────────────────────────────
 
     def iniciar(self) -> None:
-        self._log.info("=" * 60)
-        self._log.info("  ECU 911 ANPR Microservice — Motor Cero Latencia en Tiempo Real")
-        self._log.info("  Captura Sincronizada + PaddleOCR Asíncrono de Alta Fidelidad")
-        self._log.info("=" * 60)
-
         self._fuente = self._dep.crear_fuente_video()
         self._pipeline = self._dep.crear_pipeline()
         self._selector = self._dep.crear_selector()
@@ -576,19 +572,22 @@ class MotorAnpr:
         )
         self._hilo_captura.start()
 
-    def detener(self) -> None:
-        self._log.info("Cerrando servicio ANPR...")
+    def detener(self, esperar: bool = False) -> None:
+        """Detiene la cámara. Con `esperar`, los registros en curso terminan antes de cerrar la conexión
+        con el backend (al retirar una cámara con el servicio en marcha)."""
+        self._log.info("Cerrando el análisis de la cámara #%d...", self.camara_id)
         self._activo = False
         if self._trabajador_ocr:
             self._trabajador_ocr.stop()
         if self._hilo_captura and self._hilo_captura.is_alive():
             self._hilo_captura.join(timeout=2.0)
-        self._ejecutor_disco.shutdown(wait=False)
         self._ejecutor_ocr.shutdown(wait=False)
-        self._ejecutor_etapas.shutdown(wait=False)
-        self._ejecutor_reevaluacion.shutdown(wait=False)
+        self._ejecutor_disco.shutdown(wait=esperar)
+        self._ejecutor_etapas.shutdown(wait=esperar)
+        self._ejecutor_reevaluacion.shutdown(wait=esperar)
         self._http.close()
-        self._log.info("Servicio ANPR cerrado limpiamente.")
+        self._m.retirar_camara(str(self.camara_id))
+        self._log.info("Análisis de la cámara #%d cerrado.", self.camara_id)
 
     # ─── OCR rápido asíncrono ───────────────────────────────────────────────
 
@@ -665,7 +664,7 @@ class MotorAnpr:
                 activos = {roi.tracking_id for roi in rois}
                 self._registrar_vistas(rois, hora)
                 self._renovar_pasos(activos)
-                self._m.update_tracking_active(len(activos))
+                self._m.update_tracking_active(len(activos), str(self.camara_id))
                 self._m.record_inference("rtsp", pipeline.inferencia_omitida("rtsp"))
 
                 # 2. OCR asíncrono de cada track y análisis anticipado del vehículo

@@ -1,0 +1,43 @@
+{
+ "etiqueta": "anterior_1_camara_b",
+ "camaras": 1,
+ "motores": 1,
+ "segundos": 360,
+ "intervalo_gil_ms": "0.5",
+ "hilos_opencv": "2",
+ "imagen_motor": "anpr-motor:antes-multicamara",
+ "detectores": "1",
+ "esperadas": 10,
+ "exactas": 9,
+ "exactitud_pct": 90.0,
+ "cpu_nucleos": {
+  "media": 9.06,
+  "p95": 10.73,
+  "max": 11.02
+ },
+ "memoria_mib": {
+  "media": 1420,
+  "max": 1496
+ },
+ "fps_analisis_medio": 12.1,
+ "reinicios_motor": 0,
+ "detalle": [
+  {
+   "camara": "1",
+   "registros": 10,
+   "exactas": 9,
+   "erroneas": 1,
+   "sin_lectura": 0,
+   "confirmadas": 7,
+   "confirmadas_erroneas": 0,
+   "fps_captura": 30.0,
+   "fps_analisis": 7.2,
+   "registro_p50_ms": 663,
+   "registro_p95_ms": 1003,
+   "edad_cuadro_p50_ms": 18,
+   "edad_cuadro_p95_ms": 38,
+   "lectura_vivo_p50_ms": 249,
+   "omitidas_pct": 11.2
+  }
+ ]
+}

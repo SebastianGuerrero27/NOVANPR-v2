@@ -357,7 +357,7 @@ def main() -> None:
     from app.aplicacion import motor as modulo_motor
     from app.infraestructura.config import TORCH_THREADS
 
-    motor = composicion.motor
+    motor = composicion.crear_motor(1, "Evaluacion", "")
     if args.sin_tope_verificador:
         motor._config = dataclasses.replace(motor._config, espera_verificador_s=None)
     if args.ventana_antiduplicados is not None:

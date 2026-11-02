@@ -50,6 +50,9 @@ spec:
           env:
             - name: BACKEND_URL
               value: http://backend:5000
+            # Prometheus del clúster lee /metrics sin token (anotaciones de arriba); NetworkPolicy lo acota
+            - name: ANPR_METRICAS_PUBLICAS
+              value: "true"
             - name: ANPR_SERVICE_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -59,9 +62,11 @@ spec:
               value: plate
             - name: MEDIA_DIR
               value: /app/media
-            # Sin fuente inicial: el backend asigna la cámara registrada (su ruta en MediaMTX)
-            - name: RTSP_URL
-              value: ""
+            # Sin fuentes propias: el backend le asigna las cámaras registradas (sus rutas en MediaMTX)
+            - name: ANPR_MAX_CAMARAS
+              value: "4"
+            - name: ANPR_DETECTORES
+              value: "1"
             - name: RUNNING_IN_DOCKER
               value: "true"
             - name: DEBUG_VISUAL
@@ -76,18 +81,18 @@ spec:
           # La primera carga de los modelos (detector, OCR, verificador) puede tardar varios minutos
           startupProbe:
             httpGet:
-              path: /status
+              path: /healthz
               port: http
             periodSeconds: 10
             failureThreshold: 60
           readinessProbe:
             httpGet:
-              path: /status
+              path: /healthz
               port: http
             periodSeconds: 15
           livenessProbe:
             httpGet:
-              path: /status
+              path: /healthz
               port: http
             periodSeconds: 30
             timeoutSeconds: 10

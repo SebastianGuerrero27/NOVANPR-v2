@@ -198,7 +198,7 @@ def main() -> None:
 
     from app import main as composicion
 
-    motor = composicion.motor
+    motor = composicion.crear_motor(1, "Evaluacion", "")
     camara = CamaraSimulada()
     backend = BackendRegistrador()
     motor._dep.crear_fuente_video = lambda: camara

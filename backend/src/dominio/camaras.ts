@@ -12,6 +12,7 @@ import { type ReglaTexto, type Validado, validarEntero, validarHost, validarText
  *   ip                 IPv4 o nombre de host para el ping (máximo 45); por omisión, el host de la URL
  *   roi                región de interés: polígono de 3 a 12 vértices normalizados (0–1)
  *   exclusiones        zonas de exclusión: hasta 8 polígonos con las mismas reglas
+ *   analisis_anpr      el motor busca placas en esta cámara (false: solo se ve su video)
  *
  * La resolución del host (destinoRtsp) y el diagnóstico de red son adaptadores de
  * infraestructura; aquí solo están las reglas.
@@ -159,6 +160,7 @@ export interface EntradaCamara {
   /** Flujo de vista (null = la vista usa el principal) */
   rtspVista: string | null;
   ip: string | null;
+  analisis: boolean;
 }
 
 /** Datos listos para guardar (la IP ya resuelta). */
@@ -169,6 +171,7 @@ export interface DatosCamara {
   rtspVista: string | null;
   ip: string;
   direccion: DireccionCamara;
+  analisis: boolean;
 }
 
 /** Valida el alta o la edición; en la edición las URL guardadas permiten conservar la contraseña. */
@@ -189,23 +192,26 @@ export function leerCamara(entrada: Record<string, unknown> | null | undefined, 
   if (direccion !== 'ingreso' && direccion !== 'salida') {
     return { ok: false, error: 'La dirección de la cámara debe ser ingreso o salida.' };
   }
+  const analisis = body.analisis_anpr === undefined ? true : body.analisis_anpr;
+  if (typeof analisis !== 'boolean') return { ok: false, error: 'El análisis ANPR de la cámara debe ser verdadero o falso.' };
   return {
     ok: true,
     valor: {
       nombre: nombre.valor as string, ubicacion: ubicacion.valor as string, rtsp: rtsp.valor,
-      rtspVista: vista.valor, ip: ip.valor, direccion,
+      rtspVista: vista.valor, ip: ip.valor, direccion, analisis,
     },
   };
 }
 
 /** Campos que cambian en la edición (para la auditoría). */
-export function cambiosCamara(actual: { nombre: string; ubicacion: string; rtsp_url: string; rtsp_url_vista?: string | null; ip: string; direccion?: DireccionCamara },
+export function cambiosCamara(actual: { nombre: string; ubicacion: string; rtsp_url: string; rtsp_url_vista?: string | null; ip: string; direccion?: DireccionCamara; analisis_anpr?: boolean },
   nuevo: DatosCamara): string[] {
   return [
     actual.nombre !== nuevo.nombre && 'nombre', actual.ubicacion !== nuevo.ubicacion && 'ubicación',
     actual.rtsp_url !== nuevo.rtsp && 'URL RTSP', (actual.rtsp_url_vista ?? null) !== nuevo.rtspVista && 'URL de vista',
     actual.ip !== nuevo.ip && 'IP',
     (actual.direccion ?? 'ingreso') !== nuevo.direccion && 'dirección',
+    (actual.analisis_anpr ?? true) !== nuevo.analisis && (nuevo.analisis ? 'análisis ANPR activado' : 'análisis ANPR desactivado'),
   ].filter((c): c is string => Boolean(c));
 }
 
@@ -304,6 +310,7 @@ export interface CamaraGuardada {
   rtsp_url_vista?: string | null;
   ubicacion: string;
   direccion?: DireccionCamara;
+  analisis_anpr?: boolean;
   activa: boolean | number;
   estado: string | null;
   ultimo_ping: Date | null;
@@ -324,6 +331,8 @@ export interface CamaraPublica {
   ip: string;
   ubicacion: string;
   direccion: DireccionCamara;
+  /** El motor busca placas en esta cámara */
+  analisis_anpr: boolean;
   /** Con la contraseña enmascarada */
   rtsp_url: string;
   /** Flujo de vista con la contraseña enmascarada (null = la vista usa el principal) */
@@ -346,6 +355,7 @@ export interface CamaraPublica {
 export function presentarCamara(c: CamaraGuardada): CamaraPublica {
   return {
     id: c.id, nombre: c.nombre, ip: c.ip, ubicacion: c.ubicacion, direccion: c.direccion ?? 'ingreso',
+    analisis_anpr: c.analisis_anpr ?? true,
     rtsp_url: enmascarar(c.rtsp_url || ''),
     rtsp_url_vista: c.rtsp_url_vista ? enmascarar(c.rtsp_url_vista) : null,
     tiene_credenciales: tieneCredenciales(c.rtsp_url || ''),
@@ -356,6 +366,38 @@ export function presentarCamara(c: CamaraGuardada): CamaraPublica {
     roi: parsearRoi(c.roi),
     exclusiones: parsearExclusiones(c.exclusiones),
   };
+}
+
+// ─── Reparto de las cámaras entre los motores ANPR ───────────────────────────
+
+/** Un motor en línea: cuántas cámaras admite y cuáles analiza ahora. */
+export interface MotorDisponible {
+  indice: number;
+  capacidad: number;
+  camaras: number[];
+}
+
+/**
+ * Reparte las cámaras entre los motores. Una cámara se queda en su motor mientras este siga en línea
+ * (cambiarla interrumpe su seguimiento); las demás van al motor con más lugar libre, y las que no quepan
+ * en ninguno quedan sin capacidad. El mismo estado siempre da el mismo reparto.
+ */
+export function asignarCamaras(camaras: number[], motores: MotorDisponible[]): { porMotor: Map<number, number[]>; sinCapacidad: number[] } {
+  const porMotor = new Map<number, number[]>(motores.map(m => [m.indice, []]));
+  const sinAsignar: number[] = [];
+  for (const id of [...camaras].sort((a, b) => a - b)) {
+    const propio = motores.find(m => m.camaras.includes(id));
+    if (propio && (porMotor.get(propio.indice) as number[]).length < propio.capacidad) (porMotor.get(propio.indice) as number[]).push(id);
+    else sinAsignar.push(id);
+  }
+  const sinCapacidad: number[] = [];
+  for (const id of sinAsignar) {
+    const libre = (m: MotorDisponible) => m.capacidad - (porMotor.get(m.indice) as number[]).length;
+    const destino = motores.filter(m => libre(m) > 0).sort((a, b) => libre(b) - libre(a) || (porMotor.get(a.indice) as number[]).length - (porMotor.get(b.indice) as number[]).length || a.indice - b.indice)[0];
+    if (destino) (porMotor.get(destino.indice) as number[]).push(id);
+    else sinCapacidad.push(id);
+  }
+  return { porMotor, sinCapacidad };
 }
 
 // ─── Video y monitoreo ───────────────────────────────────────────────────────

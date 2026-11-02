@@ -1,13 +1,13 @@
 import {
-  type Actor, errorNoEncontrado, errorProhibido, errorValidacion, type PuertoAuditoria, type PuertoEventos,
+  ACTOR_SISTEMA, type Actor, errorNoEncontrado, errorProhibido, errorValidacion, type PuertoAuditoria, type PuertoEventos,
 } from './comun';
 import {
   type Decision, decidirAcceso, type EstadoValidacion, MOTIVO_RESTRICCION, type PoliticaAutorizacion,
 } from '../dominio/decisionAcceso';
 import {
-  csvDetecciones, type DatosIngreso, ETIQUETA_ESTADO, type FilaExportacion, type FiltrosDetecciones, fechaHoraLocal, hayDatosIngreso,
+  cabeceraCsvDetecciones, type DatosIngreso, ETIQUETA_ESTADO, type FilaExportacion, type FiltrosDetecciones, fechaHoraLocal, hayDatosIngreso,
   leerDatosIngreso, leerDatosValidacion, leerFiltros, leerLimite, leerPaginacion, leerPlacaConsulta, leerRegistroManual, lecturaUtilizable,
-  normalizarFuente, REGLA_MOTIVO_ELIMINACION, REGLA_MOTIVO_ELIMINACION_MASIVA, serializarEvidencia, tieneFiltros,
+  lineaCsvDeteccion, MAX_REGISTROS_PDF, normalizarFuente, REGLA_MOTIVO_ELIMINACION, REGLA_MOTIVO_ELIMINACION_MASIVA, serializarEvidencia, tieneFiltros,
 } from '../dominio/detecciones';
 import { describirHorario, evaluarVigencia, validarHorario, type Vigencia } from '../dominio/horario';
 import { type Rol, tienePermiso } from '../dominio/permisos';
@@ -106,6 +106,12 @@ export interface Descarte {
   camaraId: number | null;
 }
 
+/** Salida de una exportación en curso (la respuesta HTTP). `escribir` da false si el cliente se fue. */
+export interface DestinoExportacion {
+  abrir(nombre: string): void;
+  escribir(texto: string): Promise<boolean>;
+}
+
 export interface RepositorioDetecciones {
   obtener(id: number): Promise<Fila | null>;
   /** Ingreso del mismo paso físico (misma placa, o sin placa el mismo tracking, y misma cámara) dentro de la ventana */
@@ -135,7 +141,18 @@ export interface RepositorioDetecciones {
   resumenHistorial(f: FiltrosDetecciones): Promise<ResumenHistorial>;
   recientes(limite: number, buscar?: string | null): Promise<Fila[]>;
   registrarSalida(id: number): Promise<boolean>;
+  /**
+   * Cierra con la salida `salidaId` el ingreso sin salida más reciente de esa placa, si entró hace al
+   * menos `minimoSegundos` antes de la salida: la hora de salida es la del paso por la cámara. Devuelve el ingreso cerrado.
+   */
+  cerrarIngresoConSalida(salidaId: number, placa: string, minimoSegundos: number): Promise<number | null>;
+  /** Ingreso que cerró automáticamente la salida `salidaId`, con su placa */
+  ingresoCerradoPor(salidaId: number): Promise<{ id: number; placa: string } | null>;
+  /** Deshace el cierre automático de un ingreso */
+  reabrirIngreso(ingresoId: number): Promise<void>;
   exportar(f: FiltrosDetecciones): Promise<Fila[]>;
+  /** Mismas filas que `exportar`, por lotes: la exportación no carga el historial completo en memoria */
+  exportarPorLotes(f: FiltrosDetecciones): AsyncIterable<Fila[]>;
   /** Últimos 10 pasos de una placa (sin contar `excluirId`) */
   historialPlaca(placa: string, excluirId?: number): Promise<Fila[]>;
   auditoriaDe(id: number): Promise<Fila[]>;
@@ -161,7 +178,7 @@ export interface PuertoListasDetecciones {
 export interface CuadroHistorial { t: number; miniatura: string }
 
 export interface PuertoEvidenciaManual {
-  /** Miniaturas (JPEG en base64, la más reciente primero) si `camaraId` es la cámara que procesa el motor */
+  /** Miniaturas (JPEG en base64, la más reciente primero) si el motor analiza `camaraId` */
   cuadros(camaraId: number): Promise<{ disponible: boolean; motivo?: string; cuadros: CuadroHistorial[] }>;
   /** Guarda como foto de evidencia el cuadro de esa hora; su ruta /media/…, o null si ya no está */
   guardar(camaraId: number, t: number): Promise<string | null>;
@@ -186,6 +203,8 @@ export interface DependenciasDetecciones {
   /** Representación de una fila para la API (imágenes firmadas y motivo de revisión) */
   presentar(fila: Fila, detalle?: boolean): DeteccionDTO;
   politica: () => PoliticaAutorizacion;
+  /** Salida automática por la cámara de salida */
+  salidaAutomatica: () => { activa: boolean; minimoSegundos: number };
   /** Segundo factor: atributos registrados frente a observados (marca, color, tipo) */
   compararVehiculo(registrado: Fila, observado: Observacion): { resultado: 'coincide' | 'no_coincide' | 'sin_datos'; detalle: string };
   avisos: {
@@ -202,7 +221,7 @@ export interface DependenciasDetecciones {
   padron?: { registrar(entrada: Record<string, unknown>, actor: Actor): Promise<{ accion: 'creado' | 'reactivado' }> };
   /** Conserva la primera foto de una placa registrada, sin depender del historial. */
   evidenciaListas?: { conservar(fila: Fila): Promise<void> };
-  /** Últimos 30 s de la cámara que procesa el motor, para la foto del registro manual */
+  /** Últimos 30 s de las cámaras que analiza el motor, para la foto del registro manual */
   evidenciaManual?: PuertoEvidenciaManual;
   eventos: PuertoEventos;
   auditoria: PuertoAuditoria;
@@ -248,6 +267,40 @@ export function casosDetecciones(d: DependenciasDetecciones) {
     d.eventos.emitir(evento, dto);
     if (dto.estado_validacion === 'alerta') d.eventos.emitir('deteccion:alerta', dto);
     return dto;
+  }
+
+  /**
+   * La salida `id` cierra el ingreso de su placa. Solo con una placa exacta y una lectura que el motor
+   * confirmó o que confirmó una persona: dejar un ingreso abierto se ve y se corrige a mano; cerrar el de
+   * otro vehículo no. Si la lectura de la salida cambió, primero reabre lo que había cerrado. Un fallo
+   * aquí no interrumpe el registro del paso.
+   */
+  async function aplicarSalidaAutomatica(id: number): Promise<void> {
+    try {
+      const salida = await d.repositorio.obtener(id);
+      if (!salida || salida.tipo_movimiento !== 'salida') return;
+      const placa = normalizarPlaca(salida.placa_validada || salida.placa_reconocida);
+      const confirmada = Boolean(placa) && Boolean(salida.validado_manualmente || salida.lectura_valida);
+      const previo = await d.repositorio.ingresoCerradoPor(id);
+      if (previo) {
+        if (confirmada && previo.placa === placa) return;
+        await reabrirCierre(id, previo.id, previo.placa);
+      }
+      const { activa, minimoSegundos } = d.salidaAutomatica();
+      if (!activa || !confirmada) return;
+      const cerrado = await d.repositorio.cerrarIngresoConSalida(id, placa, minimoSegundos);
+      if (cerrado === null) return;
+      await d.auditoria.operacion(ACTOR_SISTEMA, 'SALIDA_AUTOMATICA', 'deteccion', cerrado, `${placa} · por el paso #${id} de la cámara de salida`);
+      await difundir(cerrado, 'deteccion:actualizada');
+    } catch (error) {
+      console.warn(`[SALIDA AUTOMATICA] Paso #${id}:`, (error as Error).message);
+    }
+  }
+
+  async function reabrirCierre(salidaId: number, ingresoId: number, placa: string): Promise<void> {
+    await d.repositorio.reabrirIngreso(ingresoId);
+    await d.auditoria.operacion(ACTOR_SISTEMA, 'SALIDA_AUTOMATICA_REVERTIDA', 'deteccion', ingresoId, `${placa} · el paso #${salidaId} de la cámara de salida se corrigió o se eliminó`);
+    await difundir(ingresoId, 'deteccion:actualizada');
   }
 
   /** Lista negra (aproximada) y, si no hay alerta, permiso exacto con su estado en el instante del paso. */
@@ -327,6 +380,7 @@ export function casosDetecciones(d: DependenciasDetecciones) {
     await d.repositorio.registrarLecturaAutomatica(id, {
       placaOriginal: '', confianza: 0, decision: 'pendiente_revision', lecturaVerificador: null, latenciaMs,
     });
+    await aplicarSalidaAutomatica(id);
     return { message: 'Texto observado conservado sin asignar una matrícula.', reevaluado: true,
       cambio: actual.estado_validacion !== 'pendiente_revision', deteccion: await difundir(id, 'deteccion:actualizada') };
   }
@@ -440,6 +494,7 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       if (actual.tipo_movimiento === 'salida') {
         await d.repositorio.guardarSalida(id, { placa, confianza, rutaPlaca });
         await lecturaAutomatica('salida_registrada');
+        await aplicarSalidaAutomatica(id);
         return { message: 'Salida registrada.', deteccion: await difundir(id, 'deteccion:actualizada') };
       }
       const { dto, decision, permiso } = await decidirLectura(id, {
@@ -501,6 +556,7 @@ export function casosDetecciones(d: DependenciasDetecciones) {
         const confianza = typeof confianza_ocr === 'number' ? confianza_ocr : typeof actual.confianza_ocr === 'number' ? actual.confianza_ocr : null;
         await d.repositorio.guardarSalida(id, { placa, confianza, rutaPlaca: null });
         if (typeof lectura_valida === 'boolean') await d.repositorio.guardarVeredicto( id, lectura_valida, serializarEvidencia(evidencia_lectura));
+        await aplicarSalidaAutomatica(id);
         return { message: 'Salida actualizada.', reevaluado: true, cambio: false, deteccion: await difundir(id, 'deteccion:actualizada') };
       }
       if (actual.validado_manualmente || actual.estado_procesamiento !== 'procesado' || actual.estado_validacion === 'alerta' || !placa) {
@@ -563,6 +619,9 @@ export function casosDetecciones(d: DependenciasDetecciones) {
     /** Reporte PDF de Registro de Salidas (solo registros completos con salida); queda en la auditoría. */
     async exportarPdf(consulta: Entrada, actor: Actor) {
       const f = filtros({ ...consulta, cerrados: 'si', completos: 'si' });
+      if (await d.repositorio.contar(f) > MAX_REGISTROS_PDF) {
+        throw errorValidacion(`El PDF admite hasta ${MAX_REGISTROS_PDF.toLocaleString('es-EC')} registros. Acote el período o exporte a CSV.`);
+      }
       const filas = await d.repositorio.exportar(f);
       if (!d.pdfRegistros) throw new Error('Generador PDF no configurado.');
       const ahora = d.tiempo.ahora();
@@ -573,12 +632,26 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       return { nombre: `registros_${ahora.toISOString().slice(0, 10)}.pdf`, contenido };
     },
 
-    async exportar(consulta: Entrada, actor: Actor) {
+    /**
+     * CSV por lotes hacia `destino`: el tamaño del historial no afecta la memoria del servidor. Una
+     * descarga cancelada deja de consultar y también queda en la auditoría, con lo que alcanzó a salir.
+     */
+    async exportar(consulta: Entrada, actor: Actor, destino: DestinoExportacion) {
       const f = filtros(consulta);
-      const filas = await d.repositorio.exportar(f);
-      const contenido = csvDetecciones(filas as FilaExportacion[]);
-      await d.auditoria.operacion(actor, 'EXPORTACION', 'deteccion', null, `${filas.length} registros · ${JSON.stringify(consulta).substring(0, 300)}`);
-      return { nombre: `ingresos_anpr_${d.tiempo.ahora().toISOString().slice(0, 10)}.csv`, contenido };
+      destino.abrir(`ingresos_anpr_${d.tiempo.ahora().toISOString().slice(0, 10)}.csv`);
+      let registros = 0, completa = true;
+      try {
+        await destino.escribir(cabeceraCsvDetecciones());
+        for await (const lote of d.repositorio.exportarPorLotes(f)) {
+          const texto = (lote as FilaExportacion[]).map(lineaCsvDeteccion).join('\n');
+          if (!await destino.escribir(`\n${texto}`)) { completa = false; break; }
+          registros += lote.length;
+        }
+      } finally {
+        await d.auditoria.operacion(actor, 'EXPORTACION', 'deteccion', null,
+          `${registros} registros${completa ? '' : ' (descarga cancelada)'} · ${JSON.stringify(consulta).substring(0, 300)}`);
+      }
+      return { registros, completa };
     },
 
     /** Situación actual de una placa en las listas y sus últimos pasos. */
@@ -643,6 +716,7 @@ export function casosDetecciones(d: DependenciasDetecciones) {
         if (excepcion) throw errorValidacion('La excepción de acceso solo se aplica a ingresos.');
         await d.repositorio.validarSalida(id, { placa: placa.valor.placa ?? '', usuarioId: actor.id });
         await d.auditoria.operacion(actor, 'SALIDA_VALIDACION', 'deteccion', id, `${actual.placa_reconocida || 'sin lectura'} → ${placa.valor.placa}`);
+        await aplicarSalidaAutomatica(id);
         return { message: 'Lectura de salida corregida.', deteccion: await difundir(id, 'deteccion:actualizada') };
       }
 
@@ -695,7 +769,7 @@ export function casosDetecciones(d: DependenciasDetecciones) {
     /**
      * Miniaturas de los últimos 30 s de la cámara (dos por segundo) para que el guardia elija la foto
      * de evidencia de un registro manual: el vehículo que el motor no registró ya pasó cuando se
-     * registra a mano. Solo la cámara que procesa el motor tiene historial.
+     * registra a mano. Solo las cámaras que analiza el motor tienen historial.
      */
     async cuadrosRegistroManual(camaraIdEntrada: unknown) {
       const id = validarEntero(camaraIdEntrada, { etiqueta: 'Cámara', min: 1, max: 2_147_483_647, requerido: true });
@@ -725,6 +799,7 @@ export function casosDetecciones(d: DependenciasDetecciones) {
         if (camaraId === null) throw errorValidacion('La salida manual requiere una cámara configurada como salida.');
         const id = await d.repositorio.crearSalidaManual({ placa, camaraId, usuarioId: actor.id, ...conFoto });
         await d.auditoria.operacion(actor, 'REGISTRO_SALIDA_MANUAL', 'deteccion', id, `${placa} · ${motivo}${notaFoto}`);
+        await aplicarSalidaAutomatica(id);
         return { message: 'Salida registrada manualmente.', deteccion: await difundir(id, 'deteccion:nueva') };
       }
       const cruce = await cruzarListas(placa, d.tiempo.ahora());
@@ -791,6 +866,9 @@ export function casosDetecciones(d: DependenciasDetecciones) {
       if (!m.ok) throw errorValidacion(m.error);
       const fila = await d.repositorio.obtener(id);
       if (!fila) throw errorNoEncontrado('Detección no encontrada.');
+      // Una salida eliminada no puede seguir cerrando un ingreso
+      const cerrado = fila.tipo_movimiento === 'salida' ? await d.repositorio.ingresoCerradoPor(id) : null;
+      if (cerrado) await reabrirCierre(id, cerrado.id, cerrado.placa);
       await d.repositorio.eliminar(id);
       const archivos = await d.evidencia.eliminar([fila.ruta_imagen_ingreso, fila.ruta_imagen_placa]);
       await d.auditoria.operacion(actor, 'DETECCION_ELIMINADA', 'deteccion', id,

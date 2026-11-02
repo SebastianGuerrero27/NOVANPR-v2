@@ -43,6 +43,32 @@ export function controlador(contexto: string, mensaje500: string, fn: (req: Requ
       }
       console.error(`[${contexto}]`, e?.message ?? e);
       if (!res.headersSent) res.status(500).json({ error: mensaje500 });
+      // Falla a mitad de una descarga: se corta la conexión para que no parezca un archivo completo
+      else res.destroy();
     }
+  };
+}
+
+/** Escribe un trozo de una descarga respetando el ritmo del cliente; false si ya se desconectó. */
+export function escribirRespuesta(res: Response, texto: string): Promise<boolean> {
+  if (res.destroyed || res.writableEnded) return Promise.resolve(false);
+  if (res.write(texto)) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const listo = (valor: boolean) => { res.off('drain', sigue); res.off('close', corta); resolve(valor); };
+    const sigue = () => listo(true);
+    const corta = () => listo(false);
+    res.once('drain', sigue);
+    res.once('close', corta);
+  });
+}
+
+/** Tope de tareas pesadas simultáneas de esta instancia (exportaciones): las demás reciben 429. */
+export function limitarSimultaneas(maximo: number, mensaje: string) {
+  let enCurso = 0;
+  return (_req: Request, res: Response, next: NextFunction) => {
+    if (enCurso >= maximo) return res.status(429).json({ error: mensaje });
+    enCurso++;
+    res.once('close', () => { enCurso--; });
+    next();
   };
 }

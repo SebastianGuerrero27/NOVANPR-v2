@@ -1,0 +1,19 @@
+{
+ "ruta": "/api/detecciones/exportar",
+ "resultados": [
+  {
+   "ms": 27402,
+   "estado": 0,
+   "MB": 0,
+   "error": "UND_ERR_SOCKET"
+  }
+ ],
+ "health": {
+  "n": 22,
+  "errores": 1,
+  "p50": 92.3,
+  "p95": 603.2,
+  "p99": 1456.1,
+  "max": 1456.1
+ }
+}

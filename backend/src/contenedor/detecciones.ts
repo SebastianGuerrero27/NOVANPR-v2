@@ -4,12 +4,13 @@ import { auditoriaSql, eventosSocket } from '../infraestructura/adaptadores';
 import { repositorioDeteccionesSql } from '../infraestructura/persistencia/deteccionesSql';
 import { presentarDeteccion } from '../infraestructura/presentacionDetecciones';
 import { notificarDecision, type PasoNotificable } from '../infraestructura/servicios/avisosAcceso';
-import { politicaAutorizacion } from '../infraestructura/servicios/configuracion';
+import { politicaAutorizacion, salidaAutomatica } from '../infraestructura/servicios/configuracion';
 import { eliminarEvidencia } from '../infraestructura/servicios/media';
-import { estadoServicioAnpr, guardarCuadroAnpr, historialAnpr } from '../infraestructura/servicios/servicioAnpr';
+import { guardarCuadroAnpr, historialAnpr } from '../infraestructura/servicios/servicioAnpr';
 import { resolverPorDeteccion } from '../infraestructura/servicios/notificaciones';
 import { findBlacklistMatch, findPermisoExacto } from '../infraestructura/servicios/plateMatching';
 import { ZONA_HORARIA } from '../infraestructura/servicios/tiempo';
+import { conCachePorClave } from '../infraestructura/servicios/cacheBreve';
 import { compararVehiculo } from '../dominio/vehiculoAtributos';
 import { pdfRegistros } from '../infraestructura/servicios/documentosRegistros';
 import { conservarEvidenciaListas } from '../infraestructura/servicios/evidenciaListas';
@@ -22,13 +23,18 @@ import { listas } from './listas';
  */
 export const detecciones = casosDetecciones({
   pdfRegistros,
-  repositorio: repositorioDeteccionesSql,
+  repositorio: {
+    ...repositorioDeteccionesSql,
+    // Sin filtro de fechas recorre toda la tabla: las sesiones con los mismos filtros comparten el total 5 s
+    resumenHistorial: conCachePorClave(repositorioDeteccionesSql.resumenHistorial, f => JSON.stringify(f), { vigenciaMs: 5000 }),
+  },
   listas: {
     alerta: placa => findBlacklistMatch(getDB(), placa),
     permiso: placa => findPermisoExacto(getDB(), placa),
   },
   presentar: presentarDeteccion,
   politica: politicaAutorizacion,
+  salidaAutomatica,
   compararVehiculo: (registrado, observado) => compararVehiculo(registrado, observado),
   avisos: {
     // Sin esperar: un fallo de notificación no interrumpe el registro del paso
@@ -49,19 +55,14 @@ export const detecciones = casosDetecciones({
   evidenciaManual: {
     async cuadros(camaraId) {
       try {
-        const h = await historialAnpr();
-        if (h.camara_id !== camaraId) {
-          return { disponible: false, motivo: 'Solo hay fotos de los últimos 30 s de la cámara que procesa el motor ANPR.', cuadros: [] };
-        }
+        const h = await historialAnpr(camaraId);
+        if (!h) return { disponible: false, motivo: 'Solo hay fotos de los últimos 30 s de las cámaras que analiza el motor ANPR.', cuadros: [] };
         return { disponible: true, cuadros: h.cuadros };
       } catch {
         return { disponible: false, motivo: 'El motor ANPR no respondió.', cuadros: [] };
       }
     },
-    async guardar(camaraId, t) {
-      const estado = await estadoServicioAnpr();
-      return estado.camara_activa?.id === camaraId ? guardarCuadroAnpr(t) : null;
-    },
+    guardar: guardarCuadroAnpr,
   },
   eventos: eventosSocket,
   auditoria: auditoriaSql,

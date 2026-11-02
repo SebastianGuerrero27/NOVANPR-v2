@@ -57,6 +57,7 @@ export function presentarDeteccion(d: Fila, detalle = false): DeteccionDTO {
     confianza_ocr: d.confianza_ocr,
     fecha_hora_ingreso: d.fecha_hora_ingreso,
     fecha_hora_salida: d.fecha_hora_salida ?? null,
+    salida_automatica: Boolean(d.salida_deteccion_id),
     tipo_movimiento: d.tipo_movimiento === 'salida' ? 'salida' : 'ingreso',
     fecha_hora_procesamiento: d.fecha_hora_procesamiento,
     // Los registros anteriores a la corrección pueden guardar la URL de lectura (con credenciales)

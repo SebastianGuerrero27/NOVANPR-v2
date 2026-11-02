@@ -5,14 +5,14 @@ import { casosMedios } from '../aplicacion/medios';
 import { casosMonitoreo } from '../aplicacion/monitoreo';
 import { auditoriaSql, eventosSocket } from '../infraestructura/adaptadores';
 import { repositorioCamarasSql } from '../infraestructura/persistencia/camarasSql';
-import { camaraDeseada, guardarCamaraMotor, motorProcesa, sincronizarCamaraMotor } from '../infraestructura/servicios/camaraMotor';
+import { camarasSinCapacidad, sincronizarMotores } from '../infraestructura/servicios/camaraMotor';
 import { destinoRtsp, diagnosticar, probarConexion, registrarConexion } from '../infraestructura/servicios/conectividadCamaras';
 import { custodiaCredenciales } from '../infraestructura/servicios/custodiaCredenciales';
 import {
   camaraDeRuta, crearRutaPrueba, eliminarRutaPrueba, emitirTicket, esMotor, estadoRuta, rutaCamara, rutaVista, sincronizarRutas,
   ticketValido, urlLecturaMotor, urlWebrtcPublica,
 } from '../infraestructura/servicios/medios';
-import { cambiarCamaraAnpr, estadoServicioAnpr, fijarZonasAnpr, urlPublicaAnpr } from '../infraestructura/servicios/servicioAnpr';
+import { estadoServicioAnpr, urlPublicaAnpr } from '../infraestructura/servicios/servicioAnpr';
 import { verificarRed } from '../infraestructura/servicios/redCamaras';
 
 /**
@@ -45,12 +45,8 @@ const tickets: PuertoTickets = { emitir: emitirTicket, valido: ticketValido, esM
 
 const motor: PuertoMotorAnpr = {
   estado: estadoServicioAnpr,
-  camaraDeseada,
-  procesa: motorProcesa,
-  guardarCamara: guardarCamaraMotor,
-  cambiarCamara: cambiarCamaraAnpr,
-  fijarZonas: fijarZonasAnpr,
-  sincronizar: () => sincronizarCamaraMotor(),
+  sincronizar: sincronizarMotores,
+  sinCapacidad: camarasSinCapacidad,
   urlPublica: urlPublicaAnpr,
 };
 

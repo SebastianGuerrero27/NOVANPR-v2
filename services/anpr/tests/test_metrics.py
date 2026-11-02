@@ -58,7 +58,7 @@ class TestMetricsService:
 
     def test_update_tracking_active(self):
         """Test de actualización de tracks activos"""
-        update_tracking_active(5)
+        update_tracking_active(5, 'test')
         
         metrics = get_metrics().decode('utf-8')
         assert 'anpr_tracking_active' in metrics
@@ -131,11 +131,17 @@ if __name__ == '__main__':
     pytest.main([__file__, '-v'])
 
 
-def test_solo_se_publica_el_fps_de_la_camara_activa():
-    """Al cambiar de cámara la serie de la anterior se retira: no queda con su último valor."""
+def test_se_publica_el_fps_de_cada_camara_y_se_retira_al_salir_del_analisis():
+    """Varias cámaras a la vez; la que se retira no queda con su último valor colgado."""
     from app.infraestructura import metrics
     metrics.update_fps(30.0, "1")
     metrics.update_fps(0.0, "2")
-    series = [l for l in generate_latest(metrics.registry).decode().splitlines() if l.startswith("anpr_fps{")]
-    assert series == ['anpr_fps{camera_id="2"} 0.0']
+    metrics.update_tracking_active(3, "1")
+    series = lambda: [l for l in generate_latest(metrics.registry).decode().splitlines() if l.startswith(("anpr_fps{", "anpr_tracking_active{"))]
+    assert 'anpr_fps{camera_id="1"} 30.0' in series() and 'anpr_fps{camera_id="2"} 0.0' in series()
+    metrics.retirar_camara("1")
+    metrics.retirar_camara("1")  # retirar dos veces no falla
+    assert 'anpr_fps{camera_id="1"} 30.0' not in series() and 'anpr_tracking_active{camera_id="1"} 3.0' not in series()
+    assert 'anpr_fps{camera_id="2"} 0.0' in series()
+    metrics.retirar_camara("2")
 

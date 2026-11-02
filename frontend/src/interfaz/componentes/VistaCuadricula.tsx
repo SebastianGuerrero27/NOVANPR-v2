@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Camera, GripVertical, WifiOff, X } from 'lucide-react';
-import api from '../../infraestructura/api';
 import { useEvento } from '../../aplicacion/tiempoReal';
 import type { Camara } from '../../dominio/tipos';
 import { Aviso } from './ui';
-import { ReproductorWebRTC, VisorEnVivo } from './envivo';
+import { VisorEnVivo } from './envivo';
 
 const CLAVE_SLOTS = 'anpr_nvr_slots_v1';
 const CLAVE_CANTIDAD = 'anpr_cuadricula_cantidad_v1';
@@ -29,7 +28,7 @@ function leerCantidad(): CantidadCeldas {
   }
 }
 
-export const VistaCuadricula: React.FC<{ camaras: Camara[]; motorId: number | null }> = ({ camaras, motorId }) => {
+export const VistaCuadricula: React.FC<{ camaras: Camara[]; analizadas: number[] }> = ({ camaras, analizadas }) => {
   const [slots, setSlots] = useState<(number | null)[]>(leerSlots);
   const [cantidad, setCantidad] = useState<CantidadCeldas>(leerCantidad);
   const [errorVideo, setErrorVideo] = useState<string | null>(null);
@@ -85,6 +84,7 @@ export const VistaCuadricula: React.FC<{ camaras: Camara[]; motorId: number | nu
                   <GripVertical size={14} />
                   <strong className="truncar">{camara?.nombre ?? `Cámara ${indice + 1}`}</strong>
                   {camara && <span className="nvr-direccion">{camara.direccion === 'salida' ? 'SALIDA' : 'INGRESO'}</span>}
+                  {camara?.activa && !analizadas.includes(camara.id) && <span className="nvr-direccion">SOLO VIDEO</span>}
                 </span>
                 {camara && <button className="btn btn-ghost btn-sm btn-icono" title="Quitar cámara de la celda" aria-label="Quitar cámara"
                   onClick={() => guardarSlots(slots.map((s, i) => i === indice ? null : s))}><X size={14} /></button>}
@@ -99,15 +99,7 @@ export const VistaCuadricula: React.FC<{ camaras: Camara[]; motorId: number | nu
                     </div>
                   )
                   : camara?.activa
-                  ? camara.id === motorId
-                    ? <VisorEnVivo camaraId={camara.id} vista={Boolean(camara.rtsp_url_vista)} pausado={false}
-                      onFallo={m => setErrorVideo(`${camara.nombre}: ${m}`)} />
-                    : <ReproductorWebRTC pausado={false} claveReinicio={camara.id}
-                      obtener={async () => {
-                        const ticket = (await api.post('/monitoreo/ticket', { alcance: 'stream' })).data;
-                        const ruta = `cam_${camara.id}${camara.rtsp_url_vista ? '_vista' : ''}`;
-                        return { whep: `${ticket.webrtc}/${ruta}/whep?ticket=${encodeURIComponent(ticket.ticket)}` };
-                      }}
+                  ? <VisorEnVivo camaraId={camara.id} analizada={analizadas.includes(camara.id)} vista={Boolean(camara.rtsp_url_vista)} pausado={false}
                       onFallo={m => setErrorVideo(`${camara.nombre}: ${m}`)} />
                   : camara
                     ? <div className="nvr-vacio">Cámara deshabilitada</div>
@@ -117,7 +109,7 @@ export const VistaCuadricula: React.FC<{ camaras: Camara[]; motorId: number | nu
           );
         })}
       </div>
-      <span className="texto-secundario">El motor ANPR procesa únicamente la cámara activa asignada al sistema.</span>
+      <span className="texto-secundario">Las cajas de detección aparecen en las cámaras que analiza el motor ANPR; las marcadas SOLO VIDEO no registran pasos.</span>
     </div>
   );
 };

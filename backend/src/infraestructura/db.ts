@@ -41,6 +41,8 @@ export async function connectDB(): Promise<PostgresPool> {
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 10000,
         statement_timeout: 30000,
+        // Sin JIT: compilar cada consulta costaba más que ejecutarla (resumen de notificaciones: 400 ms → 53 ms)
+        options: '-c jit=off',
         ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' } : undefined,
       });
       // pg emite este evento si cae una conexión inactiva; sin manejador termina todo Node.
@@ -80,6 +82,8 @@ async function initDatabaseSchema(): Promise<void> {
   // Formulario «Autorizar ingreso»: del JSON datos_permiso a una columna por campo
   await pool.query(migracion('migracion_ficha_ingreso_columnas.sql'));
   await pool.query(migracion('migracion_columnas_sin_uso.sql'));
+  await pool.query(migracion('migracion_indices_escalabilidad.sql'));
+  await pool.query(migracion('migracion_multicamara_salida_automatica.sql'));
   await pool.query('ALTER TABLE listablanca ALTER COLUMN placa DROP NOT NULL');
   // Motivo de ingreso del permiso: los pasos del vehículo lo toman si el guardia no escribe otro
   await pool.query('ALTER TABLE listablanca ADD COLUMN IF NOT EXISTS motivo_ingreso VARCHAR(300)');

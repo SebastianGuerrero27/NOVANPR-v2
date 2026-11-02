@@ -1,0 +1,44 @@
+{
+ "etiqueta": "ov_1_camara_b",
+ "camaras": 1,
+ "motores": 1,
+ "segundos": 360,
+ "intervalo_gil_ms": "0.5",
+ "hilos_opencv": "2",
+ "imagen_motor": "anpr-motor:produccion",
+ "detectores": "1",
+ "formato_detector": "openvino",
+ "esperadas": 10,
+ "exactas": 8,
+ "exactitud_pct": 80.0,
+ "cpu_nucleos": {
+  "media": 12.27,
+  "p95": 14.17,
+  "max": 14.27
+ },
+ "memoria_mib": {
+  "media": 1342,
+  "max": 1409
+ },
+ "fps_analisis_medio": 11.4,
+ "reinicios_motor": 0,
+ "detalle": [
+  {
+   "camara": "1",
+   "registros": 10,
+   "exactas": 8,
+   "erroneas": 2,
+   "sin_lectura": 0,
+   "confirmadas": 6,
+   "confirmadas_erroneas": 0,
+   "fps_captura": 29.9,
+   "fps_analisis": 11.4,
+   "registro_p50_ms": 603,
+   "registro_p95_ms": 869,
+   "edad_cuadro_p50_ms": 18,
+   "edad_cuadro_p95_ms": 50,
+   "lectura_vivo_p50_ms": 230,
+   "omitidas_pct": 10.7
+  }
+ ]
+}

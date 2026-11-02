@@ -1,0 +1,46 @@
+# Un segundo motor ANPR, para más cámaras de las que admite uno (ANPR_MAX_CAMARAS). El backend reparte
+# las cámaras entre los motores y, si uno cae, pasa las suyas a otro con capacidad. Solo conviene en otro
+# equipo o en uno con núcleos de sobra: dos motores en el mismo equipo compiten por la misma CPU
+# (docs/resultados/multicamara_2026-11-02/). En .env, en este orden:
+#   ANPR_SERVICE_URL=http://anpr:8000,http://anpr2:8000
+#   ANPR_PUBLIC_URL=http://localhost:8000,http://localhost:8001
+# docker compose -p anpr -f docker-compose.yml -f docker-compose.produccion-local.yml -f docker-compose.motores.yml up -d --no-build backend anpr2
+services:
+  anpr2:
+    image: anpr-motor:produccion
+    container_name: anpr-service-2
+    env_file:
+      - path: ./services/anpr/.env
+        required: false
+    ports:
+      - "8001:8000"
+    environment:
+      - BACKEND_URL=http://backend:5000
+      - ANPR_SERVICE_TOKEN=${ANPR_SERVICE_TOKEN:?Defina ANPR_SERVICE_TOKEN en .env}
+      - OCR_ENGINE=plate
+      - OCR_VERIFIER_ENABLED=true
+      - MEDIA_DIR=/app/media
+      - ANPR_MAX_CAMARAS=${ANPR_MAX_CAMARAS:-4}
+      - ANPR_DETECTORES=${ANPR_DETECTORES:-1}
+      - RTSP_HILOS_DECODIFICADOR=${RTSP_HILOS_DECODIFICADOR:-1}
+      - RUNNING_IN_DOCKER=true
+      - DEBUG_VISUAL=true
+      - DEBUG_SHOW_WINDOW=false
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - ./services/anpr/media:/app/media
+      - anpr_model_cache:/root/.cache
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/status', timeout=4)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 180s
+    deploy:
+      resources:
+        limits:
+          memory: 6g

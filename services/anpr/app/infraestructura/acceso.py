@@ -5,6 +5,9 @@ Control de acceso a los endpoints del microservicio ANPR.
   encabezado X-Servicio-Token igual a ANPR_SERVICE_TOKEN (solo el backend lo conoce).
 - WebSockets de video y pistas: ticket de 60 s emitido por el backend a un usuario con
   sesión válida (HMAC-SHA256 con ANPR_SERVICE_TOKEN sobre {u, a, exp}).
+- Estado y métricas (región de interés, modelos, ritmo de la cámara): el token anterior o una
+  solicitud del propio contenedor (el healthcheck de Docker). El puerto 8000 se publica para los
+  WebSocket, así que cualquier equipo de la red llega hasta aquí.
 
 Sin ANPR_SERVICE_TOKEN (desarrollo local) se permite el acceso con una advertencia.
 """
@@ -38,6 +41,11 @@ def token_servicio_valido(valor: str | None) -> bool:
     if _sin_token():
         return True
     return bool(valor) and hmac.compare_digest(valor.encode(), ANPR_SERVICE_TOKEN.encode())
+
+
+def acceso_interno(cliente: str | None, token: str | None) -> bool:
+    """Para el estado del motor: el backend (con su token) o una solicitud local del contenedor."""
+    return cliente in ("127.0.0.1", "::1") or token_servicio_valido(token)
 
 
 def _b64decode(s: str) -> bytes:

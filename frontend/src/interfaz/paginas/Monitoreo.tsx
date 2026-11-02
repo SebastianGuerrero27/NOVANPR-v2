@@ -27,6 +27,7 @@ const MAX_FEED = 30;
 const CLAVE_PERFIL = 'anpr_perfil_video';
 const CLAVE_MODO = 'anpr_modo_video';
 const CLAVE_VISTA = 'anpr_vista_monitoreo_v2';
+const CLAVE_CAMARA = 'anpr_camara_monitoreo';
 
 const leer = (k: string, d: string) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 const guardar = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
@@ -34,7 +35,7 @@ const guardar = (k: string, v: string) => { try { localStorage.setItem(k, v); } 
 const segundos = (ms: number) => (ms / 1000).toLocaleString('es-EC', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 const Monitoreo: React.FC = () => {
-  const { user, puede } = useAuth();
+  const { puede } = useAuth();
   const navigate = useNavigate();
   const notificar = useNotificar();
   const visible = usePaginaVisible();
@@ -53,12 +54,10 @@ const Monitoreo: React.FC = () => {
   const [validando, setValidando] = useState<Deteccion | null>(null);
   const [restringiendo, setRestringiendo] = useState<Deteccion | null>(null);
   const [manual, setManual] = useState(false);
-  const [cambiando, setCambiando] = useState(false);
-  const [reinicioVideo, setReinicioVideo] = useState(0);
+  const [camaraElegida, setCamaraElegida] = useState<number | null>(() => Number(leer(CLAVE_CAMARA, '')) || null);
   const [eliminando, setEliminando] = useState<Deteccion | null>(null);
   const [eliminarTodos, setEliminarTodos] = useState(false);
   const esAdmin = puede('camaras:gestionar');
-  const puedeCambiarCamara = puede('camaras:operar');
 
   const { datos: camaras, recargar: recargarCamaras } = useConsulta<Camara[]>(() => api.get('/camaras').then(r => r.data), []);
   const estadoMotor = useConsulta<EstadoAnpr>(() => api.get('/monitoreo/estado').then(r => r.data), []);
@@ -96,28 +95,19 @@ const Monitoreo: React.FC = () => {
   });
   useEvento('deteccion:eliminadas', () => cargarFeed());
   useReconexion(() => { cargarFeed(); estadoMotor.recargar(true); recargarCamaras(true); });
-  useEvento<{ camara_id: number; nombre: string; por: string }>('monitoreo:camara', e => {
-    estadoMotor.recargar(true);
-    setReinicioVideo(x => x + 1);
-    if (e.por !== user?.nombre) notificar('info', `El motor ANPR ahora procesa ${e.nombre}`, `Cambio realizado por ${e.por}`);
-  });
-
-  const cambiarCamara = async (id: number) => {
-    setCambiando(true);
-    try {
-      const r = await api.post('/monitoreo/camara-activa', { camara_id: id });
-      notificar('exito', r.data.message);
-    } catch (e) {
-      notificar('error', 'No se pudo cambiar la cámara', mensajeError(e));
-    } finally {
-      setCambiando(false);
-      estadoMotor.recargar(true);
-    }
-  };
+  useEvento('monitoreo:camaras', () => estadoMotor.recargar(true));
+  useEvento('camara:actualizada', () => recargarCamaras(true));
 
   const motor = estadoMotor.datos;
-  const camaraActiva = camaras?.find(c => c.id === motor?.camara_activa?.id);
-  const hayCamaras = Boolean(camaras?.some(c => c.activa));
+  const habilitadas = (camaras ?? []).filter(c => c.activa);
+  const hayCamaras = habilitadas.length > 0;
+  // La cámara que se ve aquí: la elegida si sigue habilitada; si no, la primera en análisis o la primera habilitada
+  const camaraActiva = habilitadas.find(c => c.id === camaraElegida)
+    ?? habilitadas.find(c => motor?.camaras?.some(x => x.id === c.id)) ?? habilitadas[0];
+  const analisis = motor?.camaras?.find(x => x.id === camaraActiva?.id);
+  const elegirCamara = (id: number) => { setCamaraElegida(id); guardar(CLAVE_CAMARA, String(id)); };
+  const camarasAnalizadas = (motor?.camaras ?? []).map(x => x.id);
+  const sinCapacidad = motor?.sin_capacidad ?? [];
   const pendientes = feed.filter(d => d.estado_validacion === 'pendiente_revision' && !d.validado_manualmente && d.estado_procesamiento !== 'pendiente_ocr');
   const ultima = feed.find(d => d.estado_procesamiento !== 'pendiente_ocr') ?? null;
   // Movimiento elegido en la tabla: se ve en «Visualización de accesos» sin salir de Monitoreo. Se
@@ -164,32 +154,31 @@ const Monitoreo: React.FC = () => {
         <div className="grid-principal" style={{ gridTemplateColumns: 'minmax(0, 1.9fr) minmax(320px, 1fr)' }}>
           {/* ── Video y controles ── */}
           <div className="pila">
-            {motor?.en_linea && motor.camara_activa && !motor.camara_activa.conectada && (
+            {motor?.en_linea && analisis && !analisis.conectada && (
               <Aviso tipo="advertencia">
-                <b>El motor está asignado a {camaraActiva?.nombre ?? 'la cámara'}, pero no recibe video.</b> Revise que la cámara tenga energía y
+                <b>El motor analiza {camaraActiva?.nombre ?? 'la cámara'}, pero no recibe video.</b> Revise que la cámara tenga energía y
                 red, y compruebe su enlace con <b>Ping</b> en Operación › Registro de cámaras. El motor se reconecta solo cuando la señal vuelve.
               </Aviso>
             )}
-            {motor?.en_linea && motor.fuente_externa && hayCamaras && (
+            {motor?.en_linea && sinCapacidad.length > 0 && (
               <Aviso tipo="advertencia">
-                El motor ANPR todavía no procesa ninguna cámara registrada. {puedeCambiarCamara ? 'Seleccione la cámara en la lista para asignarla.' : 'Se asignará automáticamente en unos segundos.'}
+                <b>{sinCapacidad.length === 1 ? '1 cámara' : `${sinCapacidad.length} cámaras`} sin analizar:</b> {habilitadas.filter(c => sinCapacidad.includes(c.id)).map(c => c.nombre).join(', ')}.
+                {' '}Los motores ANPR en línea ya analizan su máximo ({motor.capacidad ?? 0}): agregue otro motor, aumente ANPR_MAX_CAMARAS o marque como «solo video» las que no necesite analizar.
               </Aviso>
             )}
             <Tarjeta sinPadding>
               <div className="fila" style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', gap: 10 }}>
                 <div className="fila" style={{ gap: 8, minWidth: 0 }}>
                   <Camera size={16} color="var(--text-3)" />
-                  {puedeCambiarCamara && hayCamaras ? (
-                    <select className="select" style={{ height: 32, width: 'auto', maxWidth: 280 }} value={motor?.camara_activa?.id ?? ''} disabled={cambiando || !motor?.en_linea}
-                      onChange={e => e.target.value && cambiarCamara(Number(e.target.value))} aria-label="Cámara que procesa el motor ANPR">
-                      <option value="" disabled>Seleccione la cámara…</option>
-                      {(camaras ?? []).filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre} · {c.ubicacion}</option>)}
+                  {hayCamaras ? (
+                    <select className="select" style={{ height: 32, width: 'auto', maxWidth: 280 }} value={camaraActiva?.id ?? ''}
+                      onChange={e => e.target.value && elegirCamara(Number(e.target.value))} aria-label="Cámara que se muestra">
+                      {habilitadas.map(c => <option key={c.id} value={c.id}>{c.nombre} · {c.ubicacion}{c.direccion === 'salida' ? ' (salida)' : ''}</option>)}
                     </select>
                   ) : (
-                    <strong className="truncar" style={{ fontSize: 13.5 }}>
-                      {camaraActiva ? `${camaraActiva.nombre} · ${camaraActiva.ubicacion}` : hayCamaras ? 'Cámara sin asignar' : 'Sin cámaras habilitadas'}
-                    </strong>
+                    <strong className="truncar" style={{ fontSize: 13.5 }}>Sin cámaras habilitadas</strong>
                   )}
+                  {camaraActiva && !analisis && motor?.en_linea && <span className="insignia" title={camaraActiva.analisis_anpr ? 'Esta cámara aún no entra al motor ANPR' : 'No registra pasos: se activa al editar la cámara'}>{camaraActiva.analisis_anpr ? 'Sin análisis' : 'Solo video'}</span>}
                 </div>
                 <div className="fila" style={{ marginLeft: 'auto', gap: 8 }}>
                   {hayCamaras && (
@@ -225,10 +214,10 @@ const Monitoreo: React.FC = () => {
                       ? <button className="btn btn-navy btn-sm" onClick={() => navigate('/camaras')}><Plus size={14} /> Registrar cámara</button>
                       : undefined} />
                 ) : vista === 'cuadricula'
-                  ? <VistaCuadricula camaras={camaras ?? []} motorId={motor?.camara_activa?.id ?? null} />
-                  : modo === 'compat' ? <VisorVideo perfil={perfil} pausado={pausado} claveReinicio={reinicioVideo} />
+                  ? <VistaCuadricula camaras={camaras ?? []} analizadas={camarasAnalizadas} />
+                  : modo === 'compat' && analisis ? <VisorVideo camaraId={analisis.id} motor={analisis.motor} perfil={perfil} pausado={pausado} />
                     : !motor && estadoMotor.cargando ? <div style={{ aspectRatio: '16 / 9', background: '#050b16', borderRadius: 10 }} />
-                      : <VisorEnVivo camaraId={motor?.camara_activa?.id ?? null} vista={Boolean(camaraActiva?.rtsp_url_vista)} pausado={pausado} claveReinicio={reinicioVideo}
+                      : <VisorEnVivo camaraId={camaraActiva?.id ?? null} analizada={Boolean(analisis)} vista={Boolean(camaraActiva?.rtsp_url_vista)} pausado={pausado} claveReinicio={analisis?.motor}
                           onFallo={m => { cambiarModo('compat'); notificar('advertencia', 'Se activó el modo de compatibilidad', `WebRTC no disponible: ${m}`); }} />}
               </div>
               <div className="fila" style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', gap: 16, fontSize: 12.5, color: 'var(--text-3)' }}>
@@ -237,22 +226,23 @@ const Monitoreo: React.FC = () => {
                   Motor ANPR {motor?.en_linea ? 'en línea' : estadoMotor.cargando ? '…' : `fuera de línea${motor?.error ? ` (${motor.error})` : ''}`}
                 </span>
                 {motor?.en_linea && <>
-                  <span className="fila" style={{ gap: 6 }}><Cpu size={13} /> Captura {numero(motor.fps_captura ?? 0)} fps · análisis {numero(motor.fps_procesamiento ?? 0)} fps</span>
-                  {motor.camara_activa && <span className="fila" style={{ gap: 6 }}><span className={`punto ${motor.camara_activa.conectada ? 'verde' : 'ambar'}`} /> Señal {motor.camara_activa.conectada ? 'recibida' : 'sin recibir'}</span>}
-                  {motor.enlace && (
+                  <span className="fila" style={{ gap: 6 }} title="Cámaras que analiza el motor ANPR y cuántas admite"><Camera size={13} /> {camarasAnalizadas.length} de {motor.capacidad ?? 0} en análisis</span>
+                  {analisis && <span className="fila" style={{ gap: 6 }}><Cpu size={13} /> Captura {numero(analisis.fps_captura ?? 0)} fps · análisis {numero(analisis.fps_procesamiento ?? 0)} fps</span>}
+                  {analisis && <span className="fila" style={{ gap: 6 }}><span className={`punto ${analisis.conectada ? 'verde' : 'ambar'}`} /> Señal {analisis.conectada ? 'recibida' : 'sin recibir'}</span>}
+                  {analisis?.enlace && (
                     <span className="fila ocultar-movil" style={{ gap: 6 }}
                       title="Flujo principal que analiza el motor: códec, resolución, cuadros recibidos por segundo y reconexiones automáticas con la cámara">
-                      <Film size={13} /> {codecVideo(motor.enlace.codec)}{motor.enlace.ancho ? ` ${motor.enlace.ancho}×${motor.enlace.alto}` : ''}
-                      {' · '}{numero(motor.enlace.fps_recibidos ?? 0)} fps recibidos{motor.enlace.reconexiones ? ` · ${motor.enlace.reconexiones} reconexiones` : ''}
+                      <Film size={13} /> {codecVideo(analisis.enlace.codec)}{analisis.enlace.ancho ? ` ${analisis.enlace.ancho}×${analisis.enlace.alto}` : ''}
+                      {' · '}{numero(analisis.enlace.fps_recibidos ?? 0)} fps recibidos{analisis.enlace.reconexiones ? ` · ${analisis.enlace.reconexiones} reconexiones` : ''}
                     </span>
                   )}
-                  {motor.latencia?.lectura_en_vivo && (
+                  {analisis?.latencia?.lectura_en_vivo && (
                     <span className="fila" style={{ gap: 6 }}
-                      title={`Desde que la cámara captura el cuadro hasta que la lectura aparece (mediana y percentil 95 de las últimas ${motor.latencia.lectura_en_vivo.muestras}).`
-                        + (motor.latencia.edad_cuadro ? ` Edad del cuadro al analizarlo: ${motor.latencia.edad_cuadro.p50_ms} ms.` : '')
-                        + (motor.latencia.registro ? ` Registro confirmado: ${segundos(motor.latencia.registro.p50_ms)} s.` : '')
-                        + (motor.latencia.cuadros_descartados_pct !== null ? ` Cuadros descartados por llegar uno más nuevo: ${motor.latencia.cuadros_descartados_pct} %.` : '')}>
-                      <Gauge size={13} /> Lectura {segundos(motor.latencia.lectura_en_vivo.p50_ms)} s (p95 {segundos(motor.latencia.lectura_en_vivo.p95_ms)} s)
+                      title={`Desde que la cámara captura el cuadro hasta que la lectura aparece (mediana y percentil 95 de las últimas ${analisis.latencia.lectura_en_vivo.muestras}).`
+                        + (analisis.latencia.edad_cuadro ? ` Edad del cuadro al analizarlo: ${analisis.latencia.edad_cuadro.p50_ms} ms.` : '')
+                        + (analisis.latencia.registro ? ` Registro confirmado: ${segundos(analisis.latencia.registro.p50_ms)} s.` : '')
+                        + (analisis.latencia.cuadros_descartados_pct !== null ? ` Cuadros descartados por llegar uno más nuevo: ${analisis.latencia.cuadros_descartados_pct} %.` : '')}>
+                      <Gauge size={13} /> Lectura {segundos(analisis.latencia.lectura_en_vivo.p50_ms)} s (p95 {segundos(analisis.latencia.lectura_en_vivo.p95_ms)} s)
                     </span>
                   )}
                   <span className="ocultar-movil truncar" title={`${motor.detector} · ${motor.ocr}`}>Detector {motor.detector} · OCR {motor.ocr}</span>
@@ -311,7 +301,7 @@ const Monitoreo: React.FC = () => {
                   {estadoAcceso(enVista) !== 'registrado' && <span className={`insignia acceso ${estadoAcceso(enVista)}`}>{ESTADOS_ACCESO[estadoAcceso(enVista)].etiqueta}</span>}
                 </div>
                 <span className="texto-secundario">{enVista.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso'} · {fechaHora(enVista.fecha_hora_ingreso)} · {relativo(enVista.fecha_hora_ingreso)}</span>
-                {enVista.fecha_hora_salida && <span className="texto-secundario">Salida · {fechaHora(enVista.fecha_hora_salida)}</span>}
+                {enVista.fecha_hora_salida && <span className="texto-secundario">Salida · {fechaHora(enVista.fecha_hora_salida)}{enVista.salida_automatica ? ' · automática' : ''}</span>}
                 <span style={{ fontSize: 13 }}>
                   {enVista.alerta ? <b style={{ color: 'var(--alerta)' }}>{enVista.alerta.motivo}</b>
                     : enVista.autorizado ? <>{enVista.autorizado.propietario}{enVista.autorizado.departamento ? ` · ${enVista.autorizado.departamento}` : ''}</>
@@ -408,7 +398,7 @@ export const TablaIngresosRecientes: React.FC<{
       ...(params.get('validado') ? { validado: params.get('validado') } : {}),
       ...(soloHoy ? { desde: limiteDia(fechaIsoLocal()), hasta: limiteDia(fechaIsoLocal(), true) } : {}) } }).then(r => r.data),
     [pagina, busquedaAplicada, estadoFiltro, soloDentro, soloHoy, params]);
-  useEffect(() => { void listado.recargar(true); }, [items]);
+  useEffect(() => { void listado.recargar(true); }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (listado.datos && pagina > 1 && !listado.datos.items.length) setPagina(pagina - 1); }, [listado.datos, pagina]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -546,7 +536,7 @@ export const TablaIngresosRecientes: React.FC<{
                     <td className="nowrap" onClick={e => e.stopPropagation()}>
                       {d.tipo_movimiento !== 'salida' && !d.fecha_hora_salida
                         ? <BotonSalida ocupado={registrandoSalida === d.id} deshabilitado={registrandoSalida !== null} onRegistrar={() => void registrarSalida(d)} />
-                        : <span className="texto-secundario">{d.fecha_hora_salida ? 'Registrada' : '—'}</span>}
+                        : <span className="texto-secundario" title={d.salida_automatica ? 'La registró la cámara de salida al leer la placa' : undefined}>{d.fecha_hora_salida ? (d.salida_automatica ? 'Automática' : 'Registrada') : '—'}</span>}
                     </td>
                     <td className="acciones-celda" onClick={e => e.stopPropagation()}>
                       <div className="acciones-registro">

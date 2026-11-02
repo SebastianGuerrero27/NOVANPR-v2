@@ -36,7 +36,7 @@ services:
         limits:
           memory: 768m
   mediamtx:
-    image: bluenviron/mediamtx:1.21.2
+    image: bluenviron/mediamtx:1.21.3
     environment:
       # IP del servidor en la LAN que el navegador usa para WebRTC (además de 127.0.0.1)
       - MTX_WEBRTCADDITIONALHOSTS=${WEBRTC_HOSTS:-127.0.0.1}
@@ -58,6 +58,10 @@ services:
       context: .
       dockerfile: backend/Dockerfile.prod
     image: anpr-backend:produccion
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       # Solo en el servidor: los navegadores entran por nginx (puerto web)
       - "127.0.0.1:5000:5000"
@@ -76,6 +80,7 @@ services:
       # nginx del frontend está delante del backend: un salto de proxy (IP real para los límites)
       - TRUST_PROXY=${TRUST_PROXY:-1}
       - LIMITE_API_POR_MINUTO=${LIMITE_API_POR_MINUTO:-600}
+      - METRICS_TOKEN=${METRICS_TOKEN:-}
       - ECUADORAPI_KEY=${ECUADORAPI_KEY:-}
       - CONSULTA_PERSONA_PROVEEDOR=${CONSULTA_PERSONA_PROVEEDOR:-ecuadorapi}
       - SOCKET_STUDIO_TOKEN=${SOCKET_STUDIO_TOKEN:-}
@@ -93,7 +98,7 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-}
       - MEDIA_DIR=/app/media
       - EVIDENCIA_LISTAS_DIR=/app/evidencia-listas
-      - ANPR_SERVICE_URL=http://anpr:8000
+      - ANPR_SERVICE_URL=${ANPR_SERVICE_URL:-http://anpr:8000}
       - ANPR_PUBLIC_URL=${ANPR_PUBLIC_URL:-http://localhost:8000}
       - MEDIAMTX_API_URL=http://mediamtx:9997
       - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
@@ -127,6 +132,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
     image: anpr-frontend:produccion
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "${PUERTO_WEB:-3000}:8080"
     volumes:
@@ -144,6 +153,10 @@ services:
   anpr:
     build: ./services/anpr
     image: anpr-motor:produccion
+    # Sin cap_drop: corre como root y necesita CAP_DAC_OVERRIDE para escribir en anpr_media, del usuario
+    # node del backend. Con un usuario propio en la imagen ya se podrá quitar (ver la guía, punto 13)
+    security_opt:
+      - no-new-privileges:true
     ports:
       # El navegador abre aquí los WebSocket de las cajas del HUD (con ticket de 60 s del backend)
       - "8000:8000"
@@ -152,7 +165,9 @@ services:
       - ANPR_SERVICE_TOKEN=${ANPR_SERVICE_TOKEN:?Defina ANPR_SERVICE_TOKEN en .env}
       - OCR_ENGINE=plate
       - MEDIA_DIR=/app/media
-      - RTSP_URL=
+      # Sin fuentes propias: el backend le asigna las cámaras registradas (sus rutas en MediaMTX)
+      - ANPR_MAX_CAMARAS=${ANPR_MAX_CAMARAS:-4}
+      - ANPR_DETECTORES=${ANPR_DETECTORES:-1}
       # Hilos del decodificador de video: 1 = sin cuadros retenidos (ver video_source.py)
       - RTSP_HILOS_DECODIFICADOR=${RTSP_HILOS_DECODIFICADOR:-1}
       - RUNNING_IN_DOCKER=true

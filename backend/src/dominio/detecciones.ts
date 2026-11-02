@@ -173,7 +173,11 @@ export function motivoRevision(p: PasoGuardado, politica: PoliticaAutorizacion):
 }
 
 /** Fecha y hora en la zona de la institución (exportación y auditoría). */
-export const fechaHoraLocal = (f: Date | string) => new Date(f).toLocaleString('es-EC', { timeZone: 'America/Guayaquil' });
+// Un solo formateador: crearlo en cada fecha (toLocaleString) cuesta unas 30 veces más y frenaba las exportaciones
+const FORMATO_FECHA_HORA = new Intl.DateTimeFormat('es-EC', {
+  timeZone: 'America/Guayaquil', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+});
+export const fechaHoraLocal = (f: Date | string) => FORMATO_FECHA_HORA.format(new Date(f));
 
 // ─── Datos que escribe el personal ───────────────────────────────────────────
 
@@ -501,16 +505,25 @@ const porcentaje = (v: number | null) => (typeof v === 'number' ? (v * 100).toFi
  * CSV del historial; empieza con BOM para que Excel respete las tildes del UTF-8. Cada celda va
  * entre comillas y un texto que empieza como fórmula lleva un apóstrofo (inyección CSV, OWASP).
  */
-export function csvDetecciones(filas: FilaExportacion[]): string {
-  const lineas = filas.map(d => [
+export const cabeceraCsvDetecciones = (): string => BOM_UTF8 + CABECERA_CSV.map(celdaCsv).join(',');
+
+export function lineaCsvDeteccion(d: FilaExportacion): string {
+  const registro = datosRegistro(d);
+  return [
     d.id, fechaHoraLocal(d.fecha_hora_ingreso), d.tipo_movimiento === 'salida' ? 'Salida' : 'Ingreso',
-    datosRegistro(d).placa || '', d.placa_ocr_original || d.placa_reconocida || '',
+    registro.placa || '', d.placa_ocr_original || d.placa_reconocida || '',
     ETIQUETA_ESTADO[d.estado_validacion as EstadoValidacion] ?? d.estado_validacion, d.validado_manualmente ? 'Sí' : 'No', d.validador_email || '',
-    d.camara_nombre || '', d.camara_ubicacion || '', datosRegistro(d).tipo || '', datosRegistro(d).marca || '',
+    d.camara_nombre || '', d.camara_ubicacion || '', registro.tipo || '', registro.marca || '',
     d.vehiculo_color || '', d.verificacion_vehiculo || '', d.propietario || '', d.departamento || '',
     d.alerta_motivo || '', d.nivel_alerta || '', porcentaje(d.confianza_deteccion), porcentaje(d.confianza_ocr),
-    datosRegistro(d).nombre || '', datosRegistro(d).motivo || '',
+    registro.nombre || '', registro.motivo || '',
     d.fecha_hora_salida ? fechaHoraLocal(d.fecha_hora_salida) : '', ETIQUETA_ORIGEN[origenDe(d.fuente)],
-  ].map(celdaCsv).join(','));
-  return BOM_UTF8 + [CABECERA_CSV.map(celdaCsv).join(','), ...lineas].join('\n');
+  ].map(celdaCsv).join(',');
 }
+
+export function csvDetecciones(filas: FilaExportacion[]): string {
+  return [cabeceraCsvDetecciones(), ...filas.map(lineaCsvDeteccion)].join('\n');
+}
+
+/** Un PDF se arma completo en memoria: por encima de este tope se pide acotar el período o usar el CSV. */
+export const MAX_REGISTROS_PDF = 5000;

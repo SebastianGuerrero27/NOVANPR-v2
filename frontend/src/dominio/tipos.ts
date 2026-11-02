@@ -26,6 +26,8 @@ export interface Deteccion {
   confianza_ocr: number | null;
   fecha_hora_ingreso: string;
   fecha_hora_salida?: string | null;
+  /** La salida la registró la cámara de salida, no una persona */
+  salida_automatica?: boolean;
   tipo_movimiento: 'ingreso' | 'salida';
   fecha_hora_procesamiento: string | null;
   fuente: string | null;
@@ -137,6 +139,8 @@ export interface Camara {
   ip: string;
   ubicacion: string;
   direccion: 'ingreso' | 'salida';
+  /** El motor busca placas en esta cámara; false: solo se ve su video */
+  analisis_anpr: boolean;
   rtsp_url: string;
   /** Flujo secundario para la vista en vivo (contraseña enmascarada); null: la vista usa el principal */
   rtsp_url_vista: string | null;
@@ -201,18 +205,32 @@ export interface LatenciaMotor {
   cuadros_descartados_pct: number | null;
 }
 
+/** Una cámara en análisis y el motor que la atiende. */
+export interface CamaraEnAnalisis {
+  id: number;
+  /** Posición del motor en ANPR_SERVICE_URL */
+  motor: number;
+  conectada: boolean;
+  fps_captura: number;
+  fps_procesamiento: number;
+  latencia: LatenciaMotor | null;
+  enlace: EnlaceVideo | null;
+}
+
 export interface EstadoAnpr {
   en_linea: boolean;
+  /** Promedio de las cámaras que reciben video */
   fps_captura?: number;
   fps_procesamiento?: number;
-  latencia?: LatenciaMotor | null;
   detector?: string | null;
   ocr?: string | null;
   verificador?: string | null;
-  camara_activa?: { id: number; conectada: boolean } | null;
-  enlace?: EnlaceVideo | null;
-  /** true si el motor procesa una fuente que no corresponde a ninguna cámara registrada */
-  fuente_externa?: boolean;
+  camaras?: CamaraEnAnalisis[];
+  motores?: { indice: number; en_linea: boolean; max_camaras: number; camaras: number[]; cpu_pct: number | null }[];
+  /** Cámaras que caben en total en los motores en línea */
+  capacidad?: number;
+  /** Cámaras con análisis que no caben en los motores en línea */
+  sin_capacidad?: number[];
   error?: string;
 }
 

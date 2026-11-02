@@ -6,7 +6,7 @@ import fs from 'fs';
 import { origenesPermitidos } from './infraestructura/servicios/origenes';
 import { comprobarBaseDatos } from './infraestructura/db';
 import { estadoRedis } from './infraestructura/servicios/socket';
-import { cabecerasSeguridad, confianzaProxy, limitadorAcceso, limitadorApi, RUTAS_ACCESO } from './interfaz/http/middlewares/seguridad';
+import { autorizarMetricas, cabecerasSeguridad, confianzaProxy, limitadorAcceso, limitadorApi, RUTAS_ACCESO } from './interfaz/http/middlewares/seguridad';
 import { archivoDe, DIRECTORIOS_MEDIA, firmaValida } from './infraestructura/servicios/media';
 import { metricsMiddleware, getMetrics, register } from './infraestructura/servicios/metrics';
 import authRoutes from './interfaz/http/rutas/auth';
@@ -111,13 +111,23 @@ export function crearApp(): express.Express {
     });
   });
 
-  app.get('/metrics', async (_req, res) => {
+  app.get('/metrics', autorizarMetricas, async (_req, res) => {
     try {
       res.set('Content-Type', register.contentType);
       res.end(await getMetrics());
     } catch (error: any) {
       res.status(500).end(error.toString());
     }
+  });
+
+  // Errores de Express (JSON roto, cuerpo muy grande): siempre JSON y nunca la pila ni el HTML por omisión
+  app.use((error: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) return next(error);
+    const estado = Number(error?.status ?? error?.statusCode) || 500;
+    if (estado >= 500) console.error('[HTTP]', error?.message ?? error);
+    const mensaje = estado === 413 ? 'El contenido enviado es demasiado grande.'
+      : estado < 500 ? 'La solicitud no es válida.' : 'Error interno del servidor.';
+    return res.status(estado < 500 ? estado : 500).json({ error: mensaje });
   });
 
   return app;

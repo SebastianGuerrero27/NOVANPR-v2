@@ -1,0 +1,20 @@
+# Cámaras simuladas del banco multicámara: repiten /video/clip.mp4 sin recodificar y sin parar.
+logLevel: warn
+rtspAddress: :8554
+api: no
+metrics: no
+pprof: no
+playback: no
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+
+paths:
+  "~^cam[0-9]+$":
+    runOnDemand: >-
+      ffmpeg -hide_banner -loglevel error -re -stream_loop -1 -i /video/clip.mp4 -c copy -f rtsp
+      -rtsp_transport tcp rtsp://localhost:8554/$MTX_PATH
+    runOnDemandRestart: yes
+    runOnDemandStartTimeout: 20s
+    runOnDemandCloseAfter: 30s

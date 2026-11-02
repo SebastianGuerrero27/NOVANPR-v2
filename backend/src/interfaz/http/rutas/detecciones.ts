@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware, requierePermiso, servicioMiddleware } from '../middlewares/auth';
 import { detecciones } from '../../../contenedor/detecciones';
-import { actorDe, controlador, idDe } from '../respuesta';
+import { actorDe, controlador, escribirRespuesta, idDe, limitarSimultaneas } from '../respuesta';
 
 /**
  * Detecciones vehiculares (cada paso por un acceso).
@@ -33,6 +33,7 @@ const router = Router();
 const monitorear = [authMiddleware, requierePermiso('operacion:monitorear')];
 const validar = [authMiddleware, requierePermiso('detecciones:validar')];
 const eliminar = [authMiddleware, requierePermiso('detecciones:eliminar')];
+const unaExportacionALaVez = limitarSimultaneas(2, 'Hay otras exportaciones en curso. Intente de nuevo en un momento.');
 
 // ─── Servicio ANPR ───────────────────────────────────────────────────────────
 
@@ -67,14 +68,18 @@ router.get('/recientes', ...monitorear, controlador('DETECCIONES recientes', 'Er
   res.json(await detecciones.recientes(req.query.limite, req.query.buscar));
 }));
 
-router.get('/exportar', ...monitorear, controlador('DETECCIONES exportar', 'Error al exportar.', async (req, res) => {
-  const { nombre, contenido } = await detecciones.exportar(req.query, actorDe(req));
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
-  res.send(contenido);
+router.get('/exportar', ...monitorear, unaExportacionALaVez, controlador('DETECCIONES exportar', 'Error al exportar.', async (req, res) => {
+  await detecciones.exportar(req.query, actorDe(req), {
+    abrir(nombre) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    },
+    escribir: texto => escribirRespuesta(res, texto),
+  });
+  res.end();
 }));
 
-router.get('/registros.pdf', ...monitorear, controlador('DETECCIONES PDF', 'Error al generar el PDF de registros.', async (req, res) => {
+router.get('/registros.pdf', ...monitorear, unaExportacionALaVez, controlador('DETECCIONES PDF', 'Error al generar el PDF de registros.', async (req, res) => {
   const { nombre, contenido } = await detecciones.exportarPdf(req.query, actorDe(req));
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);

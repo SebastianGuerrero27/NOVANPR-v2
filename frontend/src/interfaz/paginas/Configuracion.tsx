@@ -138,13 +138,14 @@ const Configuracion: React.FC = () => {
           <dl className="definiciones">
             <dt>Estado</dt><dd><span className="fila" style={{ gap: 6 }}><span className={`punto ${e.anpr.en_linea ? 'verde' : 'rojo'}`} />{e.anpr.en_linea ? 'En línea' : e.anpr.error ?? 'Fuera de línea'}</span></dd>
             {e.anpr.en_linea && <>
-              <dt>Captura</dt><dd>{numero(e.anpr.fps_captura ?? 0)} fps · análisis {numero(e.anpr.fps_procesamiento ?? 0)} fps</dd>
+              <dt>Cámaras</dt><dd>{numero(e.anpr.camaras?.length ?? 0)} en análisis de {numero(e.anpr.capacidad ?? 0)} posibles</dd>
+              <dt>Captura</dt><dd>{numero(e.anpr.fps_captura ?? 0)} fps · análisis {numero(e.anpr.fps_procesamiento ?? 0)} fps (promedio)</dd>
               <dt>Detector</dt><dd className="mono" style={{ fontSize: 12 }}>{e.anpr.detector ?? '—'}</dd>
               <dt>OCR</dt><dd className="mono" style={{ fontSize: 12 }}>{e.anpr.ocr ?? '—'}</dd>
               <dt>Verificador</dt><dd className="mono" style={{ fontSize: 12 }}>{e.anpr.verificador ?? '—'}</dd>
             </>}
           </dl>
-          <p className="texto-secundario" style={{ marginTop: 12 }}>Los umbrales y modelos del motor se configuran en services/anpr/.env y requieren reiniciar el servicio.</p>
+          <p className="texto-secundario" style={{ marginTop: 12 }}>Los umbrales, los modelos y el máximo de cámaras (ANPR_MAX_CAMARAS) se configuran en services/anpr/.env y requieren reiniciar el servicio.</p>
         </Tarjeta>
         <Tarjeta titulo="Correo electrónico" acciones={<Mail size={17} color="var(--text-3)" />}>
           <dl className="definiciones">

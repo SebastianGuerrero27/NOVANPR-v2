@@ -83,12 +83,8 @@ function preparar(camara: CamaraGuardada | null = guardada(), custodia = custodi
   };
   const motor: jest.Mocked<PuertoMotorAnpr> = {
     estado: jest.fn().mockResolvedValue({ en_linea: false }),
-    camaraDeseada: jest.fn().mockResolvedValue(null),
-    procesa: jest.fn().mockResolvedValue(false),
-    guardarCamara: jest.fn().mockResolvedValue(undefined),
-    cambiarCamara: jest.fn().mockResolvedValue({}),
-    fijarZonas: jest.fn().mockResolvedValue({}),
-    sincronizar: jest.fn().mockResolvedValue(false),
+    sincronizar: jest.fn().mockResolvedValue(undefined),
+    sinCapacidad: jest.fn(() => []),
     urlPublica: jest.fn(() => 'https://anpr.ecu911.local'),
   };
   const auditoria = { operacion: jest.fn().mockResolvedValue(undefined) };
@@ -138,7 +134,7 @@ describe('Casos de uso · cámaras', () => {
       const camara = await casos.registrar({ nombre: '  Garita   sur ', ubicacion: 'Acceso sur, bloque B', rtsp_url: URL_GUARDADA }, ADMIN);
       // Sin IP indicada, el ping usa el host de la URL
       expect(repositorio.crear).toHaveBeenCalledWith(
-        { nombre: 'Garita sur', ubicacion: 'Acceso sur, bloque B', rtsp: URL_GUARDADA, rtspVista: null, ip: '192.168.1.64', direccion: 'ingreso' }, 1);
+        { nombre: 'Garita sur', ubicacion: 'Acceso sur, bloque B', rtsp: URL_GUARDADA, rtspVista: null, ip: '192.168.1.64', direccion: 'ingreso', analisis: true }, 1);
       expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'CAMARA_ALTA', 'camara', 7, 'Garita sur · Acceso sur, bloque B');
       expect(camara).toMatchObject({ id: 7, rtsp_url: URL_ENMASCARADA });
       expect(eventos.emitir).toHaveBeenCalledWith('camara:actualizada', camara);
@@ -203,7 +199,7 @@ describe('Casos de uso · cámaras', () => {
       const { casos, repositorio, auditoria, eventos, conectividad, video } = preparar();
       const camara = await casos.editar(3, { ...VALIDA, nombre: 'Garita norte 2', rtsp_url: URL_ENMASCARADA }, ADMIN);
       expect(repositorio.actualizar).toHaveBeenCalledWith(3,
-        { nombre: 'Garita norte 2', ubicacion: 'Acceso vehicular norte', rtsp: URL_GUARDADA, rtspVista: null, ip: '192.168.1.64', direccion: 'ingreso' });
+        { nombre: 'Garita norte 2', ubicacion: 'Acceso vehicular norte', rtsp: URL_GUARDADA, rtspVista: null, ip: '192.168.1.64', direccion: 'ingreso', analisis: true });
       expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'CAMARA_EDICION', 'camara', 3, 'Garita norte 2: nombre');
       // La URL no cambió: no se vuelve a verificar la conexión ni se reconfigura MediaMTX
       await enCola();
@@ -225,7 +221,7 @@ describe('Casos de uso · cámaras', () => {
       const nueva = 'rtsp://admin:otra@192.168.1.65:554/Streaming/Channels/102';
       await casos.editar(3, { ...VALIDA, rtsp_url: nueva }, ADMIN);
       expect(repositorio.actualizar).toHaveBeenCalledWith(3,
-        { nombre: 'Garita norte', ubicacion: 'Acceso vehicular norte', rtsp: nueva, rtspVista: null, ip: '192.168.1.65', direccion: 'ingreso' });
+        { nombre: 'Garita norte', ubicacion: 'Acceso vehicular norte', rtsp: nueva, rtspVista: null, ip: '192.168.1.65', direccion: 'ingreso', analisis: true });
       expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'CAMARA_EDICION', 'camara', 3, 'Garita norte: URL RTSP, IP');
       await enCola();
       expect(conectividad.registrar).toHaveBeenCalledWith(3, RTSP_OK, true);
@@ -269,7 +265,7 @@ describe('Casos de uso · cámaras', () => {
       const { casos, repositorio, motor } = preparar();
       expect(await fallo(casos.fijarZonas(3, roi, undefined, ADMIN))).toEqual({ tipo: 'validacion', mensaje });
       expect(repositorio.fijarZonas).not.toHaveBeenCalled();
-      expect(motor.fijarZonas).not.toHaveBeenCalled();
+      expect(motor.sincronizar).not.toHaveBeenCalled();
     });
 
     it('fijarZonas: guarda la región redondeada, audita y la aplica en el motor; null vuelve al cuadro completo', async () => {
@@ -280,7 +276,7 @@ describe('Casos de uso · cámaras', () => {
       expect(repositorio.fijarZonas).toHaveBeenCalledWith(3, r.roi, undefined);
       expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'CAMARA_ROI', 'camara', 3, 'Garita norte: región de 3 vértices');
       await enCola();
-      expect(motor.fijarZonas).toHaveBeenCalledWith(3, r.roi, []);
+      expect(motor.sincronizar).toHaveBeenCalled();
 
       expect((await casos.fijarZonas(3, null, undefined, ADMIN)).roi).toBeNull();
       expect((await casos.fijarZonas(3, [], undefined, ADMIN)).roi).toBeNull();
@@ -288,7 +284,7 @@ describe('Casos de uso · cámaras', () => {
       expect(await fallo(preparar(null).casos.fijarZonas(99, null, undefined, ADMIN))).toEqual(NO_ENCONTRADA);
     });
 
-    it('fijarZonas: guarda las zonas de exclusión, las audita y el motor recibe el conjunto completo', async () => {
+    it('fijarZonas: guarda las zonas de exclusión, las audita y el motor las recibe', async () => {
       const { casos, repositorio, auditoria, motor } = preparar();
       const bandera = [[0.7, 0], [1, 0], [1, 0.25], [0.7, 0.25]];
       const vereda = [[0, 0.8], [0.3, 0.8], [0.3, 1], [0, 1]];
@@ -297,7 +293,7 @@ describe('Casos de uso · cámaras', () => {
       expect(repositorio.fijarZonas).toHaveBeenCalledWith(3, null, [bandera, vereda]);
       expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'CAMARA_ROI', 'camara', 3, 'Garita norte: cuadro completo, 2 zonas de exclusión');
       await enCola();
-      expect(motor.fijarZonas).toHaveBeenCalledWith(3, null, [bandera, vereda]);
+      expect(motor.sincronizar).toHaveBeenCalled();
       // [] o null las quita
       await casos.fijarZonas(3, null, [], ADMIN);
       expect(repositorio.fijarZonas).toHaveBeenLastCalledWith(3, null, []);
@@ -305,26 +301,17 @@ describe('Casos de uso · cámaras', () => {
     });
 
     it('fijarZonas: solo exclusiones no borra la región guardada; sin ningún campo → 400', async () => {
-      const roiGuardada = [[0, 0.2], [1, 0.2], [1, 1]];
-      const { casos, repositorio, motor, auditoria } = preparar(guardada({ roi: JSON.stringify(roiGuardada) }));
+      const { casos, repositorio, motor, auditoria } = preparar(guardada({ roi: JSON.stringify([[0, 0.2], [1, 0.2], [1, 1]]) }));
       const bandera = [[0.7, 0], [1, 0], [1, 0.25]];
       const r = await casos.fijarZonas(3, undefined, [bandera], ADMIN);
       expect(r.roi).toBeUndefined();
       expect(repositorio.fijarZonas).toHaveBeenCalledWith(3, undefined, [bandera]);
       expect(auditoria.operacion).toHaveBeenCalledWith(ADMIN, 'CAMARA_ROI', 'camara', 3, 'Garita norte: 1 zona de exclusión');
       await enCola();
-      expect(motor.fijarZonas).toHaveBeenCalledWith(3, roiGuardada, [bandera]);
+      expect(motor.sincronizar).toHaveBeenCalled();
       expect(await fallo(casos.fijarZonas(3, undefined, undefined, ADMIN))).toEqual({
         tipo: 'validacion', mensaje: 'Indique la región de interés (roi, null para el cuadro completo) o las zonas de exclusión.',
       });
-    });
-
-    it('fijarZonas: sin exclusiones en la solicitud, el motor recibe las que ya estaban guardadas', async () => {
-      const guardadas = [[[0.7, 0], [1, 0], [1, 0.25]]];
-      const { casos, motor } = preparar(guardada({ exclusiones: JSON.stringify(guardadas) }));
-      await casos.fijarZonas(3, [[0.1, 0.2], [0.9, 0.2], [0.5, 0.95]], undefined, ADMIN);
-      await enCola();
-      expect(motor.fijarZonas).toHaveBeenCalledWith(3, [[0.1, 0.2], [0.9, 0.2], [0.5, 0.95]], guardadas);
     });
 
     it.each([
@@ -337,7 +324,7 @@ describe('Casos de uso · cámaras', () => {
       const { casos, repositorio, motor } = preparar();
       expect(await fallo(casos.fijarZonas(3, null, exclusiones, ADMIN))).toEqual({ tipo: 'validacion', mensaje });
       expect(repositorio.fijarZonas).not.toHaveBeenCalled();
-      expect(motor.fijarZonas).not.toHaveBeenCalled();
+      expect(motor.sincronizar).not.toHaveBeenCalled();
     });
 
     it('eliminar: solo sin historial (409 con detecciones); audita y difunde la baja', async () => {

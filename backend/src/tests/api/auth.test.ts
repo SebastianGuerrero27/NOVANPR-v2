@@ -3,7 +3,7 @@
  */
 import request from 'supertest';
 import express from 'express';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 process.env.BCRYPT_ROUNDS = '4';

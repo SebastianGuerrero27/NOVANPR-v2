@@ -1,0 +1,30 @@
+## Latencia por ruta, una petición a la vez (p50 ms, por ronda)
+ruta                                A1        A2        B1        B2  err A  err B
+panel resumen                   3673.4      3531      16.4      19.5      0      0
+historial pág. 1                 198.4        85      73.7     113.9      0      0
+historial pág. 2000              356.8     296.5     214.8     316.6      0      0
+historial por placa              203.4       230     170.2     193.3      0      0
+historial búsqueda texto        3264.2    2863.9      2699    3624.3      0      0
+historial resumen               1684.3    1628.5       3.2       3.1      0      0
+recientes                         13.9      14.1      13.5      13.6      0      0
+buscar placa                     454.9     474.4      51.6      46.2      0      0
+notificaciones resumen           356.4       371      55.3      55.3      0      0
+notificaciones bandeja           372.3     362.6      60.1      58.4      0      0
+auditoría                         31.4      28.4      17.5        15      0      0
+lista blanca                   30011.4   30009.5     247.1     227.2      6      0
+lista negra                    14547.2   14138.4      11.2      11.3      0      0
+cámaras                          376.3     487.6       458     500.8      0      0
+
+## Operadores simultáneos
+nivel                     rps A          rps B              p50 A          p50 B              p95 A          p95 B  err A  err B
+1 operadores            1.3/1.3      15.4/15.4          347/348.8      65.7/65.6      3661.4/3408.1    160.3/162.1      0      0
+5 operadores            2.6/2.7      25.5/25.9        670.9/429.8    185.4/187.8        8350/9081.9    506.8/451.6      0      0
+10 operadores           3.4/3.6      27.2/25.7      1677.9/1355.9    333.3/311.3    15833.8/13707.8   924.5/1108.9      0      0
+25 operadores             5/5.4      29.5/29.7      4566.9/4257.4    813.8/818.6    17095.2/17336.9  1902.2/1820.6      0      0
+50 operadores           6.3/6.3      30.1/30.9     10261.6/9747.7    1584/1513.2    18367.2/18734.3  3495.5/3168.6     14      0
+
+## 30 inicios de sesión simultáneos
+A1: total 10016 ms · estados [200] · /health p50 2463.7 p95 2950.8 max 2950.8 ms (n=6)
+A2: total 9576 ms · estados [200] · /health p50 2063.3 p95 2952 max 2952 ms (n=6)
+B1: total 5817 ms · estados [200] · /health p50 4.2 p95 50 max 100.4 ms (n=50)
+B2: total 5049 ms · estados [200] · /health p50 3.8 p95 47 max 104.8 ms (n=44)

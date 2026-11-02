@@ -13,7 +13,7 @@
 #    con símbolos y las rutas /Streaming/Channels/101 y 102.
 # 3. Registra la cámara, verifica cifrado, diagnóstico Digest, edición, zonas, video y motor; mide 40 s
 #    de análisis y un corte de red de 15 s (docker network disconnect) con su recuperación.
-# 4. Limpia: borra las detecciones y la cámara de prueba, restaura la cámara del motor y elimina
+# 4. Limpia: borra las detecciones y la cámara de prueba y elimina
 #    camara-hik. El resultado queda en .trabajo/resultado_e2e.txt.
 set -u
 D="$(cd "$(dirname "$0")" && (pwd -W 2>/dev/null || pwd))"
@@ -50,7 +50,6 @@ docker cp "$D/e2e_hikvision.js" anpr-backend:/tmp/e2e_hik.js >/dev/null
 log "== 1. Alta, cifrado, diagnóstico Digest, edición y asignación al motor"
 nodo crear | tee -a "$R"
 ID=$(grep -o '^ID=[0-9]*' "$R" | cut -d= -f2)
-PREVIA=$(grep -o '^PREVIA=.*' "$R" | cut -d= -f2)
 if [ -z "$ID" ]; then log "sin cámara creada: fin"; docker rm -f camara-hik >/dev/null; exit 1; fi
 
 log "== 2. Diagnóstico con la contraseña correcta e incorrecta"
@@ -87,7 +86,7 @@ done
 [ -z "$recuperada" ] && log "  ✘ el motor no se recuperó en 45 s: $(estado)"
 
 log "== 6. Limpieza"
-nodo limpiar "$ID" "$PREVIA" | tee -a "$R"
+nodo limpiar "$ID" | tee -a "$R"
 docker exec anpr-backend rm -f /tmp/e2e_hik.js
 docker rm -f camara-hik >/dev/null
 log "resultado completo en $R"

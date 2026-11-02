@@ -1,7 +1,7 @@
 import { casosDetecciones, type DependenciasDetecciones, type Fila, type RepositorioDetecciones } from '../../aplicacion/detecciones';
 import { ErrorAplicacion, type Actor } from '../../aplicacion/comun';
 import type { PoliticaAutorizacion } from '../../dominio/decisionAcceso';
-import { csvDetecciones, type FilaExportacion } from '../../dominio/detecciones';
+import { csvDetecciones, fechaHoraLocal, type FilaExportacion, MAX_REGISTROS_PDF } from '../../dominio/detecciones';
 
 /** Detecciones con dobles de prueba: sin base de datos, sin disco, sin Socket.IO ni notificaciones. */
 
@@ -19,7 +19,7 @@ const fila = (cambios: Fila = {}): Fila => ({
   ...cambios,
 });
 
-function preparar(opciones: { alerta?: Fila | null; permiso?: Fila | null; existente?: Fila | null } = {}) {
+function preparar(opciones: { alerta?: Fila | null; permiso?: Fila | null; existente?: Fila | null; salidaAutomatica?: boolean } = {}) {
   const repositorio: jest.Mocked<RepositorioDetecciones> = {
     obtener: jest.fn().mockResolvedValue(opciones.existente === undefined ? fila() : opciones.existente),
     mismoPaso: jest.fn().mockResolvedValue(null),
@@ -47,7 +47,11 @@ function preparar(opciones: { alerta?: Fila | null; permiso?: Fila | null; exist
     }),
     recientes: jest.fn().mockResolvedValue([fila()]),
     registrarSalida: jest.fn().mockResolvedValue(true),
+    cerrarIngresoConSalida: jest.fn().mockResolvedValue(null),
+    ingresoCerradoPor: jest.fn().mockResolvedValue(null),
+    reabrirIngreso: jest.fn().mockResolvedValue(undefined),
     exportar: jest.fn().mockResolvedValue([fila()]),
+    exportarPorLotes: jest.fn().mockImplementation(async function* () { yield [fila()]; }),
     historialPlaca: jest.fn().mockResolvedValue([]),
     auditoriaDe: jest.fn().mockResolvedValue([]),
     guardarValidacion: jest.fn().mockResolvedValue(undefined),
@@ -66,6 +70,7 @@ function preparar(opciones: { alerta?: Fila | null; permiso?: Fila | null; exist
     },
     presentar: jest.fn((f: Fila) => ({ id: f.id, placa: f.placa_validada || f.placa_reconocida || null, estado_validacion: f.estado_validacion })),
     politica: () => POLITICA,
+    salidaAutomatica: () => ({ activa: Boolean(opciones.salidaAutomatica), minimoSegundos: 60 }),
     compararVehiculo: jest.fn().mockReturnValue({ resultado: 'coincide', detalle: 'color coincide' }),
     avisos: { decision: jest.fn(), resolverPorDeteccion: jest.fn().mockResolvedValue(undefined) },
     evidencia: { eliminar: jest.fn().mockResolvedValue(2) },
@@ -387,9 +392,48 @@ describe('Detecciones · consultas del personal', () => {
 
   it('exportación: queda auditada y el archivo lleva la fecha', async () => {
     const { casos, auditoria } = preparar();
-    const r = await casos.exportar({ estado: 'alerta' }, GUARDIA);
-    expect(r.nombre).toBe('ingresos_anpr_2026-10-05.csv');
+    const abrir = jest.fn();
+    const trozos: string[] = [];
+    const r = await casos.exportar({ estado: 'alerta' }, GUARDIA, { abrir, escribir: async t => { trozos.push(t); return true; } });
+    expect(abrir).toHaveBeenCalledWith('ingresos_anpr_2026-10-05.csv');
+    expect(r).toEqual({ registros: 1, completa: true });
+    expect(trozos.join('')).toBe(csvDetecciones([fila() as unknown as FilaExportacion]));
     expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'EXPORTACION', 'deteccion', null, '1 registros · {"estado":"alerta"}');
+  });
+
+  it('exportación: los lotes salen en orden y una descarga cancelada deja de leer y queda auditada', async () => {
+    const { casos, repositorio, auditoria } = preparar();
+    let leidos = 0;
+    repositorio.exportarPorLotes.mockImplementation(async function* () {
+      for (let i = 0; i < 5; i++) { leidos++; yield [fila()]; }
+    });
+    // El cliente se va al recibir el segundo lote (la cabecera es la primera escritura)
+    let escrituras = 0;
+    const r = await casos.exportar({}, GUARDIA, { abrir: jest.fn(), escribir: async () => ++escrituras < 3 });
+    expect(r).toEqual({ registros: 1, completa: false });
+    expect(leidos).toBe(2);
+    expect(auditoria.operacion).toHaveBeenCalledWith(GUARDIA, 'EXPORTACION', 'deteccion', null, '1 registros (descarga cancelada) · {}');
+  });
+
+  it('exportación: si la base falla a mitad, el error sube para cortar la descarga y queda auditado', async () => {
+    const { casos, repositorio, auditoria } = preparar();
+    repositorio.exportarPorLotes.mockImplementation(async function* () { yield [fila()]; throw new Error('base caída'); });
+    await expect(casos.exportar({}, GUARDIA, { abrir: jest.fn(), escribir: async () => true })).rejects.toThrow('base caída');
+    expect(auditoria.operacion).toHaveBeenCalledTimes(1);
+  });
+
+  it('la fecha local no cambia con el formateador reutilizado', () => {
+    for (const f of ['2026-01-05T17:03:09Z', '2026-12-31T23:59:59Z', '2026-07-01T04:59:59Z', '2026-10-05T00:00:00Z']) {
+      expect(fechaHoraLocal(f)).toBe(new Date(f).toLocaleString('es-EC', { timeZone: 'America/Guayaquil' }));
+    }
+  });
+
+  it('PDF: por encima del tope pide acotar el período sin cargar las filas', async () => {
+    const { casos, repositorio, pdfRegistros } = preparar();
+    repositorio.contar.mockResolvedValue(MAX_REGISTROS_PDF + 1);
+    await expect(casos.exportarPdf({}, GUARDIA)).rejects.toThrow('Acote el período o exporte a CSV');
+    expect(repositorio.exportar).not.toHaveBeenCalled();
+    expect(pdfRegistros).not.toHaveBeenCalled();
   });
 
   it('PDF de registros: fuerza visitas cerradas y exporta todos los filtros sin paginación', async () => {
@@ -413,6 +457,103 @@ describe('Detecciones · consultas del personal', () => {
 });
 
 describe('Detecciones · acciones del personal', () => {
+  describe('salida automática por la cámara de salida', () => {
+    const salida = (cambios: Fila = {}) => fila({ id: 40, tipo_movimiento: 'salida', lectura_valida: true, placa_reconocida: 'PBA1234', ...cambios });
+    const lectura = { ingreso_id: 40, placa_reconocida: 'PBA-1234', confianza_ocr: 0.95, lectura_valida: true };
+
+    it('la lectura confirmada cierra el ingreso de esa placa, lo audita a nombre del sistema y lo difunde', async () => {
+      const { casos, repositorio, auditoria, eventos } = preparar({ existente: salida(), salidaAutomatica: true });
+      repositorio.cerrarIngresoConSalida.mockResolvedValue(15);
+      await casos.completarOcr(lectura);
+      expect(repositorio.cerrarIngresoConSalida).toHaveBeenCalledWith(40, 'PBA1234', 60);
+      expect(auditoria.operacion).toHaveBeenCalledWith(expect.objectContaining({ id: null }), 'SALIDA_AUTOMATICA', 'deteccion', 15, expect.stringContaining('PBA1234'));
+      expect(eventos.emitir).toHaveBeenCalledWith('deteccion:actualizada', expect.anything());
+    });
+
+    it('desactivada: la salida queda como movimiento aparte y no cierra nada', async () => {
+      const { casos, repositorio } = preparar({ existente: salida() });
+      await casos.completarOcr(lectura);
+      expect(repositorio.guardarSalida).toHaveBeenCalled();
+      expect(repositorio.cerrarIngresoConSalida).not.toHaveBeenCalled();
+    });
+
+    it.each([['sin confirmar', false], ['sin veredicto', null]])('una lectura %s no cierra el ingreso de otro vehículo', async (_caso, valida) => {
+      const { casos, repositorio } = preparar({ existente: salida({ lectura_valida: valida }), salidaAutomatica: true });
+      await casos.completarOcr({ ...lectura, lectura_valida: valida });
+      expect(repositorio.cerrarIngresoConSalida).not.toHaveBeenCalled();
+    });
+
+    it('un paso sin ingreso abierto de esa placa no audita ni difunde un cierre', async () => {
+      const { casos, repositorio, auditoria } = preparar({ existente: salida(), salidaAutomatica: true });
+      await casos.completarOcr(lectura);
+      expect(repositorio.cerrarIngresoConSalida).toHaveBeenCalled();
+      expect(auditoria.operacion).not.toHaveBeenCalledWith(expect.anything(), 'SALIDA_AUTOMATICA', expect.anything(), expect.anything(), expect.anything());
+    });
+
+    it('la confirmación tardía del segundo OCR cierra el ingreso', async () => {
+      const { casos, repositorio } = preparar({ existente: salida({ lectura_valida: true }), salidaAutomatica: true });
+      await casos.reevaluar({ ingreso_id: 40, lectura_valida: true, placa_reconocida: 'PBA1234' });
+      expect(repositorio.cerrarIngresoConSalida).toHaveBeenCalledWith(40, 'PBA1234', 60);
+    });
+
+    it('si la lectura se corrige a otra placa, reabre el ingreso equivocado y cierra el correcto', async () => {
+      const { casos, repositorio, auditoria } = preparar({ existente: salida({ placa_validada: 'PBB5678', validado_manualmente: true }), salidaAutomatica: true });
+      repositorio.ingresoCerradoPor.mockResolvedValue({ id: 15, placa: 'PBA1234' });
+      repositorio.cerrarIngresoConSalida.mockResolvedValue(16);
+      await casos.validar(40, { placa_validada: 'PBB-5678' }, GUARDIA);
+      expect(repositorio.reabrirIngreso).toHaveBeenCalledWith(15);
+      expect(auditoria.operacion).toHaveBeenCalledWith(expect.objectContaining({ id: null }), 'SALIDA_AUTOMATICA_REVERTIDA', 'deteccion', 15, expect.any(String));
+      expect(repositorio.cerrarIngresoConSalida).toHaveBeenCalledWith(40, 'PBB5678', 60);
+    });
+
+    it('la misma placa otra vez no reabre ni cierra de nuevo', async () => {
+      const { casos, repositorio } = preparar({ existente: salida(), salidaAutomatica: true });
+      repositorio.ingresoCerradoPor.mockResolvedValue({ id: 15, placa: 'PBA1234' });
+      await casos.reevaluar({ ingreso_id: 40, lectura_valida: true, placa_reconocida: 'PBA1234' });
+      expect(repositorio.reabrirIngreso).not.toHaveBeenCalled();
+      expect(repositorio.cerrarIngresoConSalida).not.toHaveBeenCalled();
+    });
+
+    it('si el segundo OCR desmiente la lectura, reabre el ingreso aunque el parámetro ya esté desactivado', async () => {
+      const { casos, repositorio } = preparar({ existente: salida({ lectura_valida: false }) });
+      repositorio.ingresoCerradoPor.mockResolvedValue({ id: 15, placa: 'PBA1234' });
+      await casos.reevaluar({ ingreso_id: 40, lectura_valida: false, placa_reconocida: 'PBA1234' });
+      expect(repositorio.reabrirIngreso).toHaveBeenCalledWith(15);
+      expect(repositorio.cerrarIngresoConSalida).not.toHaveBeenCalled();
+    });
+
+    it('eliminar la salida reabre el ingreso que cerró; eliminar un ingreso no toca nada', async () => {
+      const conSalida = preparar({ existente: salida(), salidaAutomatica: true });
+      conSalida.repositorio.ingresoCerradoPor.mockResolvedValue({ id: 15, placa: 'PBA1234' });
+      await conSalida.casos.eliminar(40, 'Lectura de otro vehículo', ADMIN);
+      expect(conSalida.repositorio.reabrirIngreso).toHaveBeenCalledWith(15);
+      expect(conSalida.repositorio.eliminar).toHaveBeenCalledWith(40);
+      const ingreso = preparar({ salidaAutomatica: true });
+      await ingreso.casos.eliminar(15, 'Registro de prueba', ADMIN);
+      expect(ingreso.repositorio.ingresoCerradoPor).not.toHaveBeenCalled();
+    });
+
+    it('la salida manual confirmada por el guardia también cierra el ingreso', async () => {
+      const { casos, repositorio } = preparar({ existente: salida({ placa_validada: 'PBA1234', validado_manualmente: true, lectura_valida: null }), salidaAutomatica: true });
+      repositorio.direccionCamara.mockResolvedValue('salida');
+      repositorio.crearSalidaManual.mockResolvedValue(40);
+      await casos.registroManual({ placa: 'PBA-1234', motivo: 'Cámara de salida sin lectura', camara_id: 2 }, GUARDIA);
+      expect(repositorio.cerrarIngresoConSalida).toHaveBeenCalledWith(40, 'PBA1234', 60);
+    });
+
+    it('un fallo al cerrar no interrumpe el registro del paso', async () => {
+      const { casos, repositorio } = preparar({ existente: salida(), salidaAutomatica: true });
+      repositorio.cerrarIngresoConSalida.mockRejectedValue(new Error('base ocupada'));
+      await expect(casos.completarOcr(lectura)).resolves.toMatchObject({ message: 'Salida registrada.' });
+    });
+
+    it('un ingreso nunca dispara el cierre', async () => {
+      const { casos, repositorio } = preparar({ existente: fila({ lectura_valida: true }), salidaAutomatica: true });
+      await casos.completarOcr({ ...lectura, ingreso_id: 15 });
+      expect(repositorio.cerrarIngresoConSalida).not.toHaveBeenCalled();
+    });
+  });
+
   it('registra una sola hora de salida en el ingreso y la difunde', async () => {
     const { casos, repositorio, auditoria, eventos } = preparar({
       existente: fila({ tipo_movimiento: 'ingreso', placa_reconocida: 'PBA1234', persona_ingreso: 'Ana Torres', tipo_vehiculo: 'SUV', vehiculo_marca: 'Mazda', motivo_ingreso: 'Reunión' }),

@@ -57,7 +57,7 @@ export const PERMISOS = {
   // Análisis
   'reportes:ver': 'Reportes por período y cámara',
   // Infraestructura y administración
-  'camaras:operar': 'Cambiar la cámara que procesa el motor y su región de interés',
+  'camaras:operar': 'Cambiar la región de interés y las zonas de exclusión de las cámaras',
   'camaras:gestionar': 'Alta, edición y diagnóstico de cámaras',
   'usuarios:gestionar': 'Cuentas, roles y bloqueos del personal',
   'auditoria:ver': 'Consultar la auditoría',

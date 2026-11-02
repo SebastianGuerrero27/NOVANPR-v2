@@ -1434,26 +1434,24 @@ class DetectionPipeline:
 
 def create_detection_pipeline(detector: Optional[BaseDetector] = None) -> DetectionPipeline:
     """
-    Factory unificada que resuelve la configuración del entorno y devuelve un
-    DetectionPipeline listo para producción.
-    
-    Punto de acoplamiento único entre el entorno (variables de configuración,
-    pesos de modelos, dispositivo GPU/CPU) y el pipeline desacoplado.
-    Permite además inyectar detectores mock o personalizados para testing.
+    Pipeline listo para producción con su propio detector o, con uno inyectado (mock o personalizado),
+    pipeline base para pruebas: sin compuerta de movimiento ni recorte de la región de interés.
     """
     if detector is not None:
         return DetectionPipeline(detector=detector)
+    return pipeline_de_camara(crear_detector_placas())
 
+
+def crear_detector_placas() -> BaseDetector:
+    """
+    Detector de placas según el entorno (pesos, dispositivo GPU/CPU, hilos). Varias cámaras comparten
+    el mismo detector (infraestructura/detectors.py → PoolDetector): el modelo solo se carga una vez.
+    """
     from app.infraestructura.config import (
         DETECTOR_BACKEND,
         TORCH_THREADS,
-        MOTION_GATE_ENABLED,
-        MOTION_GATE_MAX_SKIP,
-        MOTION_GATE_MIN_FRACTION,
         PLATE_DETECTOR_ARCH,
-        ROI_CROP_INFERENCE,
         PLATE_MODEL_PATH,
-        PLATE_CONFIDENCE_THRESHOLD,
     )
     import torch
 
@@ -1500,8 +1498,20 @@ def create_detection_pipeline(detector: Optional[BaseDetector] = None) -> Detect
         )
 
     logger.info("Detector de placas listo (512 px) en device=%s", device)
+    return rtsp_det
+
+
+def pipeline_de_camara(detector: BaseDetector) -> DetectionPipeline:
+    """Pipeline de una cámara (seguimiento, compuerta y movimiento propios) sobre un detector compartido."""
+    from app.infraestructura.config import (
+        MOTION_GATE_ENABLED,
+        MOTION_GATE_MAX_SKIP,
+        MOTION_GATE_MIN_FRACTION,
+        ROI_CROP_INFERENCE,
+    )
+
     compuerta = CompuertaInferencia(activa=MOTION_GATE_ENABLED, umbral=MOTION_GATE_MIN_FRACTION, max_omitidos=MOTION_GATE_MAX_SKIP)
     logger.info("Compuerta de movimiento: %s (umbral %.3f, control cada %d cuadros)",
                 "activa" if compuerta.activa else "desactivada", compuerta.umbral, compuerta.max_omitidos)
     logger.info("Inferencia sobre el recorte de la región de interés: %s", "sí" if ROI_CROP_INFERENCE else "no")
-    return DetectionPipeline(detector=rtsp_det, compuerta=compuerta, recorte_roi=ROI_CROP_INFERENCE)
+    return DetectionPipeline(detector=detector, compuerta=compuerta, recorte_roi=ROI_CROP_INFERENCE)

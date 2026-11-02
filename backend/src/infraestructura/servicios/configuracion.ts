@@ -96,6 +96,18 @@ export const DEFINICIONES: Definicion[] = [
     ],
   },
   {
+    clave: 'salida_automatica_habilitada', tipo: 'booleano', grupo: 'Operación',
+    etiqueta: 'Registrar la salida automáticamente con la cámara de salida',
+    descripcion: 'Cuando una cámara con tipo de paso «Salida» confirma la placa de un vehículo que entró y sigue sin salida, se registra la hora de salida en ese ingreso, sin esperar al guardia. Si la lectura de la cámara se corrige o se elimina, el ingreso se reabre. Requiere al menos una cámara de salida.',
+    omision: 'false',
+  },
+  {
+    clave: 'salida_automatica_minimo_segundos', tipo: 'entero', grupo: 'Operación',
+    etiqueta: 'Tiempo mínimo entre el ingreso y la salida automática (segundos)',
+    descripcion: 'Un ingreso más reciente no se cierra: evita que la cámara de salida cierre el registro de un vehículo que acaba de entrar y que alcanza a ver al pasar.',
+    omision: '60', min: 0, max: 3600,
+  },
+  {
     clave: 'aviso_vencimiento_dias', tipo: 'entero', grupo: 'Operación',
     etiqueta: 'Aviso de autorizaciones por vencer (días)',
     descripcion: 'Las autorizaciones que vencen dentro de este plazo se destacan en el panel.',
@@ -225,6 +237,11 @@ export interface EvidenciaLectura {
   bordes_hallados?: number;
   lectura_ocr?: string | null;
   lectura_verificador?: string | null;
+}
+
+/** Salida automática por la cámara de salida (parámetros de la pantalla de configuración). */
+export function salidaAutomatica(): { activa: boolean; minimoSegundos: number } {
+  return { activa: config.booleano('salida_automatica_habilitada'), minimoSegundos: config.entero('salida_automatica_minimo_segundos') };
 }
 
 /** Política de autorización automática vigente (parámetros de la pantalla de configuración). */

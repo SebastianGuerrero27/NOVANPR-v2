@@ -1,7 +1,7 @@
 const query = jest.fn().mockResolvedValue({ recordset: [{}] });
 const request = { input: jest.fn().mockReturnThis(), query };
 jest.mock('../../infraestructura/db', () => ({ getDB: () => ({ request: () => request }) }));
-import { repositorioPanelSql } from '../../infraestructura/persistencia/panelSql';
+import { repositorioPanelSql, totalesHistoricos } from '../../infraestructura/persistencia/panelSql';
 import { REGISTRO_COMPLETO_SQL } from '../../infraestructura/persistencia/registroCompletoSql';
 import { repositorioDeteccionesSql } from '../../infraestructura/persistencia/deteccionesSql';
 import { leerFiltros } from '../../dominio/detecciones';
@@ -9,6 +9,7 @@ import { leerFiltros } from '../../dominio/detecciones';
 beforeEach(() => {
   query.mockReset().mockResolvedValue({ recordset: [{}] });
   request.input.mockClear();
+  totalesHistoricos.olvidar();
 });
 
 it('el balance de guardia reparte los ingresos de hoy (cualquier estado) entre entradas sin salida y salidas', async () => {
@@ -21,16 +22,31 @@ it('el balance de guardia reparte los ingresos de hoy (cualquier estado) entre e
   expect(sql).toContain('WHEN fecha_hora_ingreso >= @hoy AND fecha_hora_salida IS NOT NULL THEN 1 ELSE 0 END), 0) AS salidas');
   // «dentro» conserva el criterio de Monitoreo: autorizados sin salida, de cualquier día
   expect(sql).toContain("estado_validacion = 'autorizado' AND fecha_hora_salida IS NULL THEN 1 ELSE 0 END), 0) AS dentro");
-  expect(sql).toContain(`CASE WHEN ${REGISTRO_COMPLETO_SQL} THEN 1 ELSE 0 END`);
   expect(sql).toContain("COALESCE(tipo_movimiento, 'ingreso') = 'ingreso'");
   expect(sql.slice(sql.lastIndexOf('FROM DeteccionVehiculo d WHERE'))).not.toContain('fecha_hora_ingreso >= @hoy');
+  // El total del Registro de Salidas conserva la regla completa, en su consulta aparte (compartida 60 s)
+  const completos = query.mock.calls.map(([consulta]) => String(consulta)).find(consulta => consulta.includes('AS registros_completos'))!;
+  expect(completos).toContain(`CASE WHEN ${REGISTRO_COMPLETO_SQL} THEN 1 ELSE 0 END`);
+  expect(completos).toContain("COALESCE(tipo_movimiento, 'ingreso') = 'ingreso'");
+});
+
+it('los totales históricos se comparten entre recargas del panel; los conteos de hoy no', async () => {
+  const hoy = new Date('2026-10-22T05:00:00Z');
+  const parametros = { hoy, ayer: hoy, hace7: hoy, mismaHoraAyer: hoy, desfase: -300, diasAviso: 7 };
+  await repositorioPanelSql.operacion(parametros);
+  await repositorioPanelSql.operacion(parametros);
+  const veces = (texto: string) => query.mock.calls.filter(([consulta]) => String(consulta).includes(texto)).length;
+  expect(veces('AS registros_completos')).toBe(1);
+  expect(veces('AS registros_acceso')).toBe(1);
+  expect(veces('AS dentro')).toBe(2);
 });
 
 it('el total de accesos usa el mismo alcance histórico que el historial sin filtros y conserva el balance separado', async () => {
   const balance = { entradas: 2, salidas: 1, dentro: 4, registros_completos: 8 };
   query.mockImplementation(async (consulta: string) => ({ recordset: [
     consulta.includes('AS registros_acceso') ? { registros_acceso: 27 }
-      : consulta.includes('AS dentro') ? balance : { n: 27 },
+      : consulta.includes('AS registros_completos') ? { registros_completos: balance.registros_completos }
+      : consulta.includes('AS dentro') ? { entradas: 2, salidas: 1, dentro: 4 } : { n: 27 },
   ] }));
   const filtros = leerFiltros({ pagina: '2', tamano: '5' });
   if (!filtros.ok) throw new Error(filtros.error);

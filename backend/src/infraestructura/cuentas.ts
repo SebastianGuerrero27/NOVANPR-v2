@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import sql from './postgres';
 import { getDB } from './db';
 import type { PuertoAuditoriaCuentas, PuertoClaves, PuertoTokens } from '../aplicacion/usuarios';

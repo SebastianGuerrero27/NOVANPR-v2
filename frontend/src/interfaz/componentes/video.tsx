@@ -23,7 +23,7 @@ export const PERFILES: Record<PerfilVideo, { etiqueta: string; ancho: number; fp
 
 type Estado = 'conectando' | 'en_vivo' | 'pausado' | 'oculto' | 'reconectando' | 'error';
 
-export const VisorVideo: React.FC<{ perfil: PerfilVideo; pausado: boolean; claveReinicio?: number }> = ({ perfil, pausado, claveReinicio = 0 }) => {
+export const VisorVideo: React.FC<{ camaraId: number; motor?: number; perfil: PerfilVideo; pausado: boolean; claveReinicio?: unknown }> = ({ camaraId, motor = 0, perfil, pausado, claveReinicio = 0 }) => {
   const visible = usePaginaVisible();
   const canvas = useRef<HTMLCanvasElement>(null);
   const contenedor = useRef<HTMLDivElement>(null);
@@ -51,13 +51,13 @@ export const VisorVideo: React.FC<{ perfil: PerfilVideo; pausado: boolean; clave
 
     (async () => {
       try {
-        const { ticket } = (await api.post('/monitoreo/ticket', { alcance: 'stream' })).data;
+        const { ticket, url } = (await api.post('/monitoreo/ticket', { alcance: 'stream', camara_id: camaraId })).data;
         if (cerrado) return;
         const p = PERFILES[perfil];
-        const q = new URLSearchParams({ ticket, ancho: String(p.ancho), fps: String(p.fps), calidad: String(p.calidad) });
-        // El motor vive dentro de Docker y no expone su puerto al navegador. Nginx
-        // reenvía este WebSocket al servicio ANPR usando el mismo origen de la SPA.
-        const wsBase = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+        const q = new URLSearchParams({ ticket, camara_id: String(camaraId), ancho: String(p.ancho), fps: String(p.fps), calidad: String(p.calidad) });
+        // Nginx reenvía este WebSocket al primer motor usando el mismo origen de la SPA; los demás
+        // motores se abren por su URL pública.
+        const wsBase = motor === 0 ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}` : String(url).replace(/^http/, 'ws');
         ws = new WebSocket(`${wsBase}/ws/stream?${q}`);
         ws.binaryType = 'blob';
         ws.onopen = () => { if (!cerrado) { setEstado('en_vivo'); setError(null); } };
@@ -102,7 +102,7 @@ export const VisorVideo: React.FC<{ perfil: PerfilVideo; pausado: boolean; clave
       if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activo, perfil, intento, claveReinicio]);
+  }, [activo, perfil, intento, claveReinicio, camaraId, motor]);
 
   const pantallaCompleta = () => contenedor.current?.requestFullscreen?.().catch(() => undefined);
 

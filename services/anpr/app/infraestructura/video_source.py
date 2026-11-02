@@ -36,7 +36,6 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = OPCIONES_FFMPEG_RTSP
 # para cámaras 4K o H.265 que no alcancen el ritmo.
 HILOS_DECODIFICADOR_RTSP = max(1, int(os.getenv("RTSP_HILOS_DECODIFICADOR", "1")))
 
-from app.infraestructura.config import RTSP_URL
 from app.dominio.tasa_cuadros import TasaCuadros
 from app.infraestructura.logger import get_logger
 
@@ -151,7 +150,7 @@ class RTSPSource(VideoSource):
       reconexiones y antigüedad del último cuadro.
     """
 
-    def __init__(self, url: str = RTSP_URL, abrir_ms: int = 8000, leer_ms: int = 5000, estancamiento_s: float = 5.0,
+    def __init__(self, url: str = "", abrir_ms: int = 8000, leer_ms: int = 5000, estancamiento_s: float = 5.0,
                  abrir: Optional[Callable[[str, int, int], Any]] = None) -> None:
         self._url = url
         self._abrir_ms, self._leer_ms, self._estancamiento_s = abrir_ms, leer_ms, estancamiento_s
@@ -163,6 +162,8 @@ class RTSPSource(VideoSource):
         self._grab_thread: Optional[threading.Thread] = None
         self._new_frame_event = threading.Event()
         self._frame_seq = 0
+        #: Copia del último cuadro entregado: el consumidor pregunta más seguido de lo que llegan cuadros
+        self._entregado: tuple[int, Optional[np.ndarray]] = (-1, None)
         #: Último cuadro recibido (estado del enlace y cuadros por segundo)
         self._last_frame_time = 0.0
         #: Inicio de la conexión vigente (el vigilante cuenta desde aquí si aún no llegó un cuadro)
@@ -257,7 +258,9 @@ class RTSPSource(VideoSource):
                 return False, None
             # Hora en que el lector recibió este cuadro (base de la latencia de punta a punta)
             self.hora_entregada = self._last_frame_time
-            return True, self._latest_frame.copy()
+            if self._entregado[0] != self._frame_seq:
+                self._entregado = (self._frame_seq, self._latest_frame.copy())
+            return True, self._entregado[1]
 
     def release(self) -> None:
         self._grab_running = False
@@ -307,19 +310,3 @@ class RTSPSource(VideoSource):
         """Enmascara usuario:contraseña en la URL RTSP para logging seguro."""
         import re
         return re.sub(r"://([^:]+):([^@]+)@", r"://****:****@", url)
-
-
-# =============================================================================
-# Factory
-# =============================================================================
-
-
-def create_video_source() -> VideoSource:
-    """Fuente inicial del motor: RTSP_URL si está definida o, sin ella, una fuente vacía a la espera
-    de la cámara que asigne el backend."""
-    url = RTSP_URL or ""
-    if url:
-        logger.info("Fuente de video inicial: RTSP -> %s", RTSPSource._mask_credentials(url))
-    else:
-        logger.info("Sin fuente RTSP inicial: se espera la cámara que asigne el backend.")
-    return RTSPSource(url=url)

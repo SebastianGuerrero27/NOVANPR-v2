@@ -46,7 +46,7 @@ export const ETIQUETA_PERMISO: Record<Permiso, string> = {
   'avisos:padron': 'Notificaciones de vehículos agregados a la lista blanca',
   'alarmas:escalamiento': 'Alarmas no atendidas escaladas',
   'reportes:ver': 'Reportes por período y cámara',
-  'camaras:operar': 'Cambiar la cámara del motor y su región de interés',
+  'camaras:operar': 'Cambiar la región de interés y las zonas de exclusión de las cámaras',
   'camaras:gestionar': 'Alta y diagnóstico de cámaras',
   'usuarios:gestionar': 'Cuentas, roles y bloqueos del personal',
   'auditoria:ver': 'Consultar la auditoría',

@@ -1,0 +1,19 @@
+{
+ "ruta": "/api/detecciones/registros.pdf",
+ "resultados": [
+  {
+   "ms": 31414,
+   "estado": 0,
+   "MB": 0,
+   "error": "UND_ERR_SOCKET"
+  }
+ ],
+ "health": {
+  "n": 38,
+  "errores": 1,
+  "p50": 106.4,
+  "p95": 833.3,
+  "p99": 1769.3,
+  "max": 1769.3
+ }
+}

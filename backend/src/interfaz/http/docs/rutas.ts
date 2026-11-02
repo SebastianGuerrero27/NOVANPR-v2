@@ -715,22 +715,18 @@ export const RUTAS: RutaDoc[] = [
   // ─── Monitoreo ──────────────────────────────────────────────────────────────
   {
     metodo: 'get', ruta: '/api/monitoreo/estado', etiqueta: 'Monitoreo', acceso: 'operacion:monitorear',
-    resumen: 'Estado del motor ANPR y cámara que procesa',
-    descripcion: 'La cámara activa se informa solo si el motor procesa la ruta de una cámara registrada; si procesa otra fuente, `fuente_externa` es true.',
-  },
-  {
-    metodo: 'post', ruta: '/api/monitoreo/camara-activa', etiqueta: 'Monitoreo', acceso: 'camaras:operar',
-    resumen: 'Cambia la cámara que procesa el motor ANPR',
-    descripcion: 'El cambio queda en la auditoría y se difunde en tiempo real (`monitoreo:camara`).',
-    cuerpo: { camara_id: { tipo: 'integer', requerido: true, descripcion: 'Cámara habilitada (entero positivo)', ejemplo: 1 } },
-    respuestas: { 400: 'Cámara no seleccionada o inválida', 404: 'Cámara no encontrada', 409: 'Cámara deshabilitada', 502: 'El servicio ANPR no respondió' },
+    resumen: 'Estado de los motores ANPR y de cada cámara en análisis',
+    descripcion: '`camaras`: cámaras en análisis con su motor, señal, cuadros por segundo y latencia. `sin_capacidad`: las que no caben en los motores en línea.',
   },
   {
     metodo: 'post', ruta: '/api/monitoreo/ticket', etiqueta: 'Monitoreo', acceso: 'operacion:monitorear',
     resumen: 'Credencial de 60 s para el video en vivo',
-    descripcion: 'Ticket para el video WebRTC de las cámaras registradas y el WebSocket de pistas del motor.',
-    cuerpo: { alcance: { tipo: 'string', valores: ['stream'], descripcion: 'Por omisión `stream`' } },
-    respuestas: { 400: 'Alcance inválido' },
+    descripcion: 'Ticket para el video WebRTC de las cámaras registradas y el WebSocket de pistas del motor que atiende la cámara.',
+    cuerpo: {
+      alcance: { tipo: 'string', valores: ['stream'], descripcion: 'Por omisión `stream`' },
+      camara_id: { tipo: 'integer', descripcion: 'Cámara que se va a ver: `url` es la del motor que la atiende', ejemplo: 1 },
+    },
+    respuestas: { 400: 'Alcance o cámara inválidos' },
   },
 
   // ─── Reportes ───────────────────────────────────────────────────────────────

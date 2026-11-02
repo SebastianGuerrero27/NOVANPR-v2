@@ -1,0 +1,18 @@
+{
+ "ruta": "/api/detecciones/exportar",
+ "resultados": [
+  {
+   "ms": 33078,
+   "estado": 200,
+   "MB": 253.1
+  }
+ ],
+ "health": {
+  "n": 279,
+  "errores": 0,
+  "p50": 14,
+  "p95": 23.5,
+  "p99": 29.6,
+  "max": 54.6
+ }
+}

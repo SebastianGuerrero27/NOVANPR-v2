@@ -30,7 +30,7 @@ const PERFILES: Record<Perfil, { etiqueta: string; puerto: number; ruta: string;
     ayuda: 'subtype=0 es el flujo principal; subtype=1 el secundario. Las credenciales son opcionales si la cámara acepta RTSP anónimo.',
   },
   generica: {
-    etiqueta: 'Cámara IP genérica (ONVIF / RTSP)', puerto: 554, ruta: '/', credenciales: 'opcional',
+    etiqueta: 'Cámara IP genérica (RTSP)', puerto: 554, ruta: '/', credenciales: 'opcional',
     ayuda: 'Consulte la ruta RTSP en el manual del fabricante (p. ej. /live, /stream1, /h264).',
   },
   manual: { etiqueta: 'Escribir la URL completa (avanzado)', puerto: 554, ruta: '/', credenciales: 'opcional', ayuda: '' },
@@ -170,6 +170,7 @@ export const FormularioCamara: React.FC<{ camara?: Camara; onCerrar: () => void;
   const [nombre, setNombre] = useState(camara?.nombre ?? '');
   const [ubicacion, setUbicacion] = useState(camara?.ubicacion ?? '');
   const [direccion, setDireccion] = useState<Camara['direccion']>(camara?.direccion ?? 'ingreso');
+  const [analisis, setAnalisis] = useState(camara?.analisis_anpr ?? true);
   const [perfil, setPerfil] = useState<Perfil>(previa ? (vistaPropia ? 'manual' : detectarPerfil(previa.ruta)) : 'hikvision');
   const [host, setHost] = useState(previa?.host ?? '');
   const [puerto, setPuerto] = useState(String(previa?.puerto ?? PERFILES.hikvision.puerto));
@@ -271,7 +272,7 @@ export const FormularioCamara: React.FC<{ camara?: Camara; onCerrar: () => void;
   const guardar = async () => {
     setEnviando(true);
     setError(null);
-    const cuerpo = { nombre, ubicacion, direccion, rtsp_url: url, rtsp_url_vista: urlVista || null, ip: perfil === 'manual' ? '' : host.trim() };
+    const cuerpo = { nombre, ubicacion, direccion, analisis_anpr: analisis, rtsp_url: url, rtsp_url_vista: urlVista || null, ip: perfil === 'manual' ? '' : host.trim() };
     try {
       const r = camara ? await api.put(`/camaras/${camara.id}`, cuerpo) : await api.post('/camaras', cuerpo);
       onGuardada(r.data.camera);
@@ -300,7 +301,15 @@ export const FormularioCamara: React.FC<{ camara?: Camara; onCerrar: () => void;
             <option value="ingreso">Ingreso</option>
             <option value="salida">Salida</option>
           </select>
-          <span className="ayuda">Las salidas se registran como eventos independientes y no se bloquean por permisos de ingreso.</span>
+          <span className="ayuda">Las salidas no se bloquean por permisos de ingreso. Pueden cerrar solas el ingreso del vehículo: se activa en Configuración › Operación.</span>
+        </div>
+        <div className="campo">
+          <span className="etiqueta-campo">Detección de placas</span>
+          <label className="fila" style={{ gap: 8, cursor: 'pointer', flexWrap: 'nowrap', marginTop: 6 }}>
+            <input type="checkbox" checked={analisis} onChange={e => setAnalisis(e.target.checked)} />
+            <span>Analizar esta cámara con el motor ANPR</span>
+          </label>
+          <span className="ayuda">Sin marcar, la cámara solo muestra su video: no registra pasos ni consume el procesador del motor.</span>
         </div>
 
         <div className="campo completo"><label htmlFor="c-perfil">Tipo de equipo</label>
