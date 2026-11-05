@@ -1,0 +1,10 @@
+{
+  "fecha": "2026-11-04",
+  "api": "API interceptada, sin borrados de datos operativos",
+  "pruebas": [
+    "Guardia dispone de papelera en Acciones; confirma una sola fila con motivo y se refresca sin Socket.IO",
+    "Gestión de Accesos no ofrece borrado masivo al guardia",
+    "Historial del guardia permite eliminación individual, conserva la otra fila y no habilita edición administrativa ni Eliminar todos"
+  ],
+  "errores": []
+}

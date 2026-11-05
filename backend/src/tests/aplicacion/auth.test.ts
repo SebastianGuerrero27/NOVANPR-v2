@@ -394,7 +394,7 @@ describe('Casos de uso · autenticación', () => {
       });
       expect(await casos.sesionActual(4)).toEqual({
         id: 4, email: 'gestor@ecu911.gob.ec', username: 'gestor@ecu911.gob.ec', nombre: 'Gabriela Gestora', cargo: 'Gestión de accesos',
-        rol: 'GestorPermisos', rol_nombre: 'Gestor de permisos', permisos: ['listas:ver', 'padron:gestionar', 'solicitudes:resolver'],
+        rol: 'GestorPermisos', rol_nombre: 'Gestor de permisos', permisos: ['listas:ver', 'padron:agregar', 'padron:gestionar', 'solicitudes:resolver'],
         fecha_ultimo_acceso: null, fecha_creacion: creada,
       });
     });

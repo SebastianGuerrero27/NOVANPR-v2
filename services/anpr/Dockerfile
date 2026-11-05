@@ -3,7 +3,7 @@ FROM python:3.12.15-slim-trixie
 
 # Bibliotecas del sistema: OpenCV (libGL, glib), OpenMP (PyTorch) y FFmpeg (ffprobe para el
 # diagnóstico de flujos de cámara)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libgl1 \
     libgomp1 \
@@ -26,6 +26,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # predicción), ni comprobación de versiones, ni descargas; los pesos van en la imagen (models/, *.pt)
 ENV YOLO_OFFLINE=true \
     YOLO_CONFIG_DIR=/tmp/Ultralytics
+
+# Modelos que las bibliotecas descargan (OCR, verificador, atributos) dentro de la imagen, fuera de /app
+# y de /root: el motor funciona sin Internet y sin depender de un volumen. Va antes de copiar el código
+# para no repetir la descarga con cada cambio
+ENV HOME=/opt/anpr
+COPY scripts/preparar_modelos.py app/infraestructura/config.py /tmp/modelos/
+RUN mkdir -p "$HOME" && python /tmp/modelos/preparar_modelos.py && rm -rf /tmp/modelos
+ENV HF_HUB_OFFLINE=1
 
 COPY . .
 

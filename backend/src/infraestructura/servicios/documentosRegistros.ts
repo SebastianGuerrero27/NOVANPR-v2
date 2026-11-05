@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import type { Fila, InfoReporteSalidas } from '../../aplicacion/detecciones';
 import { placaHoja } from '../../dominio/controlVehicular';
 import { datosReporteSalida } from '../../dominio/registroCompleto';
+import { esSinPlaca, ETIQUETA_ESTADO } from '../../dominio/detecciones';
 import { config } from './configuracion';
 import { leerLogo } from './documentosControl';
 
@@ -31,6 +32,21 @@ export const COLUMNAS_SALIDAS: readonly { titulo: string; ancho: number; centrad
   { titulo: 'Modelo', ancho: 70 },
 ];
 
+/** La fecha identifica también si la fila es ingreso o salida independiente. */
+export const COLUMNAS_HISTORIAL: typeof COLUMNAS_SALIDAS = [
+  { titulo: 'N.º', ancho: 22, centrado: true },
+  { titulo: 'Placa', ancho: 54, centrado: true },
+  { titulo: 'Titular', ancho: 94 },
+  { titulo: 'Cédula', ancho: 60, centrado: true },
+  { titulo: 'Fecha / movimiento', ancho: 64, centrado: true },
+  { titulo: 'Hora de entrada', ancho: 42, centrado: true },
+  { titulo: 'Hora de salida', ancho: 50, centrado: true },
+  { titulo: 'Vehículo', ancho: 90 },
+  { titulo: 'Motivo', ancho: 0 },
+  { titulo: 'Estado', ancho: 70 },
+  { titulo: 'Cámara / origen', ancho: 75 },
+];
+
 const formatos = (zona: string) => {
   const dia = new Intl.DateTimeFormat('es-EC', { timeZone: zona, day: '2-digit', month: '2-digit', year: 'numeric' });
   const hora = new Intl.DateTimeFormat('es-EC', { timeZone: zona, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -52,6 +68,24 @@ export function celdasSalidas(filas: Fila[], zona: string): string[][] {
   });
 }
 
+/** No omite fichas incompletas ni presenta una salida independiente como si fuera un ingreso. */
+export function celdasHistorial(filas: Fila[], zona: string): string[][] {
+  const { fecha, hora } = formatos(zona);
+  return filas.map((d, i) => {
+    const r = datosReporteSalida(d);
+    const esSalida = d.tipo_movimiento === 'salida';
+    const instanteValido = (v: unknown) => v !== null && v !== undefined && Number.isFinite(new Date(v as string).getTime());
+    const fechaPaso = instanteValido(d.fecha_hora_ingreso) ? fecha(d.fecha_hora_ingreso) : '—';
+    const salida = esSalida ? d.fecha_hora_ingreso : d.fecha_hora_salida;
+    const salidaTexto = instanteValido(salida) ? (fecha(salida) === fechaPaso ? hora(salida) : `${fecha(salida)} ${hora(salida)}`) : '—';
+    const estado = ETIQUETA_ESTADO[d.estado_validacion as keyof typeof ETIQUETA_ESTADO] ?? d.estado_validacion ?? '—';
+    return [String(i + 1), r.placa ? placaHoja(r.placa) : esSinPlaca(d) ? 'Sin placa' : 'Sin lectura', r.nombre ?? '—', r.cedula ?? '—',
+      `${fechaPaso}\n${esSalida ? 'Salida' : 'Ingreso'}`, !esSalida && instanteValido(d.fecha_hora_ingreso) ? hora(d.fecha_hora_ingreso) : '—', salidaTexto,
+      [r.tipo, r.marca, r.modelo].filter(Boolean).join(' · ') || '—', r.motivo ?? '—', estado,
+      d.camara_nombre || (d.fuente === 'manual' ? 'Registro manual' : '—')];
+  });
+}
+
 /** Período de la consulta en palabras. */
 export function describirPeriodo(info: Pick<InfoReporteSalidas, 'desde' | 'hasta' | 'zona'>): string {
   const { fecha } = formatos(info.zona);
@@ -66,10 +100,23 @@ export function describirPeriodo(info: Pick<InfoReporteSalidas, 'desde' | 'hasta
 }
 
 export function pdfRegistros(filas: Fila[], info: InfoReporteSalidas): Promise<Buffer> {
+  return crearPdfRegistros(filas, info, { titulo: 'Registro de salidas', columnas: COLUMNAS_SALIDAS, celdas: celdasSalidas,
+    cantidad: 'Registros con salida', vacio: 'Sin registros con salida para los filtros seleccionados.' });
+}
+
+export function pdfHistorial(filas: Fila[], info: InfoReporteSalidas): Promise<Buffer> {
+  return crearPdfRegistros(filas, info, { titulo: 'Reporte de movimientos vehiculares', columnas: COLUMNAS_HISTORIAL, celdas: celdasHistorial,
+    cantidad: 'Registros', vacio: 'Sin registros para los filtros seleccionados.' });
+}
+
+function crearPdfRegistros(filas: Fila[], info: InfoReporteSalidas, formato: {
+  titulo: string; columnas: typeof COLUMNAS_SALIDAS; celdas: (filas: Fila[], zona: string) => string[][]; cantidad: string; vacio: string;
+}): Promise<Buffer> {
+  const { columnas, titulo } = formato;
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4', layout: 'landscape', margin: MARGEN, bufferPages: true,
-      info: { Title: 'Registro de salidas', Author: 'Sistema ANPR ECU 911', Subject: describirPeriodo(info) },
+      info: { Title: titulo, Author: 'Sistema ANPR ECU 911', Subject: describirPeriodo(info) },
     });
     const partes: Buffer[] = [];
     doc.on('data', (c: Buffer) => partes.push(c));
@@ -79,8 +126,8 @@ export function pdfRegistros(filas: Fila[], info: InfoReporteSalidas): Promise<B
     const { fecha, hora } = formatos(info.zona);
     const generado = `${fecha(info.generado)} ${hora(info.generado)}`;
     const ancho = doc.page.width - 2 * MARGEN;
-    const fijos = COLUMNAS_SALIDAS.reduce((s, c) => s + c.ancho, 0);
-    const anchos = COLUMNAS_SALIDAS.map(c => c.ancho || ancho - fijos);
+    const fijos = columnas.reduce((s, c) => s + c.ancho, 0);
+    const anchos = columnas.map(c => c.ancho || ancho - fijos);
     const limite = () => doc.page.height - MARGEN - 18;
 
     // Encabezado: logo e institución, título y unidad (como los informes de Reportes)
@@ -89,7 +136,7 @@ export function pdfRegistros(filas: Fila[], info: InfoReporteSalidas): Promise<B
     if (imagen) doc.image(imagen, MARGEN, MARGEN, { fit: [52, 52] });
     doc.font('Helvetica').fontSize(8).fillColor(GRIS)
       .text('SERVICIO INTEGRADO DE SEGURIDAD ECU 911 · CONTROL DE ACCESO VEHICULAR', xTexto, MARGEN + 4, { characterSpacing: 0.6 });
-    doc.font('Helvetica-Bold').fontSize(17).fillColor(TINTA).text('Registro de salidas', xTexto, doc.y + 3);
+    doc.font('Helvetica-Bold').fontSize(17).fillColor(TINTA).text(titulo, xTexto, doc.y + 3);
     doc.font('Helvetica').fontSize(9).fillColor(GRIS).text(config.texto('unidad_institucional'), xTexto, doc.y + 1);
     let y = MARGEN + 62;
     doc.lineWidth(1).strokeColor(TINTA).moveTo(MARGEN, y).lineTo(MARGEN + ancho, y).stroke();
@@ -97,17 +144,24 @@ export function pdfRegistros(filas: Fila[], info: InfoReporteSalidas): Promise<B
     // Datos de la consulta
     y += 8;
     const datos: [string, string][] = [
-      ['Período', describirPeriodo(info)], ['Registros con salida', String(filas.length)],
+      ['Período', describirPeriodo(info)], [formato.cantidad, String(filas.length)],
       ...(info.buscar ? [['Búsqueda', `«${info.buscar}»`] as [string, string]] : []),
       ['Generado', `${generado} · ${info.elaboradoPor}`],
     ];
     const anchoDato = ancho / datos.length;
+    let altoDatos = 34;
     datos.forEach(([etiqueta, valor], i) => {
       const x = MARGEN + i * anchoDato;
       doc.font('Helvetica').fontSize(7).fillColor(GRIS).text(etiqueta.toUpperCase(), x, y, { width: anchoDato - 10, characterSpacing: 0.4 });
       doc.font('Helvetica-Bold').fontSize(9.5).fillColor(TINTA).text(valor, x, y + 10, { width: anchoDato - 10 });
+      altoDatos = Math.max(altoDatos, doc.heightOfString(valor, { width: anchoDato - 10 }) + 18);
     });
-    y += 34;
+    y += altoDatos;
+    if (info.filtros?.length) {
+      const texto = info.filtros.map(([etiqueta, valor]) => `${etiqueta}: ${valor}`).join(' · ');
+      doc.font('Helvetica').fontSize(8).fillColor(GRIS).text(texto, MARGEN, y, { width: ancho });
+      y = doc.y + 10;
+    }
 
     let par = false;
     const fila = (celdas: string[], titulo: boolean) => {
@@ -116,7 +170,7 @@ export function pdfRegistros(filas: Fila[], info: InfoReporteSalidas): Promise<B
       if (y + alto > limite()) {
         doc.addPage();
         y = MARGEN;
-        if (!titulo) fila(COLUMNAS_SALIDAS.map(c => c.titulo), true);
+        if (!titulo) fila(columnas.map(c => c.titulo), true);
         doc.font(titulo ? 'Helvetica-Bold' : 'Helvetica').fontSize(titulo ? 7.5 : 7.8);
       }
       let x = MARGEN;
@@ -126,7 +180,7 @@ export function pdfRegistros(filas: Fila[], info: InfoReporteSalidas): Promise<B
         doc.lineWidth(0.5).rect(x, y, anchos[i], alto).strokeColor(BORDE).stroke();
         const desplazamiento = titulo ? Math.max(4, (alto - doc.heightOfString(v, { width: anchos[i] - 8 })) / 2) : 4;
         doc.fillColor(TINTA).text(v || '', x + 4, y + desplazamiento, {
-          width: anchos[i] - 8, align: titulo || COLUMNAS_SALIDAS[i].centrado ? 'center' : 'left',
+          width: anchos[i] - 8, align: titulo || columnas[i].centrado ? 'center' : 'left',
         });
         x += anchos[i];
       });
@@ -134,14 +188,14 @@ export function pdfRegistros(filas: Fila[], info: InfoReporteSalidas): Promise<B
       if (!titulo) par = !par;
     };
 
-    fila(COLUMNAS_SALIDAS.map(c => c.titulo), true);
+    fila(columnas.map(c => c.titulo), true);
     if (filas.length === 0) {
       doc.lineWidth(0.5).rect(MARGEN, y, ancho, 24).strokeColor(BORDE).stroke();
       doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(GRIS)
-        .text('Sin registros con salida para los filtros seleccionados.', MARGEN, y + 8, { width: ancho, align: 'center' });
+        .text(formato.vacio, MARGEN, y + 8, { width: ancho, align: 'center' });
       y += 24;
     }
-    for (const celdas of celdasSalidas(filas, info.zona)) fila(celdas, false);
+    for (const celdas of formato.celdas(filas, info.zona)) fila(celdas, false);
 
     // Firmas de quien elabora y quien revisa
     if (y + 70 > limite()) { doc.addPage(); y = MARGEN; }
@@ -160,7 +214,7 @@ export function pdfRegistros(filas: Fila[], info: InfoReporteSalidas): Promise<B
       const margenInferior = doc.page.margins.bottom;
       doc.page.margins.bottom = 0;
       doc.font('Helvetica').fontSize(7.5).fillColor('#64748b')
-        .text(`Registro de salidas · Sistema ANPR ECU 911 · ${generado} · Página ${i + 1} de ${paginas.count}`,
+        .text(`${titulo} · Sistema ANPR ECU 911 · ${generado} · Página ${i + 1} de ${paginas.count}`,
           MARGEN, doc.page.height - MARGEN - 8, { width: ancho, align: 'center', lineBreak: false });
       doc.page.margins.bottom = margenInferior;
     }

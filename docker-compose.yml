@@ -1,5 +1,14 @@
+# Registros de cada contenedor con tope: sin él crecen hasta llenar el disco
+x-registros: &registros
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   db:
+    <<: *registros
     image: postgres:17-alpine
     container_name: anpr-db
     environment:
@@ -25,7 +34,8 @@ services:
           memory: 768m
 
   mediamtx:
-    image: bluenviron/mediamtx:1.21.2
+    <<: *registros
+    image: bluenviron/mediamtx:1.21.3
     container_name: anpr-mediamtx
     environment:
       # IP del equipo (host) que el navegador usa para WebRTC; agregar la IP de la LAN para
@@ -50,6 +60,7 @@ services:
           memory: 512m
 
   backend:
+    <<: *registros
     build: ./backend
     container_name: anpr-backend
     ports:
@@ -73,9 +84,6 @@ services:
       # Proxy inverso delante del backend: número de saltos (p. ej. 1). Vacío = conexión directa
       - TRUST_PROXY=${TRUST_PROXY:-}
       - LIMITE_API_POR_MINUTO=${LIMITE_API_POR_MINUTO:-600}
-      - ECUADORAPI_KEY=${ECUADORAPI_KEY:-}
-      - CONSULTA_PERSONA_PROVEEDOR=${CONSULTA_PERSONA_PROVEEDOR:-ecuadorapi}
-      - SOCKET_STUDIO_TOKEN=${SOCKET_STUDIO_TOKEN:-}
       - LIMITE_ACCESO_POR_15_MIN=${LIMITE_ACCESO_POR_15_MIN:-20}
       - ANPR_SERVICE_TOKEN=${ANPR_SERVICE_TOKEN:?Defina ANPR_SERVICE_TOKEN en .env}
       - SMTP_HOST=${SMTP_HOST:-}
@@ -87,7 +95,7 @@ services:
       - REGISTRO_VERIFICACION_EMAIL_HABILITADA=${REGISTRO_VERIFICACION_EMAIL_HABILITADA:-false}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - MEDIA_DIR=/app/media
-      - ANPR_SERVICE_URL=http://anpr:8000
+      - ANPR_SERVICE_URL=${ANPR_SERVICE_URL:-http://anpr:8000}
       - ANPR_PUBLIC_URL=${ANPR_PUBLIC_URL:-http://localhost:8000}
       - MEDIAMTX_API_URL=http://mediamtx:9997
       - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
@@ -121,6 +129,7 @@ services:
           memory: 768m
 
   frontend:
+    <<: *registros
     build: ./frontend
     container_name: anpr-frontend
     ports:
@@ -147,6 +156,7 @@ services:
           memory: 768m
 
   anpr:
+    <<: *registros
     build: ./services/anpr
     container_name: anpr-service
     ports:
@@ -158,8 +168,9 @@ services:
       # Revalidación de caracteres con el segundo OCR; no dibuja overlays en el flujo de video.
       - OCR_VERIFIER_ENABLED=true
       - MEDIA_DIR=/app/media
-      # Sin fuente inicial: el backend asigna la cámara registrada (su ruta en MediaMTX) al arrancar
-      - RTSP_URL=
+      # Sin fuentes propias: el backend le asigna las cámaras registradas (sus rutas en MediaMTX)
+      - ANPR_MAX_CAMARAS=${ANPR_MAX_CAMARAS:-4}
+      - ANPR_DETECTORES=${ANPR_DETECTORES:-1}
       # Hilos del decodificador de video: 1 = sin cuadros retenidos (ver video_source.py)
       - RTSP_HILOS_DECODIFICADOR=${RTSP_HILOS_DECODIFICADOR:-1}
       - RUNNING_IN_DOCKER=true
@@ -169,8 +180,6 @@ services:
     volumes:
       - ./services/anpr:/app
       - ./services/anpr/media:/app/media
-      # Caché de pesos descargados (CLIP, PP-OCRv6, fast-plate-ocr): evita volver a bajarlos al recrear
-      - anpr_model_cache:/root/.cache
     depends_on:
       mediamtx:
         condition: service_started
@@ -193,5 +202,4 @@ services:
           memory: 6g
 
 volumes:
-  anpr_model_cache:
   db_data:

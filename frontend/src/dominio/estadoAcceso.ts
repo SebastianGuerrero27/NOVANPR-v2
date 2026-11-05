@@ -30,13 +30,12 @@ export const ESTADOS_ACCESO: Record<EstadoAcceso, { clase: string; etiqueta: str
   registrado: { clase: '', etiqueta: 'Registrado' },
 };
 
-/** Mismos datos obligatorios que la hoja de registros; la salida todavía no es un faltante. */
+/** La placa es opcional; los demás datos de la hoja siguen siendo obligatorios. */
 export function faltantesSalida(d: Partial<Deteccion>): string[] {
-  if (d.datos_faltantes_registro) return d.datos_faltantes_registro.filter(c => c !== 'Salida');
+  if (d.datos_faltantes_registro) return d.datos_faltantes_registro.filter(c => c !== 'Salida' && c !== 'Placa');
   const presentes = (...v: unknown[]) => v.some(x => typeof x === 'string' && !['', '-', '—', 'desconocido', 'sin clasificar', 'sin identificar', 'unknown', 'n/a', 'sin placa'].includes(x.trim().toLowerCase()));
   const faltantes: string[] = [];
   if (!presentes(d.persona_ingreso, d.autorizado?.propietario)) faltantes.push('Nombre');
-  if (!presentes(d.placa_validada, d.placa_reconocida, d.placa)) faltantes.push('Placa');
   if (!presentes(d.tipo_vehiculo, d.vehiculo?.tipo)) faltantes.push('Tipo de vehículo');
   if (!presentes(d.vehiculo?.marca)) faltantes.push('Marca');
   if (!presentes(d.motivo_ingreso)) faltantes.push('Motivo');
@@ -45,3 +44,7 @@ export function faltantesSalida(d: Partial<Deteccion>): string[] {
 }
 export const puedeRegistrarSalida = (d: Partial<Deteccion>) =>
   d.tipo_movimiento !== 'salida' && !d.fecha_hora_salida && faltantesSalida(d).length === 0;
+
+/** La API verifica los datos obligatorios y que la salida sea posterior al ingreso. */
+export const esRegistroDeSalidas = (d: Partial<Deteccion>) =>
+  d.tipo_movimiento !== 'salida' && d.registro_completo === true;

@@ -65,7 +65,7 @@ describe('API · integración', () => {
    */
   const PERMITIDO = -1;
   const MATRIZ: [string, string, object, Record<Rol, number>][] = [
-    ['post', '/api/vehiculos-autorizados', {}, { Admin: 400, GestorPermisos: 400, Guardia: 403 }],
+    ['post', '/api/vehiculos-autorizados', {}, { Admin: 400, GestorPermisos: 400, Guardia: 400 }],
     ['post', '/api/blacklist', {}, { Admin: 400, GestorPermisos: 403, Guardia: 400 }],
     ['put', '/api/blacklist/1', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
     // Sin motivo: el retiro ya no lo exige, así que llega a la base (simulada)
@@ -76,8 +76,9 @@ describe('API · integración', () => {
     ['post', '/api/solicitudes-acceso/5/aprobar', { version: 1 }, { Admin: 404, GestorPermisos: 404, Guardia: 403 }],
     ['get', '/api/panel/accesos', {}, { Admin: 200, GestorPermisos: 200, Guardia: 403 }],
     ['get', '/api/usuarios', {}, { Admin: 200, GestorPermisos: 403, Guardia: 403 }],
-    ['delete', '/api/detecciones/1', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
-    ['get', '/api/reportes?desde=2026-10-02&hasta=2026-10-01', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
+    ['delete', '/api/detecciones/1', {}, { Admin: 400, GestorPermisos: 403, Guardia: 400 }],
+    ['delete', '/api/detecciones', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
+    ['get', '/api/reportes/control-vehicular?desde=2026-10-02&hasta=2026-10-01', {}, { Admin: 400, GestorPermisos: 403, Guardia: 403 }],
     ['get', '/api/auditoria', {}, { Admin: PERMITIDO, GestorPermisos: 403, Guardia: 403 }],
     // El gestor de permisos no accede al monitoreo ni por la API (detecciones, video en vivo, inicio)
     ['get', '/api/detecciones', {}, { Admin: PERMITIDO, GestorPermisos: 403, Guardia: PERMITIDO }],

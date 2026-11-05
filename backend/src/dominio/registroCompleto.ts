@@ -1,4 +1,4 @@
-/** Campos de la hoja de registros; no exige atributos opcionales como modelo o color. */
+/** Campos de la hoja de registros; la matrícula ilegible puede ser null, igual que modelo o color. */
 export const DATOS_AUSENTES_REGISTRO = ['', '-', '—', 'desconocido', 'sin clasificar', 'sin identificar', 'unknown', 'n/a', 'sin placa'] as const;
 export function datoRegistro(...valores: unknown[]): string | null {
   for (const valor of valores) {
@@ -31,8 +31,8 @@ export function datosReporteSalida(d: Record<string, any>) {
 }
 export function faltantesIngreso(d: Record<string, any>): string[] {
   const campos = datosRegistro(d);
-  const etiquetas = { nombre: 'Nombre', placa: 'Placa', tipo: 'Tipo de vehículo', marca: 'Marca', motivo: 'Motivo' };
-  const faltantes = (Object.keys(campos) as (keyof typeof campos)[]).filter(k => !campos[k]).map(k => etiquetas[k]);
+  const etiquetas = { nombre: 'Nombre', tipo: 'Tipo de vehículo', marca: 'Marca', motivo: 'Motivo' };
+  const faltantes = (Object.keys(etiquetas) as (keyof typeof etiquetas)[]).filter(k => !campos[k]).map(k => etiquetas[k]);
   const ingreso = d.fecha_hora_ingreso ? new Date(d.fecha_hora_ingreso).getTime() : NaN;
   if (!Number.isFinite(ingreso)) faltantes.push('Fecha de ingreso');
   return faltantes;

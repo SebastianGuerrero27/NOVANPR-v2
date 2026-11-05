@@ -54,3 +54,15 @@ def test_no_se_selecciona_una_captura_bajo_el_23_por_ciento():
     assert selector.evaluate_and_select(2, frame, caja, 0.23, 2) is None
     assert len(selector._active_candidates[2]) == 1
     assert selector.evaluate_and_select(2, frame, caja, 0.23, 3) is not None
+
+
+def test_un_cuadro_rescatado_solo_se_suma_a_los_candidatos():
+    """Los cuadros que el detector no analizó (caja medida por el flujo) no disparan la captura: la
+    decide el cuadro analizado con todos los candidatos, y al salir el track entran a la ráfaga."""
+    selector = BestFrameSelector()
+    caja = [230, 150, 410, 210]
+    for i in range(4):
+        assert selector.evaluate_and_select(1, cuadro_con_placa(caja), caja, 0.9, i, solo_acumular=True) is None
+    assert len(selector._active_candidates[1]) == 4
+    fotos = selector.cleanup_stale_tracks(set())
+    assert len(fotos) == 3 and {f.frame_idx for f in fotos} <= {0, 1, 2, 3}

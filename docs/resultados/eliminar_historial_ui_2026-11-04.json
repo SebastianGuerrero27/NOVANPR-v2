@@ -1,0 +1,10 @@
+{
+  "fecha": "2026-11-04",
+  "api": "Interceptada; sin borrado de datos reales",
+  "pruebas": [
+    "Abrir y cancelar la confirmación no elimina nada; palabra y motivo obligatorios",
+    "Confirmación envía borrado global sin heredar placa/fechas y refresca la tabla",
+    "Guardia no dispone de eliminación global"
+  ],
+  "errores": []
+}

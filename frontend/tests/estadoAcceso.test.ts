@@ -3,7 +3,7 @@
  * alertas de lista negra y los pasos sin lectura de placa; todo lo que entra al registro, blanco.
  */
 import { describe, expect, it } from 'vitest';
-import { estadoAcceso, puedeRegistrarSalida } from '../src/dominio/estadoAcceso';
+import { estadoAcceso, faltantesSalida, puedeRegistrarSalida } from '../src/dominio/estadoAcceso';
 import type { Deteccion } from '../src/dominio/tipos';
 
 const paso = (c: Partial<Deteccion> = {}) => ({
@@ -51,5 +51,15 @@ describe('Estado del acceso para el color de la fila', () => {
     expect(puedeRegistrarSalida(paso())).toBe(true);
     expect(puedeRegistrarSalida(paso({ fecha_hora_salida: '2026-10-22T15:30:00Z' }))).toBe(false);
     expect(puedeRegistrarSalida(paso({ tipo_movimiento: 'salida' }))).toBe(false);
+  });
+
+  it('permite cerrar sin placa legible sin omitir los demás datos obligatorios', () => {
+    const sinPlaca = paso({ placa: null, placa_reconocida: null, placa_validada: null });
+    expect(faltantesSalida(sinPlaca)).toEqual([]);
+    expect(puedeRegistrarSalida(sinPlaca)).toBe(true);
+    expect(puedeRegistrarSalida({ ...sinPlaca, motivo_ingreso: null })).toBe(false);
+    // Una respuesta anterior del servidor tampoco exige inventar una matrícula.
+    expect(puedeRegistrarSalida({ ...sinPlaca, datos_faltantes_registro: ['Placa', 'Salida'] })).toBe(true);
+    expect(puedeRegistrarSalida({ ...sinPlaca, datos_faltantes_registro: ['Marca', 'Salida'] })).toBe(false);
   });
 });

@@ -11,6 +11,11 @@ const paso = (c: Record<string, unknown> = {}) => ({
 });
 
 describe('Reporte de Registro de Salidas', () => {
+  it('representa una matrícula null como S/P conservando la hora de salida', () => {
+    const [fila] = celdasSalidas([paso({ placa_validada: null, placa_reconocida: null })], ZONA);
+    expect(fila[3]).toBe('S/P');
+    expect(fila[7]).toBe('17:30');
+  });
   it('columnas: Cédula, Titular, Placa, Motivo, Fecha, horas de entrada y salida, Vehículo, Marca y Modelo', () => {
     expect(COLUMNAS_SALIDAS.map(c => c.titulo)).toEqual([
       'N.º', 'Cédula', 'Titular', 'Placa', 'Motivo', 'Fecha', 'Hora de entrada', 'Hora de salida', 'Vehículo', 'Marca', 'Modelo',

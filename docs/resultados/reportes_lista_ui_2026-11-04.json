@@ -1,0 +1,16 @@
+{
+  "fecha": "2026-11-04",
+  "origen": "http://localhost:3000",
+  "api": "interceptada, datos artificiales",
+  "pruebas": [
+    "Reportes abre con todo el historial, lista paginada y total 63 sin generar previamente",
+    "PDF desde página 2 pide todos los resultados, sin página ni tamaño y con la misma unión de salidas",
+    "Filtros combinados reducen a 20 registros y CSV recibe exactamente los mismos criterios",
+    "Elegir una placa de la tabla aplica el filtro exacto automáticamente",
+    "Limpiar filtros vuelve al historial completo",
+    "Enlace anterior de un vehículo abre directamente su lista filtrada",
+    "En móvil los controles se adaptan y la tabla se desplaza dentro de su contenedor"
+  ],
+  "errores": [],
+  "rutas_no_previstas": []
+}

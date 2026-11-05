@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { DeteccionDetalle } from '../src/dominio/tipos';
 
@@ -13,7 +13,7 @@ vi.mock('../src/interfaz/componentes/Notificaciones', () => ({ useNotificar: () 
 import api from '../src/infraestructura/api';
 import { PlacaFoto } from '../src/interfaz/componentes/deteccion';
 import { ObservacionOcr } from '../src/interfaz/componentes/ObservacionOcr';
-import DetalleDeteccion from '../src/interfaz/paginas/DetalleDeteccion';
+import Monitoreo from '../src/interfaz/paginas/Monitoreo';
 
 const ev = { motivo: 'texto_no_matricula', observacion_ocr: 'HAVAL / ambacar', confianza_texto_ocr: 0.99,
   candidata_descartada: 'QIH-6060', valido: false, formato: false, dentro_cuadro: true,
@@ -44,19 +44,20 @@ describe('Texto general observado por OCR', () => {
     expect(screen.queryByText('QIH-6060')).not.toBeInTheDocument();
   });
 
-  it('el detalle muestra una sola observación OCR, separada del motivo del ingreso y de la placa', async () => {
-    vi.mocked(api.get).mockResolvedValue({ data: deteccion });
-    render(<MemoryRouter initialEntries={['/detecciones/15']}><Routes>
-      <Route path="/detecciones/:id" element={<DetalleDeteccion />} />
-    </Routes></MemoryRouter>);
-    const titulo = await screen.findByText('Lectura automática y verificación');
-    const tarjeta = titulo.closest('.tarjeta')!;
-    expect(within(tarjeta as HTMLElement).getByText('HAVAL / ambacar')).toBeInTheDocument();
-    expect(screen.getAllByText('Observación OCR:')).toHaveLength(1);
-    expect(screen.getByText('Jornada laboral')).toBeInTheDocument();
+  it('monitoreo conserva la observación y la evidencia junto al registro, sin una acción de detalle aparte', async () => {
+    vi.mocked(api.get).mockImplementation(async ruta => ({ data: ruta === '/camaras' ? []
+      : ruta === '/monitoreo/estado' ? { en_linea: false, salida_manual: false }
+        : ruta === '/detecciones/recientes' ? [deteccion]
+          : { items: [deteccion], total: 1, pagina: 1, tamano: 30 } }));
+    render(<MemoryRouter initialEntries={['/monitoreo']}><Monitoreo /></MemoryRouter>);
+    const tabla = await screen.findByRole('region', { name: 'Tabla de accesos' });
+    expect(within(tabla).getByText('HAVAL / ambacar')).toBeInTheDocument();
+    expect(within(tabla).getAllByText('Observación OCR:')).toHaveLength(1);
+    expect(within(tabla).getByLabelText('Motivo del registro 15')).toHaveValue('Jornada laboral');
+    expect(within(tabla).getByAltText('Placa sin lectura')).toHaveAttribute('src', '/media/rotulo.jpg');
     expect(screen.queryByText('QIH-6060')).not.toBeInTheDocument();
-    expect(screen.getByText('El motor leyó un rótulo y conservó su texto como observación, sin asignarlo como matrícula.', { exact: false })).toBeInTheDocument();
-    expect(screen.queryByText('Formato oficial ANT')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ver detalle' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ver detalle' })).not.toBeInTheDocument();
   });
 
   it('sin texto OCR no agrega observaciones y mantiene una matrícula reconocida', () => {

@@ -11,7 +11,6 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes: !override
       - ./services/anpr/media:/app/media
-      - anpr_model_cache:/root/.cache
   backend:
     build:
       context: .

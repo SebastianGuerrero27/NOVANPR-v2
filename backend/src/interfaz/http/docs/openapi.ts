@@ -18,6 +18,7 @@ export interface CampoDoc {
   tipo: 'string' | 'integer' | 'number' | 'boolean' | 'object' | 'array';
   descripcion?: string;
   requerido?: boolean;
+  nullable?: boolean;
   ejemplo?: unknown;
   valores?: string[];
   /** Formato OpenAPI (date, date-time, email, password, binary…) */
@@ -52,6 +53,7 @@ export function rutaOpenApi(ruta: string): string {
 function esquema(c: CampoDoc): Record<string, unknown> {
   return {
     type: c.tipo,
+    ...(c.nullable ? { nullable: true } : {}),
     ...(c.formato ? { format: c.formato } : {}),
     ...(c.descripcion ? { description: c.descripcion } : {}),
     ...(c.valores ? { enum: c.valores } : {}),

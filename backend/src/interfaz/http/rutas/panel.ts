@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware, requierePermiso } from '../middlewares/auth';
-import { panel } from '../../../contenedor/panel';
-import { usoCpuSistema } from '../../../infraestructura/servicios/recursosCpu';
+import { panel, usoCpuSistema } from '../../../contenedor/panel';
 import { actorDe, controlador } from '../respuesta';
 
 /**

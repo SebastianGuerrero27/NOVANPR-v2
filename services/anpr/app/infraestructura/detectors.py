@@ -6,9 +6,10 @@ Soporta modelos YOLO (Ultralytics), ONNX Runtime y Mocks para pruebas unitarias.
 from __future__ import annotations
 
 import os
+import queue
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 import numpy as np
 
 from app.dominio.models import Detection
@@ -201,6 +202,30 @@ class MockDetector(BaseDetector):
 
     def predict(self, frame: np.ndarray) -> list[Detection]:
         return list(self.predefined_detections)
+
+
+class PoolDetector(BaseDetector):
+    """
+    Detector compartido por las cámaras del motor: `tamano` copias del modelo, cada una con una inferencia
+    a la vez. La cola es FIFO, así que las cámaras se turnan: una con mucho tránsito no deja sin análisis
+    a las demás. Con la CPU saturada baja la tasa de análisis de todas, sin acumular atraso, porque cada
+    cámara siempre analiza su cuadro más reciente.
+    """
+
+    def __init__(self, crear: Callable[[], BaseDetector], tamano: int = 1) -> None:
+        self._copias = [crear() for _ in range(max(1, tamano))]
+        self._libres: "queue.Queue[BaseDetector]" = queue.Queue()
+        for copia in self._copias:
+            self._libres.put(copia)
+        self.model_path = getattr(self._copias[0], "model_path", None)
+        self.arquitectura = getattr(self._copias[0], "arquitectura", None)
+
+    def predict(self, frame: np.ndarray) -> list[Detection]:
+        copia = self._libres.get()
+        try:
+            return copia.predict(frame)
+        finally:
+            self._libres.put(copia)
 
 
 def create_detector(

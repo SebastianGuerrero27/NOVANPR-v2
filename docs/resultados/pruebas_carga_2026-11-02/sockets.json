@@ -1,0 +1,22 @@
+{
+ "100 sesiones": {
+  "conexion_ms": 183,
+  "rechazadas": 0,
+  "entregas": "2000/2000",
+  "errores_ingreso": 0,
+  "p50_ms": 15.7,
+  "p95_ms": 42,
+  "p99_ms": 48.7,
+  "max_ms": 58.6
+ },
+ "500 sesiones": {
+  "conexion_ms": 987,
+  "rechazadas": 0,
+  "entregas": "10000/10000",
+  "errores_ingreso": 0,
+  "p50_ms": 42,
+  "p95_ms": 61.2,
+  "p99_ms": 68.8,
+  "max_ms": 76.4
+ }
+}

@@ -16,7 +16,7 @@ interface Definicion {
   tipo: Tipo;
   etiqueta: string;
   descripcion: string;
-  grupo: 'Acceso y cuentas' | 'Operación' | 'Notificaciones' | 'Institución';
+  grupo: 'Acceso y cuentas' | 'Operación' | 'Notificaciones' | 'Almacenamiento' | 'Institución';
   env?: string;
   omision: string;
   min?: number;
@@ -96,6 +96,24 @@ export const DEFINICIONES: Definicion[] = [
     ],
   },
   {
+    clave: 'salida_automatica_habilitada', tipo: 'booleano', grupo: 'Operación',
+    etiqueta: 'Registrar la salida automáticamente con la cámara de salida',
+    descripcion: 'Cuando una cámara con tipo de paso «Salida» confirma la placa de un vehículo que entró y sigue sin salida, se registra la hora de salida en ese ingreso, sin esperar al guardia. Si la lectura de la cámara se corrige o se elimina, el ingreso se reabre. Requiere al menos una cámara de salida.',
+    omision: 'false',
+  },
+  {
+    clave: 'salida_automatica_minimo_segundos', tipo: 'entero', grupo: 'Operación',
+    etiqueta: 'Tiempo mínimo entre el ingreso y la salida automática (segundos)',
+    descripcion: 'Un ingreso más reciente no se cierra: evita que la cámara de salida cierre el registro de un vehículo que acaba de entrar y que alcanza a ver al pasar.',
+    omision: '60', min: 0, max: 3600,
+  },
+  {
+    clave: 'salida_manual_habilitada', tipo: 'booleano', grupo: 'Operación',
+    etiqueta: 'Permitir que el usuario registre la salida',
+    descripcion: 'Desactivada, la cámara registra las salidas por matrícula y se requiere la salida automática activa. Un ingreso sin placa legible puede cerrarse por su registro, con los demás datos completos y auditoría. Si falla la cámara, active esta opción para registrar también salidas con placa.',
+    omision: 'true',
+  },
+  {
     clave: 'aviso_vencimiento_dias', tipo: 'entero', grupo: 'Operación',
     etiqueta: 'Aviso de autorizaciones por vencer (días)',
     descripcion: 'Las autorizaciones que vencen dentro de este plazo se destacan en el panel.',
@@ -130,6 +148,18 @@ export const DEFINICIONES: Definicion[] = [
     etiqueta: 'Conservar notificaciones (días)',
     descripcion: 'Las notificaciones más antiguas se eliminan automáticamente cada día. La auditoría de operaciones no se ve afectada.',
     env: 'NOTIF_RETENCION_DIAS', omision: '90', min: 7, max: 730,
+  },
+  {
+    clave: 'evidencia_retencion_dias', tipo: 'entero', grupo: 'Almacenamiento',
+    etiqueta: 'Conservar las fotos de los ingresos (días)',
+    descripcion: 'Las fotos más antiguas se borran solas; el registro del paso se conserva. Las fotos de alertas de la lista negra no se borran solas.',
+    omision: '90', min: 7, max: 3650,
+  },
+  {
+    clave: 'evidencia_disco_maximo_gb', tipo: 'entero', grupo: 'Almacenamiento',
+    etiqueta: 'Espacio máximo para las fotos (GB)',
+    descripcion: 'Al superarlo, o si quedan menos de 2 GB libres en el disco, se borran primero las fotos más antiguas. Cada paso ocupa cerca de 1 MB.',
+    omision: '15', min: 1, max: 2000,
   },
   {
     clave: 'unidad_institucional', tipo: 'texto', grupo: 'Institución',
@@ -225,6 +255,15 @@ export interface EvidenciaLectura {
   bordes_hallados?: number;
   lectura_ocr?: string | null;
   lectura_verificador?: string | null;
+}
+
+/** Salida automática por la cámara de salida (parámetros de la pantalla de configuración). */
+export function salidaAutomatica(): { activa: boolean; minimoSegundos: number } {
+  return { activa: config.booleano('salida_automatica_habilitada'), minimoSegundos: config.entero('salida_automatica_minimo_segundos') };
+}
+
+export function salidaManualPermitida(): boolean {
+  return config.booleano('salida_manual_habilitada');
 }
 
 /** Política de autorización automática vigente (parámetros de la pantalla de configuración). */

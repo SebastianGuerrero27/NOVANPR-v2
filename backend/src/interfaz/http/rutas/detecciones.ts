@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware, requierePermiso, servicioMiddleware } from '../middlewares/auth';
 import { detecciones } from '../../../contenedor/detecciones';
-import { actorDe, controlador, idDe } from '../respuesta';
+import { actorDe, controlador, escribirRespuesta, idDe, limitarSimultaneas } from '../respuesta';
 
 /**
  * Detecciones vehiculares (cada paso por un acceso).
@@ -14,6 +14,8 @@ import { actorDe, controlador, idDe } from '../respuesta';
  * Personal autenticado
  *   GET  /                     historial paginado con filtros
  *   GET  /historial/resumen    totales del historial completo con los mismos filtros
+ *   GET  /historial/analisis   ingresos por día, día de la semana y hora, permanencia y los más frecuentes
+ *   GET  /historial/reporte.pdf  PDF de todos los registros que cumplen los filtros del listado
  *   GET  /recientes            últimos N pasos (monitoreo)
  *   GET  /exportar             CSV con los mismos filtros del historial
  *   GET  /buscar-placa/:placa  situación de una placa en las listas y su historial
@@ -21,9 +23,10 @@ import { actorDe, controlador, idDe } from '../respuesta';
  *   POST /validar/:id          corrección / confirmación del personal (excepción con accesos:excepcion)
  *   POST /:id/salida            registra la hora de salida de un ingreso existente
  *   PATCH /:id/ingreso         cédula, titular, motivo y atributos del vehículo del ingreso
+ *   PATCH /:id/registro        corrección administrativa del historial, con motivo auditado
  *   GET /registro-manual/cuadros  miniaturas de los últimos 30 s de la cámara (foto del registro manual)
  *   POST /registro-manual      paso registrado a mano (cámara sin lectura, visita, etc.)
- *   DELETE /:id                detecciones:eliminar, con motivo auditado (borra también la evidencia)
+ *   DELETE /:id                detecciones:eliminar-individual, con motivo auditado (borra también la evidencia)
  *   DELETE /                   eliminación masiva (todas o las filtradas), detecciones:eliminar
  *
  * Eventos Socket.IO: deteccion:nueva, deteccion:actualizada, deteccion:alerta, deteccion:eliminada,
@@ -33,6 +36,9 @@ const router = Router();
 const monitorear = [authMiddleware, requierePermiso('operacion:monitorear')];
 const validar = [authMiddleware, requierePermiso('detecciones:validar')];
 const eliminar = [authMiddleware, requierePermiso('detecciones:eliminar')];
+const gestionar = [authMiddleware, requierePermiso('detecciones:gestionar')];
+const eliminarIndividual = [authMiddleware, requierePermiso('detecciones:eliminar-individual')];
+const unaExportacionALaVez = limitarSimultaneas(2, 'Hay otras exportaciones en curso. Intente de nuevo en un momento.');
 
 // ─── Servicio ANPR ───────────────────────────────────────────────────────────
 
@@ -63,18 +69,33 @@ router.get('/historial/resumen', ...monitorear, controlador('DETECCIONES resumen
   res.json(await detecciones.resumenHistorial(req.query));
 }));
 
-router.get('/recientes', ...monitorear, controlador('DETECCIONES recientes', 'Error al consultar los ingresos recientes.', async (req, res) => {
-  res.json(await detecciones.recientes(req.query.limite, req.query.buscar));
+router.get('/historial/analisis', ...monitorear, controlador('DETECCIONES análisis del historial', 'Error al analizar el historial.', async (req, res) => {
+  res.json(await detecciones.analisisHistorial(req.query));
 }));
 
-router.get('/exportar', ...monitorear, controlador('DETECCIONES exportar', 'Error al exportar.', async (req, res) => {
-  const { nombre, contenido } = await detecciones.exportar(req.query, actorDe(req));
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+router.get('/historial/reporte.pdf', ...monitorear, unaExportacionALaVez, controlador('DETECCIONES PDF historial', 'Error al generar el reporte del historial.', async (req, res) => {
+  const { nombre, contenido } = await detecciones.exportarHistorialPdf(req.query, actorDe(req));
+  res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
   res.send(contenido);
 }));
 
-router.get('/registros.pdf', ...monitorear, controlador('DETECCIONES PDF', 'Error al generar el PDF de registros.', async (req, res) => {
+router.get('/recientes', ...monitorear, controlador('DETECCIONES recientes', 'Error al consultar los ingresos recientes.', async (req, res) => {
+  res.json(await detecciones.recientes(req.query.limite, req.query.buscar));
+}));
+
+router.get('/exportar', ...monitorear, unaExportacionALaVez, controlador('DETECCIONES exportar', 'Error al exportar.', async (req, res) => {
+  await detecciones.exportar(req.query, actorDe(req), {
+    abrir(nombre) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    },
+    escribir: texto => escribirRespuesta(res, texto),
+  });
+  res.end();
+}));
+
+router.get('/registros.pdf', ...monitorear, unaExportacionALaVez, controlador('DETECCIONES PDF', 'Error al generar el PDF de registros.', async (req, res) => {
   const { nombre, contenido } = await detecciones.exportarPdf(req.query, actorDe(req));
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
@@ -116,7 +137,12 @@ router.patch('/:id(\\d+)/ingreso', ...validar, controlador('DETECCIONES datos de
   if (id !== null) res.json(await detecciones.editarIngreso(id, req.body, actorDe(req)));
 }));
 
-router.delete('/:id(\\d+)', ...eliminar, controlador('DETECCIONES eliminar', 'Error al eliminar la detección.', async (req, res) => {
+router.patch('/:id(\\d+)/registro', ...gestionar, controlador('DETECCIONES corregir registro', 'Error al corregir el registro.', async (req, res) => {
+  const id = idDe(req, res);
+  if (id !== null) res.json(await detecciones.editarRegistro(id, req.body, actorDe(req)));
+}));
+
+router.delete('/:id(\\d+)', ...eliminarIndividual, controlador('DETECCIONES eliminar', 'Error al eliminar la detección.', async (req, res) => {
   const id = idDe(req, res);
   if (id !== null) res.json(await detecciones.eliminar(id, req.body?.motivo, actorDe(req)));
 }));

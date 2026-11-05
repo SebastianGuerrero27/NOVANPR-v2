@@ -65,6 +65,7 @@ const Listas: React.FC<{ tipo?: TipoLista; incrustada?: boolean; soloMios?: bool
   // Cada lista tiene su propio permiso de edición (matriz RBAC): el gestor de permisos edita el
   // padrón pero no la lista de alertas
   const puedeEditar = puede(tipo === 'autorizados' ? 'padron:gestionar' : 'alertas:gestionar');
+  const puedeAgregar = puede(tipo === 'autorizados' ? 'padron:agregar' : 'alertas:restringir');
   const [busqueda, setBusqueda] = useState(() => params.get('q') ?? '');
   const [vigencia, setVigencia] = useState<Vigencia>(() => {
     const v = params.get('vigencia');
@@ -105,7 +106,7 @@ const Listas: React.FC<{ tipo?: TipoLista; incrustada?: boolean; soloMios?: bool
             { valor: 'alertas', etiqueta: 'Lista negra', icono: <ShieldAlert size={15} /> },
           ]} />}
 
-        {!puedeEditar && <Aviso tipo="info">Consulta de solo lectura. {tipo === 'autorizados'
+        {!puedeEditar && !puedeAgregar && <Aviso tipo="info">Consulta de solo lectura. {tipo === 'autorizados'
           ? <>Los permisos los otorga el gestor. Puede completar una placa pendiente después de verificar a la persona. Para un nuevo permiso, <Link to="/solicitudes?seccion=solicitudes">envíe una solicitud de acceso</Link>.</>
           : 'Las altas y cambios los realiza el administrador.'}</Aviso>}
         {/* La lista blanca muestra los permisos activos; el registro completo por usuario está en Solicitudes */}
@@ -128,7 +129,7 @@ const Listas: React.FC<{ tipo?: TipoLista; incrustada?: boolean; soloMios?: bool
             {puedeEditar && tipo === 'autorizados' && <button className="btn btn-secondary btn-sm" onClick={() => setImportando(true)}>
               <Upload size={14} /> Importar
             </button>}
-            {puedeEditar && <button className={`btn btn-sm ${tipo === 'autorizados' ? 'btn-navy' : 'btn-primary'}`} onClick={() => setEditando('nuevo')}><Plus size={14} /> Agregar</button>}
+            {puedeAgregar && <button className={`btn btn-sm ${tipo === 'autorizados' ? 'btn-navy' : 'btn-primary'}`} onClick={() => setEditando('nuevo')}><Plus size={14} /> Agregar</button>}
           </>}
           sinPadding>
           <div className="filtros" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
@@ -196,7 +197,7 @@ const Listas: React.FC<{ tipo?: TipoLista; incrustada?: boolean; soloMios?: bool
           </div>
           {datos && filas.length === 0 && (
             <Vacio titulo={datos.length ? 'Sin coincidencias' : soloMios && estado === 'retirados' ? 'No tiene permisos desactivados' : tipo === 'autorizados' ? 'La lista blanca está vacía' : 'La lista negra está vacía'}
-              texto={datos.length ? 'Ajuste la búsqueda o el filtro de vigencia.' : puedeEditar ? 'Use “Agregar” para registrar el primero.' : undefined} />
+              texto={datos.length ? 'Ajuste la búsqueda o el filtro de vigencia.' : puedeAgregar ? 'Use “Agregar” para registrar el primero.' : undefined} />
           )}
         </Tarjeta>
       </div>

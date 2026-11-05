@@ -32,4 +32,4 @@ Este modo conserva el proyecto `anpr`, su base de datos, las evidencias y los se
 
 Para un servidor nuevo se conserva `docker-compose.prod.yml` y su guía `INSTALAR_PRODUCCION.md`. No se debe arrancar ese proyecto separado encima de una instalación existente creyendo que comparte automáticamente el volumen de datos: tiene nombre y volúmenes propios.
 
-La consulta de vehículos por placa sigue siendo opcional. Ambos modos de producción reciben `ECUADORAPI_KEY` del entorno privado; sin clave no se envían consultas externas.
+Las consultas externas de placa y cédula se retiraron: los datos se completan a mano y ningún dato sale a terceros.

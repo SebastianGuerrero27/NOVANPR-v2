@@ -153,13 +153,17 @@ def candidato(tid=5, ancho=160, alto=40):
 # ─── Adaptador: único punto que conoce dónde vive el estado del servicio ──────
 
 class Servicio:
-    """El estado vive en `MotorAnpr` (app/aplicacion/motor.py); app.main solo lo compone."""
+    """El estado de cada cámara vive en su `MotorAnpr` (app/aplicacion/motor.py); las rutas lo encuentran
+    en el gestor (app/aplicacion/gestor_camaras.py). Una cámara nueva para cada prueba."""
 
     def __init__(self, monkeypatch, tmp_path):
         from app import main
         from app.infraestructura import acceso
 
-        self.motor = motor = main.motor
+        self.motor = motor = main.crear_motor(1, "Garita", "rtsp://anpr:clave-secreta@mediamtx:8554/cam_1")
+        self.gestor = main.gestor
+        monkeypatch.setattr(self.gestor, "_motores", {1: motor})
+        monkeypatch.setattr(self.gestor, "_info_modelos", motor.info_modelos)
         self._mp = monkeypatch
         monkeypatch.setattr(acceso, "ANPR_SERVICE_TOKEN", TOKEN)
         self.http = ClienteHttp()
@@ -234,7 +238,8 @@ SERVICIO = {"X-Servicio-Token": TOKEN}
 # ─── Autenticación ───────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("metodo,ruta", [
-    ("post", "/api/camera/switch"), ("post", "/api/camera/roi"), ("get", "/debug/stream"),
+    ("put", "/api/camaras"), ("get", "/debug/stream?camara_id=1"), ("get", "/api/historial?camara_id=1"),
+    ("post", "/api/historial/guardar"),
 ])
 def test_endpoints_de_control_exigen_token_de_servicio(servicio, metodo, ruta):
     r = getattr(servicio.client, metodo)(ruta)
@@ -262,65 +267,104 @@ def test_websocket_de_la_webcam_ya_no_existe(servicio, ruta):
 
 
 def test_el_motor_solo_acepta_fuentes_rtsp(servicio):
-    r = servicio.client.post("/api/camera/switch", headers=SERVICIO, json={"camera_id": 1, "source_type": "webcam"})
-    assert r.status_code == 400 and r.json() == {"success": False, "error": "Solo se admiten fuentes RTSP"}
+    assert servicio.motor.cambiar_camara({"camera_id": 1, "source_type": "webcam"}) == (
+        400, {"success": False, "error": "Solo se admiten fuentes RTSP"})
+    r = servicio.client.put("/api/camaras", headers=SERVICIO, json={"camaras": [{"id": 2, "rtsp_url": "http://otro/video"}]})
+    assert r.status_code == 400 and r.json() == {"error": "La cámara 2 necesita una URL RTSP"}
 
 
 @pytest.mark.parametrize("ruta", ["/ws/stream", "/api/ws/stream", "/ws/pistas"])
 def test_websockets_sin_ticket_se_cierran_con_4401(servicio, ruta):
     with pytest.raises(WebSocketDisconnect) as e:
-        with servicio.client.websocket_connect(ruta):
+        with servicio.client.websocket_connect(f"{ruta}?camara_id=1"):
             pass
     assert e.value.code == 4401
+
+
+@pytest.mark.parametrize("ruta", ["/ws/stream", "/ws/pistas"])
+def test_websocket_de_una_camara_que_este_motor_no_analiza(servicio, monkeypatch, ruta):
+    """El navegador pide el motor de esa cámara al backend: si la cámara se movió a otro, se le avisa."""
+    from app.interfaz import api
+    monkeypatch.setattr(api, "ticket_valido", lambda ticket, alcance: True)
+    for consulta in ("ticket=t&camara_id=99", "ticket=t"):
+        with pytest.raises(WebSocketDisconnect) as e:
+            with servicio.client.websocket_connect(f"{ruta}?{consulta}"):
+                pass
+        assert e.value.code == 4404
 
 
 # ─── Estado y consulta ───────────────────────────────────────────────────────
 
 def test_estado_del_servicio_sin_iniciar_y_sin_credenciales(servicio):
-    r = servicio.client.get("/status").json()
+    r = servicio.client.get("/status", headers=SERVICIO).json()
     assert r == {
-        "status": "online", "running": False, "camera_source": "rtsp://anpr:******@mediamtx:8554/cam_1",
-        "capture_fps": 0.0, "tracker_fps": 0.0, "inferencias_omitidas_pct": None, "enlace_video": None, "detector": None,
+        "status": "online", "running": False, "max_camaras": servicio.gestor.max_camaras,
+        "capture_fps": 0.0, "tracker_fps": 0.0, "detector": None,
         "detector_arquitectura": None, "ocr_engine": None, "ocr_verifier": None,
-        "latencia": {"edad_cuadro": None, "lectura_en_vivo": None, "registro": None, "cuadros_descartados_pct": None},
-        "etapas_ms": {},
-        "seguidor": {
-            "anclas": 0, "analisis_fuera_de_lo_guardado": 0, "retraso_analisis_cuadros": {"p50": None, "p95": None},
-            "cuadros_con_flujo_pct": None, "correccion_al_anclar_anchos": {"p50": None, "p95": None},
-        },
+        "camaras": [{
+            "id": 1, "iniciada": False, "conectada": False, "fuente": "rtsp://anpr:******@mediamtx:8554/cam_1",
+            "roi": None, "exclusiones": [], "capture_fps": 0.0, "tracker_fps": 0.0, "inferencias_omitidas_pct": None,
+            "enlace_video": None,
+            "latencia": {"edad_cuadro": None, "lectura_en_vivo": None, "registro": None, "cuadros_descartados_pct": None},
+            "etapas_ms": {},
+            "seguidor": {
+                "anclas": 0, "analisis_fuera_de_lo_guardado": 0, "retraso_analisis_cuadros": {"p50": None, "p95": None},
+                "cuadros_con_flujo_pct": None, "correccion_al_anclar_anchos": {"p50": None, "p95": None},
+            },
+            "calidad_captura": {"placas": 0, "ancho_px_p50": None, "nitidez_p50": None, "brillo_p50": None,
+                                "saturada_pct_p50": None, "recomendaciones": []},
+        }],
         "cpu": r["cpu"],
-        "architecture": "Two-Phase: Fast Capture + Async OCR",
+        "architecture": "Multicámara: un motor por cámara con modelos compartidos",
     }
-    assert servicio.client.get("/").json() == {
-        "service": "ECU 911 ANPR Microservice", "version": "2.0.0", "status": "starting",
-        "detector": None, "detector_arquitectura": None, "ocr_engine": None, "ocr_verifier": None,
+    assert servicio.client.get("/", headers=SERVICIO).json() == {
+        "service": "ECU 911 ANPR Microservice", "version": "2.0.0", "status": "starting", "camaras": [1],
     }
 
 
-@pytest.mark.parametrize("ruta", ["/status", "/api/camera/active", "/metrics"])
+@pytest.mark.parametrize("ruta", ["/status", "/metrics"])
 def test_sin_cors_otro_sitio_no_lee_el_motor_desde_el_navegador(servicio, ruta):
     """El navegador solo usa los WebSocket con ticket; ninguna página ajena puede leer el estado."""
-    r = servicio.client.get(ruta, headers={"Origin": "https://sitio-ajeno.example"})
+    r = servicio.client.get(ruta, headers={"Origin": "https://sitio-ajeno.example", **SERVICIO})
     assert r.status_code == 200
     assert "access-control-allow-origin" not in r.headers
     previa = servicio.client.options(ruta, headers={"Origin": "https://sitio-ajeno.example", "Access-Control-Request-Method": "GET"})
     assert "access-control-allow-origin" not in previa.headers
 
 
+@pytest.mark.parametrize("ruta", ["/", "/status", "/metrics"])
+def test_el_estado_del_motor_no_se_abre_a_la_red(servicio, ruta):
+    """El puerto 8000 está publicado para los WebSocket: sin token no se lee ROI, modelos ni métricas."""
+    assert servicio.client.get(ruta).status_code == 401
+    assert servicio.client.get(ruta, headers={"X-Servicio-Token": "equivocado"}).status_code == 401
+    assert servicio.client.get(ruta, headers=SERVICIO).status_code == 200
+
+
+def test_el_healthcheck_del_contenedor_entra_sin_token(servicio):
+    from fastapi.testclient import TestClient
+
+    local = TestClient(servicio.client.app, client=("127.0.0.1", 50000))
+    assert local.get("/status").status_code == 200
+
+
+def test_la_sonda_de_vida_no_revela_nada(servicio):
+    assert servicio.client.get("/healthz").json() == {"status": "ok"}
+
+
 def test_estado_con_modelos_cargados(servicio):
     servicio.fijar(pipeline=Pipeline(), fps_captura=24.567)
-    r = servicio.client.get("/status").json()
+    r = servicio.client.get("/status", headers=SERVICIO).json()
     assert (r["capture_fps"], r["tracker_fps"], r["detector"], r["detector_arquitectura"]) == (24.6, 12.3, "yolo26n_ecuador.pt", "yolo26")
-    assert r["inferencias_omitidas_pct"] == 25.0
+    assert r["camaras"][0]["inferencias_omitidas_pct"] == 25.0
 
 
 def test_camara_activa_conectada_por_fuente_o_por_fps(servicio):
-    assert servicio.client.get("/api/camera/active").json() == {
+    assert servicio.motor.camara_activa() == {
         "camera_id": 1, "camera_source": "rtsp://anpr:******@mediamtx:8554/cam_1", "is_connected": False, "roi": None,
         "exclusiones": [],
     }
     servicio.fijar(fps_captura=12.0)
-    assert servicio.client.get("/api/camera/active").json()["is_connected"] is True
+    assert servicio.motor.camara_activa()["is_connected"] is True
 
 
 def test_pistas_por_websocket_con_zona_de_movimiento(servicio, monkeypatch):
@@ -338,7 +382,7 @@ def test_pistas_por_websocket_con_zona_de_movimiento(servicio, monkeypatch):
     monkeypatch.setitem(servicio.motor.tamano_fuente, "w", 640)
     monkeypatch.setitem(servicio.motor.tamano_fuente, "h", 480)
     servicio.fijar(pipeline=pipeline, activo=True)
-    with servicio.client.websocket_connect("/ws/pistas?ticket=t") as ws:
+    with servicio.client.websocket_connect("/ws/pistas?ticket=t&camara_id=1") as ws:
         datos = ws.receive_json()
         servicio.fijar(activo=False)
     # Sin seguidor para la pista, la caja vale desde el último análisis (recién creado)
@@ -373,7 +417,7 @@ def test_la_caja_del_hud_es_la_del_seguidor_con_su_edad(servicio, monkeypatch):
     monkeypatch.setitem(servicio.motor.tamano_fuente, "w", 640)
     monkeypatch.setitem(servicio.motor.tamano_fuente, "h", 480)
     servicio.fijar(pipeline=pipeline, activo=True)
-    with servicio.client.websocket_connect("/ws/pistas?ticket=t") as ws:
+    with servicio.client.websocket_connect("/ws/pistas?ticket=t&camara_id=1") as ws:
         pista = ws.receive_json()["pistas"][0]
         servicio.fijar(activo=False)
     assert (pista["caja"], pista["velocidad"]) == ([0.2, 0.4, 0.4, 0.5], [0.05, 0.0])
@@ -398,7 +442,7 @@ def test_una_placa_una_caja_aunque_el_seguimiento_la_parta_en_dos_pistas(servici
     monkeypatch.setitem(servicio.motor.tamano_fuente, "w", 640)
     monkeypatch.setitem(servicio.motor.tamano_fuente, "h", 480)
     servicio.fijar(pipeline=pipeline, activo=True)
-    with servicio.client.websocket_connect("/ws/pistas?ticket=t") as ws:
+    with servicio.client.websocket_connect("/ws/pistas?ticket=t&camara_id=1") as ws:
         ids = sorted(p["id"] for p in ws.receive_json()["pistas"])
         servicio.fijar(activo=False)
     assert ids == [383, 390]
@@ -418,17 +462,19 @@ def test_historial_de_la_camara_para_la_evidencia_del_registro_manual(servicio, 
         historial.ofrecer(np.full((360, 640, 3), 50, np.uint8), ahora - 5 + i / 2)
     monkeypatch.setattr(servicio.motor, "_historial", historial)
     monkeypatch.setattr(servicio.motor, "_dir_media", str(tmp_path))
-    assert servicio.client.get("/api/historial").status_code == 401
-    datos = servicio.client.get("/api/historial", headers=SERVICIO).json()
+    assert servicio.client.get("/api/historial?camara_id=1").status_code == 401
+    assert servicio.client.get("/api/historial?camara_id=2", headers=SERVICIO).status_code == 404
+    datos = servicio.client.get("/api/historial?camara_id=1", headers=SERVICIO).json()
     assert datos["camara_id"] == 1 and len(datos["cuadros"]) == 10
     assert base64.b64decode(datos["cuadros"][0]["miniatura"])[:2] == b"\xff\xd8"  # JPEG
     t = datos["cuadros"][3]["t"]
-    r = servicio.client.post("/api/historial/guardar", json={"t": t}, headers=SERVICIO)
+    r = servicio.client.post("/api/historial/guardar", json={"camara_id": 1, "t": t}, headers=SERVICIO)
     assert r.status_code == 200 and r.json()["ruta"].startswith("/media/manual_")
     assert os.path.exists(os.path.join(str(tmp_path), r.json()["ruta"].rsplit("/", 1)[-1]))
-    assert servicio.client.post("/api/historial/guardar", json={"t": ahora - 120}, headers=SERVICIO).status_code == 404
-    assert servicio.client.post("/api/historial/guardar", json={}, headers=SERVICIO).status_code == 400
-    assert servicio.client.post("/api/historial/guardar", json={"t": t}).status_code == 401
+    assert servicio.client.post("/api/historial/guardar", json={"camara_id": 1, "t": ahora - 120}, headers=SERVICIO).status_code == 404
+    assert servicio.client.post("/api/historial/guardar", json={"camara_id": 2, "t": t}, headers=SERVICIO).status_code == 404
+    assert servicio.client.post("/api/historial/guardar", json={"camara_id": 1}, headers=SERVICIO).status_code == 400
+    assert servicio.client.post("/api/historial/guardar", json={"camara_id": 1, "t": t}).status_code == 401
 
 
 def test_el_estado_informa_la_cpu_del_contenedor_del_motor(servicio, monkeypatch):
@@ -436,8 +482,8 @@ def test_el_estado_informa_la_cpu_del_contenedor_del_motor(servicio, monkeypatch
     import os
     from app.aplicacion import motor as modulo_motor
     monkeypatch.setattr(modulo_motor, "cpu_acumulada_s", lambda: 100.5)
-    servicio.motor._muestra_cpu = (time.monotonic() - 2.0, 100.0, None)
-    cpu = servicio.client.get("/status").json()["cpu"]
+    monkeypatch.setattr(servicio.gestor._cpu, "_muestra", (time.monotonic() - 2.0, 100.0, None))
+    cpu = servicio.client.get("/status", headers=SERVICIO).json()["cpu"]
     assert cpu["nucleos"] == (os.cpu_count() or 1)
     assert cpu["uso_pct"] == pytest.approx(0.5 / 2.0 / cpu["nucleos"] * 100, rel=0.2)
 
@@ -451,7 +497,7 @@ def test_cpu_acumulada_del_cgroup_o_del_proceso(tmp_path):
 
 
 def test_metricas_prometheus(servicio):
-    r = servicio.client.get("/metrics")
+    r = servicio.client.get("/metrics", headers=SERVICIO)
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
     assert "anpr_" in r.text
 
@@ -507,9 +553,9 @@ def test_latencia_de_la_lectura_en_vivo_y_del_registro(servicio):
     registro = servicio.motor.latencia()["registro"]
     assert registro["muestras"] == 1 and registro["p50_ms"] >= 600
     assert _valor("anpr_capture_to_reading_seconds_count", etapa="registro") - antes == 1
-    assert servicio.client.get("/status").json()["latencia"]["registro"]["muestras"] == 1
+    assert servicio.client.get("/status", headers=SERVICIO).json()["camaras"][0]["latencia"]["registro"]["muestras"] == 1
     # Dónde se fue el tiempo: OCR rápido, etapas del registro y envíos al backend
-    etapas = servicio.client.get("/status").json()["etapas_ms"]
+    etapas = servicio.client.get("/status", headers=SERVICIO).json()["camaras"][0]["etapas_ms"]
     assert {"ocr_rapido", "registro_http_ingreso", "registro_http_completar"} <= set(etapas)
     assert etapas["ocr_rapido"]["muestras"] == 1
 
@@ -530,22 +576,18 @@ def test_el_pipeline_mide_cada_etapa_del_cuadro():
 # ─── Región de interés y cambio de cámara ────────────────────────────────────
 
 def test_region_de_interes(servicio):
-    assert servicio.client.post("/api/camera/roi", headers=SERVICIO, json={"roi": None}).status_code == 503
+    motor = servicio.motor
+    assert motor.fijar_roi({"roi": None})[0] == 503
     pipeline = Pipeline()
     servicio.fijar(pipeline=pipeline)
     roi = [[0, 0], [1, 0], [1, 1]]
     exclusiones = [[[0.0, 0.0], [0.2, 0.0], [0.2, 0.2]]]
-    assert servicio.client.post("/api/camera/roi", headers=SERVICIO, json={"roi": roi, "camara_id": 9}).json() == \
-        {"success": True, "aplicada": False, "roi": None, "exclusiones": []}
-    assert servicio.client.post("/api/camera/roi", headers=SERVICIO, json={"roi": roi, "camara_id": 1}).json() == \
-        {"success": True, "aplicada": True, "roi": roi, "exclusiones": []}
+    assert motor.fijar_roi({"roi": roi, "camara_id": 9}) == (200, {"success": True, "aplicada": False, "roi": None, "exclusiones": []})
+    assert motor.fijar_roi({"roi": roi, "camara_id": 1}) == (200, {"success": True, "aplicada": True, "roi": roi, "exclusiones": []})
     # Con zonas de exclusión; sin el campo, las vigentes no cambian
-    assert servicio.client.post("/api/camera/roi", headers=SERVICIO, json={"roi": roi, "exclusiones": exclusiones, "camara_id": 1}).json() == \
-        {"success": True, "aplicada": True, "roi": roi, "exclusiones": exclusiones}
-    assert servicio.client.post("/api/camera/roi", headers=SERVICIO, json={"roi": None, "camara_id": 1}).json() == \
-        {"success": True, "aplicada": True, "roi": None, "exclusiones": exclusiones}
-    assert servicio.client.get("/api/camera/active").json()["exclusiones"] == exclusiones
-    assert servicio.client.post("/api/camera/roi", headers=SERVICIO, content=b"{no json").status_code == 400
+    assert motor.fijar_roi({"roi": roi, "exclusiones": exclusiones, "camara_id": 1}) == (200, {"success": True, "aplicada": True, "roi": roi, "exclusiones": exclusiones})
+    assert motor.fijar_roi({"roi": None, "camara_id": 1}) == (200, {"success": True, "aplicada": True, "roi": None, "exclusiones": exclusiones})
+    assert motor.camara_activa()["exclusiones"] == exclusiones
 
 
 def test_cambio_de_camara_reinicia_el_seguimiento_y_oculta_credenciales(servicio):
@@ -566,10 +608,10 @@ def test_cambio_de_camara_reinicia_el_seguimiento_y_oculta_credenciales(servicio
     pipeline = Pipeline()
     selector = types.SimpleNamespace(_active_candidates={1: 1}, _captured_history={1: 1}, _prev_area={1: 1}, _track_first_seen={1: 1})
     servicio.fijar(pipeline=pipeline, selector=selector)
-    r = servicio.client.post("/api/camera/switch", headers=SERVICIO, json={
+    _, r = servicio.motor.cambiar_camara({
         "camera_id": 2, "rtsp_url": "rtsp://anpr:otra@mediamtx:8554/cam_2", "nombre": "Garita sur", "roi": [[0, 0], [1, 0], [1, 1]],
         "exclusiones": [[[0.0, 0.0], [0.2, 0.0], [0.2, 0.2]]],
-    }).json()
+    })
     assert r == {"success": True, "message": "Cámara cambiada exitosamente a ID 2 (Garita sur)",
                  "camera_id": 2, "camera_source": "rtsp://anpr:******@mediamtx:8554/cam_2"}
     assert servicio.camara == (2, "rtsp://anpr:otra@mediamtx:8554/cam_2")
@@ -580,11 +622,11 @@ def test_cambio_de_camara_reinicia_el_seguimiento_y_oculta_credenciales(servicio
     # La misma cámara, conectada y sin `force`: no se reconecta
     creadas[0].is_connected = creadas[0]._grab_running = True
     creadas[0]._url = "rtsp://anpr:otra@mediamtx:8554/cam_2"
-    r = servicio.client.post("/api/camera/switch", headers=SERVICIO, json={"camera_id": 2, "rtsp_url": "rtsp://anpr:otra@mediamtx:8554/cam_2"}).json()
+    _, r = servicio.motor.cambiar_camara({"camera_id": 2, "rtsp_url": "rtsp://anpr:otra@mediamtx:8554/cam_2"})
     assert r["message"] == "Cámara ID 2 ya se encuentra activa" and len(creadas) == 1
     # Sin zonas en la solicitud no cambian; con otra cámara llegan las suyas (las anteriores no se conservan)
     assert pipeline.exclusiones == [[[0.0, 0.0], [0.2, 0.0], [0.2, 0.2]]]
-    servicio.client.post("/api/camera/switch", headers=SERVICIO, json={"camera_id": 3, "rtsp_url": "rtsp://anpr:x@mediamtx:8554/cam_3", "roi": None})
+    servicio.motor.cambiar_camara({"camera_id": 3, "rtsp_url": "rtsp://anpr:x@mediamtx:8554/cam_3", "roi": None})
     assert pipeline.roi is None and pipeline.exclusiones == []
 
 
@@ -1106,6 +1148,145 @@ def test_si_el_vehiculo_ya_salio_la_foto_ilegible_se_audita_al_instante(servicio
     assert servicio.http.rutas() == ["detecciones/descarte"]
 
 
+class AgenteSegunFoto(Agente):
+    """Lee la placa solo en una foto clara (las pruebas marcan así la foto legible)."""
+
+    def process_image(self, frame, initial_bbox=None, fast_mode=True):
+        legible = frame.mean() > 150
+        return types.SimpleNamespace(placa="PBA1234" if legible else "", estado="procesado" if legible else "no_legible",
+                                     confianza=0.93 if legible else 0.1)
+
+
+class SelectorDeSalida(SelectorDePrueba):
+    """Entrega las fotos de las pistas que salieron de cuadro, como cleanup_stale_tracks."""
+
+    def __init__(self, fotos):
+        super().__init__()
+        self.fotos = fotos
+
+    def evaluate_and_select(self, **kw):
+        return None
+
+    def cleanup_stale_tracks(self, activos):
+        fotos, self.fotos = self.fotos, []
+        return fotos
+
+
+def _foto_legible(tid=5):
+    c = candidato(tid=tid)
+    c.frame = np.full_like(c.frame, 200)
+    return c
+
+
+def test_si_el_vehiculo_ya_salio_se_lee_otra_foto_del_paso_antes_de_descartar(servicio, monkeypatch):
+    """De una pista que salió de cuadro el selector entrega hasta 3 fotos. Antes se leía solo la
+    primera (las otras chocaban con el anti-rebote de la pista) y, si no se leía, el paso se perdía."""
+    _configurar(servicio, monkeypatch, rescate_cuadros=True)
+    servicio.fijar(pipeline=Pipeline(conteo={"PBA1234": 2}), trabajador_ocr=types.SimpleNamespace(_agent=AgenteSegunFoto()))
+    selector = SelectorDeSalida([candidato(), _foto_legible()])
+    servicio.fijar(selector=selector)
+    servicio.motor._evaluar_capturas(selector, [], np.zeros((480, 640, 3), np.uint8), 10)
+    assert servicio.http.rutas() == ["detecciones/ingreso", "detecciones/completar-ocr"]
+    assert servicio.motor.estado()["rescate"]["otras_fotos"] == 1
+    assert 5 not in servicio.motor._fotos_restantes
+
+
+def test_sin_rescate_de_cuadros_solo_se_lee_la_primera_foto(servicio):
+    """Por omisión el rescate está desactivado (RESCATE_CUADROS): se lee solo la primera foto, como antes."""
+    servicio.fijar(pipeline=Pipeline(conteo={"PBA1234": 2}), trabajador_ocr=types.SimpleNamespace(_agent=AgenteSegunFoto()))
+    selector = SelectorDeSalida([candidato(), _foto_legible()])
+    servicio.fijar(selector=selector)
+    servicio.motor._evaluar_capturas(selector, [], np.zeros((480, 640, 3), np.uint8), 10)
+    assert servicio.http.rutas() == ["detecciones/descarte"]
+
+
+def test_las_otras_fotos_cuentan_dentro_de_los_intentos_del_paso(servicio, monkeypatch):
+    from app.aplicacion.motor import MAX_INTENTOS_CAPTURA
+
+    _configurar(servicio, monkeypatch, rescate_cuadros=True)
+    servicio.fijar(pipeline=Pipeline(), trabajador_ocr=types.SimpleNamespace(_agent=AgenteSegunFoto()))
+    selector = SelectorDeSalida([candidato() for _ in range(MAX_INTENTOS_CAPTURA + 2)])
+    servicio.fijar(selector=selector)
+    servicio.motor._evaluar_capturas(selector, [], np.zeros((480, 640, 3), np.uint8), 10)
+    assert servicio.http.rutas() == ["detecciones/descarte"]
+    assert servicio.motor.estado()["rescate"]["otras_fotos"] == MAX_INTENTOS_CAPTURA - 1
+
+
+class SelectorQueAcumula:
+    def __init__(self, ignorar=()):
+        self.acumulados: list[dict] = []
+        self.ignorar = set(ignorar)
+
+    def should_ignore_track(self, tid):
+        return tid in self.ignorar
+
+    def evaluate_and_select(self, **kw):
+        self.acumulados.append(kw)
+        return None
+
+
+def _cuadros_de_paso(tid, desde, hasta, nitidos=(3, 7), grande=None):
+    """Cuadros de un paso con la placa de 80 px (120 px en `grande`), movida salvo en `nitidos`."""
+    import cv2
+
+    rng = np.random.default_rng(3)
+    salida = []
+    for i in range(desde + 1, hasta):
+        imagen = np.full((360, 640, 3), 90, np.uint8)
+        ancho = 120 if i == grande else 80
+        x, y = 100 + 10 * i, 200
+        textura = (np.kron(rng.random((5, ancho // 5)) > 0.5, np.ones((5, 5))) * 200 + 30).astype(np.uint8)
+        if i not in nitidos:
+            textura = cv2.blur(textura, (9, 1))
+        imagen[y:y + 25, x:x + ancho] = textura[:25, :ancho, None]
+        salida.append((i, 100.0 + i / 30, imagen, (float(x), float(y), float(x + ancho), float(y + 25))))
+    return salida
+
+
+def _roi(tid=5):
+    return types.SimpleNamespace(tracking_id=tid, confidence=0.8, plate_bbox=[0, 0, 10, 10])
+
+
+def test_entre_dos_analisis_se_suman_los_cuadros_mas_nitidos_como_candidatos(servicio, monkeypatch):
+    """Con la CPU ocupada un vehículo rápido deja uno o dos cuadros analizados: los que el detector no
+    analizó, con la caja que midió el flujo óptico, también compiten por la foto del paso."""
+    motor = servicio.motor
+    _configurar(servicio, monkeypatch, rescate_cuadros=True)
+    monkeypatch.setattr(motor._seguidor, "cuadros_de", lambda tid, desde, hasta: _cuadros_de_paso(tid, desde, hasta))
+    selector = SelectorQueAcumula()
+    motor._rescatar_cuadros(selector, [_roi()], 0)      # primer análisis de la pista: nada que rescatar
+    assert selector.acumulados == [] and motor._ultimo_rescate == {5: 0}
+    motor._rescatar_cuadros(selector, [_roi()], 10)
+    assert [a["frame_idx"] for a in selector.acumulados] == [3, 7]
+    assert all(a["solo_acumular"] and a["tracking_id"] == 5 for a in selector.acumulados)
+    assert selector.acumulados[0]["plate_bbox"] == [130, 200, 210, 225]
+    assert motor._horas_cuadro[3] == pytest.approx(100.1) and motor._ultimo_rescate == {5: 10}
+    assert motor.estado()["rescate"]["cuadros"] == 2
+
+
+def test_la_placa_mas_grande_gana_aunque_otra_salga_mas_nitida(servicio, monkeypatch):
+    motor = servicio.motor
+    _configurar(servicio, monkeypatch, rescate_cuadros=True)
+    monkeypatch.setattr(motor._seguidor, "cuadros_de", lambda tid, desde, hasta: _cuadros_de_paso(tid, desde, hasta, grande=5))
+    selector = SelectorQueAcumula()
+    motor._ultimo_rescate = {5: 0}
+    motor._rescatar_cuadros(selector, [_roi()], 10)
+    assert [a["frame_idx"] for a in selector.acumulados] == [5]
+
+
+@pytest.mark.parametrize("caso", ["desactivado", "resuelta", "capturada", "hueco_corto"])
+def test_sin_rescate_cuando_no_hace_falta(servicio, monkeypatch, caso):
+    motor = servicio.motor
+    monkeypatch.setattr(motor._seguidor, "cuadros_de", lambda tid, desde, hasta: _cuadros_de_paso(tid, desde, hasta))
+    _configurar(servicio, monkeypatch, rescate_cuadros=caso != "desactivado")
+    if caso == "resuelta":
+        motor._pistas_resueltas[5] = time.time()
+    selector = SelectorQueAcumula(ignorar={5} if caso == "capturada" else ())
+    motor._ultimo_rescate = {5: 8 if caso == "hueco_corto" else 0}
+    motor._rescatar_cuadros(selector, [_roi()], 10)
+    assert selector.acumulados == [] and motor._ultimo_rescate == {5: 10}
+
+
 def test_un_fallo_transitorio_del_backend_se_reintenta(servicio):
     servicio.fijar(pipeline=Pipeline(conteo={"PBA1234": 2}), trabajador_ocr=types.SimpleNamespace(_agent=Agente()))
     servicio.http.ingresos = [Respuesta(503, {"error": "reiniciando"}), ConnectionError("sin red")]
@@ -1151,7 +1332,7 @@ def test_el_cambio_de_camara_olvida_la_ventana_por_placa_de_la_anterior(servicio
     servicio.reemplazar_fuente_rtsp(lambda url: FuenteFalsa(url=url))
     servicio.fijar(pipeline=Pipeline(), selector=types.SimpleNamespace(_active_candidates={}, _captured_history={}, _prev_area={}, _track_first_seen={}))
     servicio.motor._placas_registradas["PBA1234"] = time.time()
-    servicio.client.post("/api/camera/switch", headers=SERVICIO, json={"camera_id": 2, "rtsp_url": "rtsp://anpr:x@mediamtx:8554/cam_2"})
+    servicio.motor.cambiar_camara({"camera_id": 2, "rtsp_url": "rtsp://anpr:x@mediamtx:8554/cam_2"})
     assert servicio.placas_registradas == {}
 
 

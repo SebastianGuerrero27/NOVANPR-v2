@@ -46,7 +46,7 @@ describe('Repositorio SQL · auditoría (PostgreSQL)', () => {
     await repositorioAuditoriaSql.pagina({ ...SIN_FILTROS, fuente: 'cuentas' }, 50, 25);
     const { texto, entradas } = ultima();
     expect(texto).toContain('SELECT id, fecha, actor_email AS actor, accion, objetivo_email AS objetivo, detalle, ip FROM AuditoriaUsuarios');
-    expect(texto).toContain('ORDER BY fecha DESC LIMIT @tamano OFFSET @offset');
+    expect(texto).toContain('ORDER BY fecha DESC, id DESC LIMIT @tamano OFFSET @offset');
     expect(entradas).toEqual({ offset: 50, tamano: 25 });
   });
 

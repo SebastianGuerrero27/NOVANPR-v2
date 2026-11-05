@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS "camaras" (
   ultimo_ping timestamp, tiempo_respuesta_ms integer, mensaje_ping varchar(255),
   registrado_por integer REFERENCES "usuarios"(id), fecha_actualizacion timestamp,
   direccion varchar(10) NOT NULL DEFAULT 'ingreso' CHECK (direccion IN ('ingreso','salida')),
-  roi varchar(1000), rtsp_url_vista varchar(512), exclusiones text
+  roi varchar(1000), rtsp_url_vista varchar(512), exclusiones text,
+  analisis_anpr boolean NOT NULL DEFAULT TRUE
 );
 CREATE TABLE IF NOT EXISTS "clavesservicio" (
   clave varchar(60) PRIMARY KEY, valor varchar(1000) NOT NULL,

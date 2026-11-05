@@ -29,7 +29,7 @@ const inicial = {
 };
 
 const mostrar = (d: Deteccion | undefined = deteccion(), valores: Record<string, unknown> = inicial, onGuardado = vi.fn()) =>
-  render(<MemoryRouter><FormularioLista tipo="alertas" deteccion={d} inicial={valores} onCerrar={vi.fn()} onGuardado={onGuardado} /></MemoryRouter>);
+  render(<MemoryRouter><FormularioLista tipo="alertas" deteccion={d} inicial={valores} mostrarEvidencia onCerrar={vi.fn()} onGuardado={onGuardado} /></MemoryRouter>);
 
 beforeEach(() => {
   get.mockReset().mockResolvedValue({ data: { ultimos_ingresos: [] } });
@@ -46,7 +46,7 @@ describe('Formulario coherente para agregar una placa a la lista negra', () => {
     expect(within(modal).getByRole('group', { name: 'Identificación de la alerta' })).toBeInTheDocument();
     expect(within(modal).getByRole('group', { name: 'Datos del vehículo' })).toBeInTheDocument();
     expect(modal.querySelector('.permiso-condiciones')).toBeInTheDocument();
-    expect(within(modal).getByLabelText('Placa*')).toHaveValue('PBA-1234');
+    expect(within(modal).getByLabelText('Placa (opcional)')).toHaveValue('PBA-1234');
     expect(within(modal).getByLabelText('Nivel de alerta*')).toHaveValue('CRITICA');
   });
 
@@ -75,13 +75,15 @@ describe('Formulario coherente para agregar una placa a la lista negra', () => {
     expect(put).not.toHaveBeenCalled();
   });
 
-  it('mantiene bloqueado Guardar hasta confirmar una placa y un motivo válidos', () => {
+  it('mantiene bloqueado Guardar hasta tener un motivo válido; la placa puede faltar, pero no estar mal escrita', () => {
     render(<MemoryRouter><FormularioLista tipo="alertas" onCerrar={vi.fn()} onGuardado={vi.fn()} /></MemoryRouter>);
     const guardar = screen.getByRole('button', { name: 'Guardar' });
     expect(guardar).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Motivo*'), { target: { value: 'Control de seguridad' } });
+    expect(guardar).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Placa (opcional)'), { target: { value: 'PBA' } });
     expect(guardar).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Placa*'), { target: { value: 'PBA1234' } });
+    fireEvent.change(screen.getByLabelText('Placa (opcional)'), { target: { value: 'PBA1234' } });
     expect(guardar).toBeEnabled();
     fireEvent.change(screen.getByLabelText('Motivo*'), { target: { value: 'abc' } });
     expect(guardar).toBeDisabled();

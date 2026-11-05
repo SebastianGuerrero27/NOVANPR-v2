@@ -18,7 +18,6 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 # =============================================================================
 # Fuente de Video
 # =============================================================================
-RTSP_URL: str = os.getenv("RTSP_URL", os.getenv("RTSP_STREAM_URL", ""))
 DEBUG_SHOW_WINDOW: bool = os.getenv("DEBUG_SHOW_WINDOW", "false").lower() in ("true", "1", "yes")
 
 # =============================================================================
@@ -36,6 +35,11 @@ PLATE_REGISTRATION_MIN_CONFIDENCE: float = 0.23
 SIN_PLACA_HABILITADO: bool = os.getenv("SIN_PLACA_HABILITADO", "true").lower() in ("true", "1", "yes")
 SIN_PLACA_FRACCION_VEHICULO: float = float(os.getenv("SIN_PLACA_FRACCION_VEHICULO", "0.15"))
 SIN_PLACA_ESPERA_S: float = float(os.getenv("SIN_PLACA_ESPERA_S", "5"))
+# Vehículos rápidos con la CPU ocupada: cuadros que el detector no analizó, con la placa donde la midió
+# el flujo óptico, como candidatos a la foto del paso (app/aplicacion/motor.py, _rescatar_cuadros).
+# Desactivado: el A/B del 2026-11-03 (scripts/ab_rescate_cuadros.py) no mostró mejora; se midió con el
+# motor en vivo a la vez y solo alcanzó ~1,2 análisis por segundo. Falta medirlo con la CPU libre.
+RESCATE_CUADROS: bool = os.getenv("RESCATE_CUADROS", "false").lower() in ("true", "1", "yes")
 
 # =============================================================================
 # Proporción de la placa (ANT Ecuador)
@@ -125,6 +129,20 @@ MOTION_GATE_MAX_SKIP: int = int(os.getenv("MOTION_GATE_MAX_SKIP", "5"))
 ROI_CROP_INFERENCE: bool = os.getenv("ROI_CROP_INFERENCE", "true").lower() in ("true", "1", "yes")
 
 # =============================================================================
+# Varias cámaras
+# =============================================================================
+# Cámaras que analiza este motor a la vez. El backend no le asigna más: las que no quepan quedan a la
+# espera y lo avisa la pantalla de monitoreo. Para más cámaras, otro motor (ANPR_SERVICE_URL del backend).
+ANPR_MAX_CAMARAS: int = max(1, int(os.getenv("ANPR_MAX_CAMARAS", "4")))
+# Copias del detector de placas en memoria: cuántas cámaras pueden pasar por el detector a la vez
+ANPR_DETECTORES: int = max(1, int(os.getenv("ANPR_DETECTORES", "1")))
+# Cada operación del detector suelta y vuelve a pedir el GIL de Python: con otros hilos ocupados, cada vez
+# espera hasta este intervalo (5 ms por omisión en Python)
+ANPR_INTERVALO_GIL_MS: float = float(os.getenv("ANPR_INTERVALO_GIL_MS", "0.5"))
+# Hilos de OpenCV por operación (0: todos los núcleos)
+ANPR_HILOS_OPENCV: int = int(os.getenv("ANPR_HILOS_OPENCV", "2"))
+
+# =============================================================================
 # Modo de Depuración Visual
 # =============================================================================
 DEBUG_VISUAL: bool = os.getenv("DEBUG_VISUAL", "true").lower() in ("true", "1", "yes")
@@ -143,12 +161,9 @@ BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:5000")
 # Token compartido con el backend para las rutas máquina a máquina (/api/detecciones/ingreso,
 # /completar-ocr, /descarte). Debe coincidir con ANPR_SERVICE_TOKEN del backend.
 ANPR_SERVICE_TOKEN: str = os.getenv("ANPR_SERVICE_TOKEN", "")
+# /metrics sin token (scrape de Prometheus en una red ya acotada). Por omisión solo token o local.
+METRICAS_PUBLICAS = os.getenv("ANPR_METRICAS_PUBLICAS", "false").lower() == "true"
 BACKEND_HEADERS: dict[str, str] = {"X-Servicio-Token": ANPR_SERVICE_TOKEN} if ANPR_SERVICE_TOKEN else {}
-
-# =============================================================================
-# Base de Datos / Cámara
-# =============================================================================
-CAMERA_ID: int = int(os.getenv("CAMERA_ID", "1"))
 
 # =============================================================================
 # Almacenamiento de Imágenes

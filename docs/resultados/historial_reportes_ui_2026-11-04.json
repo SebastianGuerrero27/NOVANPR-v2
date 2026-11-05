@@ -1,0 +1,18 @@
+{
+  "fecha": "2026-11-04",
+  "origen": "http://localhost:3000",
+  "api": "interceptada con datos artificiales",
+  "pruebas": [
+    "Historial del bundle servido carga con datos artificiales",
+    "Edición envía solo el campo cambiado y el motivo; refresca la tabla sin autorizar",
+    "Eliminación confirmada con motivo quita la fila y actualiza el historial",
+    "Alta manual desde historial conserva el flujo existente y refresca la lista",
+    "Generación explícita y descarga CSV; filtros cambiados bloquean impresión anterior",
+    "Hoja de control: un botón genera el turno y el formato elegidos",
+    "Enlace directo del vehículo mantiene el reporte automático",
+    "Guardia conserva consulta sin CRUD administrativo",
+    "Reportes en móvil: controles accesibles sin desbordamiento horizontal"
+  ],
+  "errores": [],
+  "rutas_no_previstas": []
+}

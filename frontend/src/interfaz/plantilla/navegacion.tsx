@@ -38,7 +38,7 @@ export const MENU: GrupoMenu[] = [
     items: [
       { ruta: '/listas/autorizados', titulo: 'Lista blanca', descripcion: 'Vehículos autorizados a ingresar, con vigencia y horario', icono: <ShieldCheck size={18} />, permiso: 'listas:ver' },
       { ruta: '/listas/alertas', titulo: 'Lista negra', descripcion: 'Placas con alerta de seguridad: su paso genera una alarma', icono: <ShieldAlert size={18} />, permiso: 'listas:ver' },
-      { ruta: '/solicitudes', titulo: 'Gestión de Permisos', descripcion: 'Permisos otorgados y solicitudes de visitas, proveedores y vehículos sin permiso', icono: <FileCheck2 size={18} />, permiso: 'solicitudes:crear', contador: 'solicitudes' },
+      { ruta: '/solicitudes', titulo: 'Gestión de Permisos', descripcion: 'Permisos otorgados y solicitudes de visitas, proveedores y vehículos sin permiso', icono: <FileCheck2 size={18} />, permiso: 'solicitudes:resolver', contador: 'solicitudes' },
       { ruta: '/detecciones', titulo: 'Registro de Salidas', descripcion: 'Registros completos con salida: hoja de control, validación y exportación', icono: <LogOut size={18} />, permiso: 'operacion:monitorear' },
       { ruta: '/historial', titulo: 'Historial Completo', descripcion: 'Todos los pasos registrados, con consulta inteligente por placa, fecha, hora y estado', icono: <History size={18} />, permiso: 'operacion:monitorear', contador: 'revision' },
     ],
@@ -63,7 +63,6 @@ export const MENU: GrupoMenu[] = [
 export const RUTAS_EXTRA: ItemMenu[] = [
   { ruta: '/perfil', titulo: 'Mi perfil', descripcion: 'Datos de la cuenta y contraseña', icono: <UserCircle size={18} />, oculto: true },
   { ruta: '/notificaciones', titulo: 'Notificaciones', descripcion: 'Alarmas, avisos y notificaciones del navegador', icono: <Bell size={18} />, oculto: true },
-  { ruta: '/detecciones/', titulo: 'Detalle del registro', descripcion: 'Evidencia, lectura automática y trazabilidad', icono: <History size={18} />, permiso: 'operacion:monitorear', oculto: true },
 ];
 
 /**

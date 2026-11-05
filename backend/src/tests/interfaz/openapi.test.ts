@@ -45,7 +45,7 @@ describe('Documentación OpenAPI (Swagger)', () => {
     expect(spec.openapi).toBe('3.0.3');
     expect(spec.components.securitySchemes.bearerAuth).toMatchObject({ type: 'http', scheme: 'bearer' });
     const alta = spec.paths['/api/vehiculos-autorizados/'].post;
-    expect(alta['x-permisos']).toEqual(['padron:gestionar']);
+    expect(alta['x-permisos']).toEqual(['padron:agregar']);
     expect(alta.description).toContain('Gestor de permisos');
     expect(alta.security).toEqual([{ bearerAuth: [] }]);
     expect(spec.paths['/api/auth/login'].post.security).toEqual([]);
@@ -54,5 +54,13 @@ describe('Documentación OpenAPI (Swagger)', () => {
   it('convierte los parámetros de Express a la sintaxis OpenAPI', () => {
     expect(rutaOpenApi('/api/camaras/:id(\d+)/roi')).toBe('/api/camaras/{id}/roi');
     expect(rutaOpenApi('/api/medios/:ruta')).toBe('/api/medios/{ruta}');
+  });
+  it('las matrículas opcionales de registro manual y validación admiten null en el contrato', () => {
+    const spec = generarOpenApi() as any;
+    for (const [ruta, campo] of [['/api/detecciones/registro-manual', 'placa'], ['/api/detecciones/validar/{id}', 'placa_validada']]) {
+      const schema = spec.paths[ruta].post.requestBody.content['application/json'].schema;
+      expect(schema.properties[campo]).toMatchObject({ type: 'string', nullable: true });
+      expect(schema.required ?? []).not.toContain(campo);
+    }
   });
 });

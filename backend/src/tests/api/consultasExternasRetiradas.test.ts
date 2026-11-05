@@ -9,8 +9,6 @@ jest.mock('../../contenedor/listas', () => ({ listas: {
   registrar: jest.fn().mockResolvedValue({ accion: 'creado', item: { id: 1, placa: 'PBA1234', propietario: 'Ana Pérez' } }),
 } }));
 // Importar un conector desde el router hace fallar la prueba, incluso sin llamar al proveedor.
-jest.mock('../../contenedor/consultaPersona', () => { throw new Error('El router no debe cargar consultas de cédula'); });
-jest.mock('../../contenedor/consultaVehiculo', () => { throw new Error('El router no debe cargar consultas de placa'); });
 
 import { autorizadosRouter } from '../../interfaz/http/rutas/listas';
 import { listas } from '../../contenedor/listas';

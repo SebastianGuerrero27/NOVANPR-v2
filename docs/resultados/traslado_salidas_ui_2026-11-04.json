@@ -1,0 +1,11 @@
+{
+  "fecha": "2026-11-04",
+  "api": "API interceptada con datos artificiales; sin escrituras operativas",
+  "pruebas": [
+    "Monitoreo excluye cerrados completos; conserva ingresos abiertos y salidas incompletas",
+    "Al guardar la salida se retira la fila sin recargar la página",
+    "Registro de Salidas lista los completos con salida sin duplicar movimientos",
+    "Completar la marca pendiente de un ingreso ya cerrado retira la fila inmediatamente"
+  ],
+  "errores": []
+}

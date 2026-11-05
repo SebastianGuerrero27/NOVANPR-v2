@@ -1,92 +1,82 @@
-import sql from '../postgres';
 import { getDB } from '../db';
-import { enmascarar, parsearExclusiones, parsearRoi } from '../../dominio/camaras';
-import { cambiarCamaraAnpr, estadoServicioAnpr, fijarZonasAnpr, fuenteActivaAnpr, Punto, zonasActivasAnpr } from './servicioAnpr';
+import { asignarCamaras, parsearExclusiones, parsearRoi } from '../../dominio/camaras';
+import { CamaraParaMotor, enviarCamarasAnpr, estadoServicioAnpr } from './servicioAnpr';
 import { emitEvent } from './socket';
 import { rutaCamara, sincronizarRutas, urlLecturaMotor } from './medios';
 
 /**
- * Cámara que procesa el motor ANPR.
+ * Cámaras que procesa cada motor ANPR.
  *
- * El motor arranca con la fuente de su .env; la cámara elegida en el sistema se guarda en
- * ConfiguracionSistema (clave interna `camara_motor_id`) y el backend la reaplica:
- *  - al iniciar, cada 30 s si el motor se reinició o quedó en otra fuente, y
- *  - al editar la URL de esa cámara.
- * Si no hay una elegida (o se deshabilitó/eliminó), se usa la primera cámara habilitada.
- * El motor no se conecta directo a la cámara sino a su ruta en MediaMTX (una sola conexión
- * con la cámara, compartida con el video WebRTC de los navegadores).
- * Junto con la cámara se aplican sus zonas: la región de interés (Camaras.roi) y las zonas de
- * exclusión (Camaras.exclusiones). Las reglas de las zonas y del enmascarado de credenciales están
- * en dominio/camaras.ts.
+ * Toda cámara habilitada con análisis ANPR se reparte entre los motores en línea
+ * (dominio/camaras.ts → asignarCamaras) y cada motor recibe su lista completa. Se repite al iniciar,
+ * cada 15 s y al cambiar una cámara: reenviar la misma lista no cambia nada, así un motor reiniciado
+ * retoma sus cámaras y las de un motor caído pasan a otro con capacidad. El motor no se conecta directo
+ * a la cámara sino a su ruta en MediaMTX (una sola conexión con la cámara, compartida con el video
+ * WebRTC de los navegadores). Junto con cada cámara viajan sus zonas: la región de interés y las zonas
+ * de exclusión.
  */
-const CLAVE = 'camara_motor_id';
+const INTERVALO_MS = 15_000;
 
-export async function guardarCamaraMotor(id: number, usuarioId: number | null): Promise<void> {
-  await getDB().request()
-    .input('clave', sql.VarChar(60), CLAVE).input('valor', sql.NVarChar(500), String(id)).input('uid', sql.Int, usuarioId)
-    .query(`
-      INSERT INTO ConfiguracionSistema (clave, valor, actualizado_por)
-      VALUES (@clave, @valor, @uid)
-      ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_por = EXCLUDED.actualizado_por,
-        fecha_actualizacion = CURRENT_TIMESTAMP`);
+async function camarasAAnalizar(): Promise<CamaraParaMotor[]> {
+  const r = await getDB().request().query(
+    'SELECT id, nombre, roi, exclusiones FROM Camaras WHERE activa = TRUE AND analisis_anpr = TRUE ORDER BY id');
+  return r.recordset.map(c => ({
+    id: c.id, nombre: c.nombre, rtsp_url: urlLecturaMotor(rutaCamara(c.id)), roi: parsearRoi(c.roi), exclusiones: parsearExclusiones(c.exclusiones),
+  }));
 }
 
-/** Cámara que debería estar procesando el motor (elegida y habilitada, o la primera habilitada). */
-export async function camaraDeseada(): Promise<{ id: number; nombre: string; rtsp_url: string; roi: Punto[] | null; exclusiones: Punto[][] } | null> {
-  const r = await getDB().request().input('clave', sql.VarChar(60), CLAVE).query(`
-    SELECT TOP 1 c.id, c.nombre, c.rtsp_url, c.roi, c.exclusiones
-    FROM Camaras c
-    LEFT JOIN ConfiguracionSistema cfg ON cfg.clave = @clave
-    WHERE c.activa = 1
-    ORDER BY CASE WHEN CAST(c.id AS NVARCHAR(20)) = cfg.valor THEN 0 ELSE 1 END, c.id`);
-  const c = r.recordset[0];
-  return c ? { ...c, roi: parsearRoi(c.roi), exclusiones: parsearExclusiones(c.exclusiones) } : null;
-}
+let sinCapacidad: number[] = [];
+/** Cámaras con análisis ANPR que no caben en los motores en línea. */
+export const camarasSinCapacidad = () => sinCapacidad;
 
-/** true si el motor está procesando exactamente la URL de la cámara indicada. */
-export async function motorProcesa(camara: { id: number } | null): Promise<boolean> {
-  if (!camara) return false;
-  const fuente = await fuenteActivaAnpr();
-  return !!fuente && fuente === enmascarar(urlLecturaMotor(rutaCamara(camara.id)));
-}
-
+let reparto = '';
 let ocupado = false;
+let pendiente = false;
 
-/** Aplica la cámara deseada si el motor está en otra fuente. Devuelve true si hubo cambio. */
-export async function sincronizarCamaraMotor(forzar = false): Promise<boolean> {
-  if (ocupado) return false;
+async function repartir(): Promise<void> {
+  const estado = await estadoServicioAnpr();
+  const motores = (estado.motores ?? []).filter(m => m.en_linea);
+  if (!motores.length) return;
+  const camaras = await camarasAAnalizar();
+  const asignacion = asignarCamaras(camaras.map(c => c.id), motores.map(m => ({ indice: m.indice, capacidad: m.max_camaras, camaras: m.camaras })));
+  if (camaras.length) await sincronizarRutas();
+  await Promise.all(motores.map(async m => {
+    const suyas = asignacion.porMotor.get(m.indice) ?? [];
+    try {
+      await enviarCamarasAnpr(m.indice, camaras.filter(c => suyas.includes(c.id)));
+    } catch (e: any) {
+      console.warn(`[MONITOREO] El motor ${m.indice} no aceptó sus cámaras:`, e.message);
+    }
+  }));
+  if (asignacion.sinCapacidad.length && asignacion.sinCapacidad.join() !== sinCapacidad.join()) {
+    console.warn(`[MONITOREO] Sin capacidad para analizar las cámaras ${asignacion.sinCapacidad.join(', ')}: agregue un motor o aumente ANPR_MAX_CAMARAS.`);
+  }
+  sinCapacidad = asignacion.sinCapacidad;
+  const nuevo = JSON.stringify([[...asignacion.porMotor.entries()].sort(), sinCapacidad]);
+  if (nuevo !== reparto) {
+    reparto = nuevo;
+    console.log(`[MONITOREO] Cámaras por motor: ${[...asignacion.porMotor.entries()].map(([m, ids]) => `motor ${m}: ${ids.join(', ') || '—'}`).join(' · ')}`);
+    emitEvent('monitoreo:camaras', { sin_capacidad: sinCapacidad });
+  }
+}
+
+/** Reparte las cámaras entre los motores; si ya está en curso, se repite al terminar para no perder el cambio. */
+export async function sincronizarMotores(): Promise<void> {
+  if (ocupado) { pendiente = true; return; }
   ocupado = true;
   try {
-    const deseada = await camaraDeseada();
-    if (!deseada) return false;
-    const estado = await estadoServicioAnpr();
-    if (!estado.en_linea) return false;
-    if (!forzar && (await motorProcesa(deseada))) {
-      // Misma cámara: solo se corrigen las zonas si el motor tiene otras (por ejemplo, se
-      // guardaron mientras el motor estaba detenido)
-      const actual = await zonasActivasAnpr();
-      const deseadas = { roi: deseada.roi, exclusiones: deseada.exclusiones };
-      if (actual !== undefined && JSON.stringify(actual) !== JSON.stringify(deseadas)) {
-        await fijarZonasAnpr(deseada.id, deseada.roi, deseada.exclusiones);
-      }
-      return false;
-    }
-    await sincronizarRutas();
-    await cambiarCamaraAnpr({
-      id: deseada.id, nombre: deseada.nombre, rtsp_url: urlLecturaMotor(rutaCamara(deseada.id)), roi: deseada.roi, exclusiones: deseada.exclusiones,
-    }, forzar);
-    console.log(`[MONITOREO] Motor ANPR asignado a la cámara #${deseada.id} (${deseada.nombre})`);
-    emitEvent('monitoreo:camara', { camara_id: deseada.id, nombre: deseada.nombre, por: 'Sistema' });
-    return true;
+    do {
+      pendiente = false;
+      await repartir();
+    } while (pendiente);
   } catch (e: any) {
-    console.warn('[MONITOREO] No se pudo asignar la cámara al motor:', e.message);
-    return false;
+    console.warn('[MONITOREO] No se pudieron asignar las cámaras a los motores:', e.message);
   } finally {
     ocupado = false;
   }
 }
 
 export function iniciarSincronizacionMotor(): void {
-  setTimeout(() => sincronizarCamaraMotor(), 5000).unref();
-  setInterval(() => sincronizarCamaraMotor(), 30000).unref();
+  setTimeout(() => void sincronizarMotores(), 5000).unref();
+  setInterval(() => void sincronizarMotores(), INTERVALO_MS).unref();
 }

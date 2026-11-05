@@ -2,15 +2,13 @@ import { Router } from 'express';
 import { authMiddleware, requierePermiso } from '../middlewares/auth';
 import { monitoreo } from '../../../contenedor/camaras';
 import { actorDe, controlador } from '../respuesta';
-import { controladorExterno } from '../servicioExterno';
 
 /**
  * Monitoreo en vivo.
  *
- *   GET  /estado         estado del motor ANPR y cámara que está procesando   operacion:monitorear
- *   POST /camara-activa  cambia la cámara que procesa el motor                camaras:operar
- *   POST /ticket         credencial de 60 s para el video (WebRTC de MediaMTX  operacion:monitorear
- *                        o WebSocket de pistas del motor)
+ *   GET  /estado   estado de los motores ANPR y de cada cámara en análisis   operacion:monitorear
+ *   POST /ticket   credencial de 60 s para el video (WebRTC de MediaMTX o    operacion:monitorear
+ *                  WebSocket de pistas del motor que atiende la cámara)
  *
  * Los casos de uso están en aplicacion/monitoreo.ts.
  */
@@ -21,14 +19,8 @@ router.get('/estado', requierePermiso('operacion:monitorear'), controlador('MONI
   res.json(await monitoreo.estado());
 }));
 
-router.post('/camara-activa', requierePermiso('camaras:operar'),
-  controladorExterno('MONITOREO cambiar cámara', 'El servicio ANPR no respondió al cambio de cámara.', async (req, res) => {
-    const camara = await monitoreo.cambiarCamara(req.body?.camara_id, actorDe(req));
-    res.json({ message: `El motor ANPR ahora procesa ${camara.nombre}.` });
-  }));
-
 router.post('/ticket', requierePermiso('operacion:monitorear'), controlador('MONITOREO ticket', 'No se pudo emitir la credencial de video.', async (req, res) => {
-  res.json(monitoreo.ticket(req.body?.alcance, actorDe(req)));
+  res.json(monitoreo.ticket(req.body?.alcance, req.body?.camara_id, actorDe(req)));
 }));
 
 export default router;

@@ -57,7 +57,7 @@ const Administracion: React.FC = () => {
         <div className="pila" style={{ gap: 12, fontSize: 13 }}>
           <div className="fila" style={{ justifyContent: 'space-between' }}><span className="fila" style={{ gap: 8 }}><Database size={15} /> Base de datos</span><span className="fila" style={{ gap: 6 }}><span className="punto verde" /> En línea</span></div>
           <div className="fila" style={{ justifyContent: 'space-between' }}><span className="fila" style={{ gap: 8 }}><Server size={15} /> Motor ANPR</span>
-            <span className="fila" style={{ gap: 6 }}><span className={`punto ${s.anpr.en_linea ? 'verde' : 'rojo'}`} />{s.anpr.en_linea ? `En línea · ${numero(s.anpr.fps_captura ?? 0)} fps` : s.anpr.error ?? 'Fuera de línea'}</span></div>
+            <span className="fila" style={{ gap: 6 }}><span className={`punto ${s.anpr.en_linea ? 'verde' : 'rojo'}`} />{s.anpr.en_linea ? `En línea · ${numero(s.anpr.camaras?.length ?? 0)} de ${numero(s.anpr.capacidad ?? 0)} cámaras` : s.anpr.error ?? 'Fuera de línea'}</span></div>
           <div className="fila" style={{ justifyContent: 'space-between' }}><span className="fila" style={{ gap: 8 }}><Mail size={15} /> Correo (SMTP)</span>
             <span className="fila" style={{ gap: 6 }}><span className={`punto ${s.correo.configurado ? 'verde' : 'ambar'}`} />{s.correo.configurado ? 'Configurado' : 'Sin configurar'}</span></div>
           {s.anpr.en_linea && <p className="texto-secundario" style={{ fontSize: 12 }}>Detector {s.anpr.detector} · OCR {s.anpr.ocr}{s.anpr.verificador ? ` · verificador ${s.anpr.verificador}` : ''}</p>}

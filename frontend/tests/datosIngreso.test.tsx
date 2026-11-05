@@ -67,7 +67,6 @@ describe('Quién ingresa y motivo de ingreso', () => {
   it('agrupa la placa con el vehículo y exige completar sus datos antes de confirmar el ingreso', () => {
     render(<MemoryRouter><ValidarModal d={paso()} onCerrar={vi.fn()} /></MemoryRouter>);
     const grupo = screen.getByRole('group', { name: 'Datos del vehículo' });
-    expect(within(grupo).getByLabelText('Placa*')).toHaveAttribute('aria-required', 'true');
     expect(screen.queryByText('Datos del vehículo (opcionales)')).not.toBeInTheDocument();
     const confirmar = screen.getByRole('button', { name: 'Confirmar placa' });
     fireEvent.click(screen.getByRole('button', { name: 'Visita' }));
@@ -87,7 +86,10 @@ describe('Quién ingresa y motivo de ingreso', () => {
       fireEvent.change(campo, { target: { value: valor } });
       expect(confirmar).toBeEnabled();
     }
-    fireEvent.change(within(grupo).getByLabelText('Placa*'), { target: { value: '' } });
+    // Un vehículo sin placa visible también se confirma; una placa mal escrita, no
+    fireEvent.change(within(grupo).getByLabelText('Placa (opcional)'), { target: { value: '' } });
+    expect(confirmar).toBeEnabled();
+    fireEvent.change(within(grupo).getByLabelText('Placa (opcional)'), { target: { value: 'PBA' } });
     expect(confirmar).toBeDisabled();
   });
   it('muestra la foto del permiso y guarda la marca y el modelo revisados en la validación', async () => {

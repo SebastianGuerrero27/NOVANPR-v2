@@ -48,24 +48,24 @@ describe('Historial de ingresos en vivo', () => {
         </TiempoRealContext.Provider>
       </MemoryRouter>,
     );
-    expect(await screen.findByText('1 registros')).toBeTruthy();
+    expect(await screen.findByText(/^1 registro ·/)).toBeTruthy();
 
-    emitir('deteccion:nueva', { id: 50 });
-    emitir('deteccion:nueva', { id: 51 });
-    expect(screen.getByText('Se registraron 2 ingresos nuevos.')).toBeTruthy();
+    emitir('deteccion:nueva', { id: 50, registro_completo: true, tipo_movimiento: 'ingreso' });
+    emitir('deteccion:nueva', { id: 51, registro_completo: true, tipo_movimiento: 'ingreso' });
+    expect(screen.getByText('Se registraron 2 registros con salida.')).toBeTruthy();
 
     // El motor consolidó el ingreso 50 con su paso previo: nunca estuvo en la tabla ni en el total
     emitir('deteccion:eliminada', { id: 50 });
-    expect(screen.getByText('Se registró 1 ingreso nuevo.')).toBeTruthy();
-    expect(screen.getByText('1 registros')).toBeTruthy();
+    expect(screen.getByText('Se cerró 1 registro.')).toBeTruthy();
+    expect(screen.getByText(/^1 registro ·/)).toBeTruthy();
 
     // Uno que no se mostraba ni se anunció (otra página u otro filtro) no altera nada
     emitir('deteccion:eliminada', { id: 999 });
-    expect(screen.getByText('1 registros')).toBeTruthy();
+    expect(screen.getByText(/^1 registro ·/)).toBeTruthy();
 
     // La fila visible eliminada sale de la tabla y del total
     emitir('deteccion:eliminada', { id: 1 });
-    expect(screen.getByText('0 registros')).toBeTruthy();
+    expect(screen.getByText(/^0 registros ·/)).toBeTruthy();
     expect(screen.queryByText('PBA-1234')).toBeNull();
   });
 });

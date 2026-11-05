@@ -8,8 +8,16 @@ it('admite únicamente los campos del reporte completos y con salida válida', (
 it.each(['', '  ', null, 'Desconocido', 'Sin clasificar', '—'])('no admite un tipo ausente: %s', tipo => {
   expect(faltantesRegistro({ ...completo, tipo_vehiculo: tipo })).toContain('Tipo de vehículo');
 });
-it.each(['persona_ingreso', 'placa_reconocida', 'vehiculo_marca', 'motivo_ingreso'])('no admite %s vacío', campo => {
+it.each(['persona_ingreso', 'vehiculo_marca', 'motivo_ingreso'])('no admite %s vacío', campo => {
   expect(faltantesRegistro({ ...completo, [campo]: ' ' })).toHaveLength(1);
+});
+it('una matrícula null no impide completar el ingreso ni su salida y no se inventa una matrícula para el reporte', () => {
+  const sinPlaca = { ...completo, placa_reconocida: null, placa_validada: null };
+  expect(faltantesIngreso(sinPlaca)).toEqual([]);
+  expect(faltantesRegistro(sinPlaca)).toEqual([]);
+  expect(datosRegistro(sinPlaca).placa).toBeNull();
+  expect(faltantesRegistro({ ...sinPlaca, fecha_hora_salida: null })).toEqual(['Salida']);
+  expect(faltantesRegistro({ ...sinPlaca, fecha_hora_salida: '2026-10-22T12:00:00Z' })).toEqual(['Salida posterior al ingreso']);
 });
 it('aprovecha datos reales del padrón cuando faltan en el movimiento', () => {
   const d = { ...completo, persona_ingreso: ' ', propietario: 'Ana', tipo_vehiculo: 'Desconocido', autorizado_tipo: 'Camioneta', vehiculo_marca: null, autorizado_marca: 'Toyota' };

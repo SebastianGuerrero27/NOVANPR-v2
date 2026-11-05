@@ -88,7 +88,9 @@ export function BarrasApiladas<T extends object>({ datos, series, etiquetaX, tit
   return (
     <div ref={ref} style={{ width: '100%' }} onMouseLeave={() => { setTip(null); setHover(null); }}>
       {ancho > 0 && (
-        <svg className="grafico" width={ancho} height={alto} role="img" aria-label="Gráfico de barras por estado">
+        // viewBox: al imprimir el gráfico se ajusta al ancho de la hoja
+        <svg className="grafico" width={ancho} height={alto} viewBox={`0 0 ${ancho} ${alto}`} role="img"
+          aria-label={series.length > 1 ? 'Gráfico de barras por estado' : `Gráfico de barras: ${series[0]?.etiqueta ?? ''}`}>
           {marcas.map(m => (
             <g key={m}>
               <line className="rejilla" x1={margen.izq} x2={ancho - margen.der} y1={y(m)} y2={y(m)} />

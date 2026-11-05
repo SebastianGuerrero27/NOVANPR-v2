@@ -1,0 +1,63 @@
+# Banco de pruebas de carga: una copia aislada del backend y de PostgreSQL con los mismos límites de
+# docker-compose.prod.yml. Datos ficticios (sembrar.sql) y secretos de un solo uso (entorno.sh).
+# No toca el sistema de producción local: otro proyecto, otros puertos, otro volumen.
+name: anpr-carga
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_DB=ANPR_ECU911
+      - POSTGRES_USER=anpr
+      - POSTGRES_PASSWORD=${CARGA_DB_PASSWORD:?}
+    ports:
+      - "127.0.0.1:5544:5432"
+    volumes:
+      - carga_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anpr -d ANPR_ECU911"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  backend:
+    image: ${IMAGEN_BACKEND:-anpr-backend:carga}
+    ports:
+      - "127.0.0.1:5055:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - DB_USER=anpr
+      - DB_PASSWORD=${CARGA_DB_PASSWORD:?}
+      - DB_SERVER=db
+      - DB_PORT=5432
+      - DB_NAME=ANPR_ECU911
+      - JWT_SECRET=${CARGA_JWT_SECRET:?}
+      - CAMARAS_CLAVE_CIFRADO=${CARGA_CLAVE_CIFRADO:?}
+      - ANPR_SERVICE_TOKEN=${CARGA_SERVICE_TOKEN:?}
+      # Los límites por IP se prueban aparte: aquí toda la carga viene de un solo cliente
+      - LIMITE_API_POR_MINUTO=${CARGA_LIMITE_API:-100000000}
+      - LIMITE_ACCESO_POR_15_MIN=${CARGA_LIMITE_ACCESO:-100000000}
+      - FRONTEND_URL=http://localhost:3000
+      - MEDIA_DIR=/app/media
+      - EVIDENCIA_LISTAS_DIR=/app/evidencia-listas
+      # Sin motor ni MediaMTX: solo se mide el backend y su base de datos
+      - ANPR_SERVICE_URL=http://127.0.0.1:9
+      - MEDIAMTX_API_URL=http://127.0.0.1:9
+      - DOCKER_CONTAINER=true
+      - DB_POOL_MAX=${DB_POOL_MAX:-10}
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 768m
+
+volumes:
+  carga_db:

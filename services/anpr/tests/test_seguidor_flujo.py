@@ -130,3 +130,53 @@ def test_la_velocidad_del_kalman_esta_en_pixeles_por_segundo_reales():
     vx, vy = pipeline.velocidad_px_s(trk)
     assert vx == pytest.approx(30.0)
     assert vy == pytest.approx(-12.0)
+
+
+# ─── Cajas por cuadro: cuadros que el detector no analizó ────────────────────
+
+def test_guarda_la_caja_de_cada_cuadro_entre_dos_analisis():
+    seguidor = SeguidorFlujo()
+    seguidor.avanzar(cuadro(100, 120), 0, 0.0)
+    seguidor.anclar({1: (caja(100, 120), None)}, 0, 0.0)
+    for i in range(1, 11):
+        seguidor.avanzar(cuadro(100 + 5 * i, 120), i, i / FPS)
+    cuadros = seguidor.cuadros_de(1, 2, 8)
+    assert [c[0] for c in cuadros] == [3, 4, 5, 6, 7]
+    for indice, hora, imagen, (x1, y1, _x2, _y2) in cuadros:
+        assert hora == pytest.approx(indice / FPS)
+        assert x1 == pytest.approx(100 + 5 * indice, abs=1.5) and y1 == pytest.approx(120, abs=1.5)
+        assert imagen.shape == (ALTO, ANCHO)
+    assert seguidor.cuadros_de(2, 0, 10) == []   # otra pista
+
+
+def test_un_analisis_reemplaza_las_cajas_desde_su_cuadro():
+    """Lo que el flujo midió desde el análisis anterior se corrige con la caja del detector."""
+    seguidor = SeguidorFlujo()
+    for i in range(9):
+        seguidor.avanzar(cuadro(100 + 4 * i, 120), i, i / FPS)
+    seguidor.anclar({7: (caja(100, 120), None)}, 0, 0.0)
+    seguidor.anclar({7: (caja(120, 120), None)}, 5, 5 / FPS)
+    medidas = {i: c for i, _, _, c in seguidor.cuadros_de(7, -1, 9)}
+    assert sorted(medidas) == list(range(9))
+    assert medidas[5][0] == 120.0                       # la del detector, tal cual
+    assert medidas[7][0] == pytest.approx(128, abs=1.5)  # llevada desde ella
+
+
+def test_la_prediccion_del_kalman_no_se_guarda_como_caja_medida():
+    seguidor = SeguidorFlujo()
+    for i in range(4):
+        seguidor.avanzar(cuadro(100, 120), i, i / FPS)
+    seguidor.anclar({3: (caja(300, 40), None, True)}, 3, 3 / FPS)
+    assert seguidor.cuadros_de(3, -1, 4) == []
+
+
+def test_solo_quedan_las_cajas_de_los_cuadros_guardados():
+    seguidor = SeguidorFlujo(cuadros_guardados=10)
+    seguidor.avanzar(cuadro(100, 120), 0, 0.0)
+    seguidor.anclar({1: (caja(100, 120), None)}, 0, 0.0)
+    for i in range(1, 25):
+        seguidor.avanzar(cuadro(100 + 2 * i, 120), i, i / FPS)
+    assert [c[0] for c in seguidor.cuadros_de(1, -1, 100)] == list(range(15, 25))
+    assert min(seguidor._medidas[1]) >= 14
+    seguidor.reiniciar()
+    assert seguidor.cuadros_de(1, -1, 100) == []

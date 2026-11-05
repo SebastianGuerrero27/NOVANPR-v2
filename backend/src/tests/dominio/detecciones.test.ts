@@ -1,4 +1,13 @@
-import { esSinPlaca, evidenciaDe, leerFiltros, leerHoraDelDia, MAX_EVIDENCIA, motivoRevision, normalizarFuente, origenDe, serializarEvidencia } from '../../dominio/detecciones';
+import { esSinPlaca, evidenciaDe, leerFiltros, leerHoraDelDia, leerRegistroManual, MAX_EVIDENCIA, motivoRevision, normalizarFuente, origenDe, serializarEvidencia } from '../../dominio/detecciones';
+
+describe('Registro manual con matrícula opcional', () => {
+  it.each([null, undefined, '', '  '])('guarda %s como null', placa => {
+    expect(leerRegistroManual({ placa, motivo: 'Placa ilegible' })).toMatchObject({ ok: true, valor: { placa: null } });
+  });
+  it.each(['HAVAL / ambacar', 'PBA12', 123, {}])('rechaza una matrícula no vacía inválida: %j', placa => {
+    expect(leerRegistroManual({ placa, motivo: 'Placa ilegible' }).ok).toBe(false);
+  });
+});
 
 describe('Detecciones · fuente de la detección', () => {
   it('una URL RTSP (con o sin credenciales) se guarda como «rtsp»: nunca la URL', () => {

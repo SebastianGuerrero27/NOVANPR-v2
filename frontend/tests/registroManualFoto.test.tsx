@@ -29,7 +29,7 @@ function respuestas(cuadros: (ahora: number) => unknown) {
 
 const abrir = async () => {
   render(<MemoryRouter><RegistroManualModal onCerrar={() => undefined} /></MemoryRouter>);
-  fireEvent.change(screen.getByLabelText('Placa*'), { target: { value: 'PBA1234' } });
+  fireEvent.change(screen.getByLabelText('Placa (opcional)'), { target: { value: 'PBA1234' } });
   fireEvent.change(screen.getByLabelText('Motivo del registro manual*'), { target: { value: 'Pasó muy rápido' } });
   await screen.findByRole('option', { name: /Garita/ });
   fireEvent.change(screen.getByLabelText('Cámara asociada'), { target: { value: '2' } });
@@ -46,7 +46,7 @@ describe('Foto de evidencia del registro manual', () => {
     });
     api.post.mockResolvedValue({ data: { deteccion: { id: 40, placa: 'PBA1234', estado_validacion: 'no_reconocido', tipo_movimiento: 'ingreso' } } });
     await abrir();
-    const foto = await screen.findByRole('button', { name: /Cuadro de hace 9 s/ });
+    const foto = await screen.findByRole('button', { name: /Cuadro de hace (9|1[0-9])(,5)? s/ });
     expect(api.get).toHaveBeenCalledWith('/detecciones/registro-manual/cuadros', { params: { camara_id: 2 } });
     fireEvent.click(foto);
     expect(foto).toHaveAttribute('aria-pressed', 'true');

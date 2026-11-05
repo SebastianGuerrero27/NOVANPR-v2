@@ -18,12 +18,13 @@ export const CamposFormularioPermiso: React.FC<{
   prefijo: string; valor: FormularioPermiso; onCambiar: (cambios: Partial<FormularioPermiso>) => void;
   horario: Franja[] | null; onHorario: (v: Franja[] | null) => void;
   errorHorario?: string | null;
-  deteccion?: Deteccion; placaObligatoria?: boolean; placaFija?: boolean; vehiculoObligatorio?: boolean; incluirFotoPlaca?: boolean;
+  deteccion?: Deteccion; placaObligatoria?: boolean; placaOpcional?: boolean; placaFija?: boolean; vehiculoObligatorio?: boolean; incluirFotoPlaca?: boolean;
   distribucion?: 'normal' | 'panoramica';
   /** false donde el motivo ya se pide aparte (solicitud de acceso, autorización en la garita) */
   mostrarMotivo?: boolean;
   accionesVehiculo?: React.ReactNode; children?: React.ReactNode;
-}> = ({ prefijo, valor, onCambiar, horario, onHorario, errorHorario, deteccion, placaObligatoria = false, placaFija, vehiculoObligatorio = false, incluirFotoPlaca = false, distribucion = 'normal', mostrarMotivo = true, accionesVehiculo, children }) => {
+}> = ({ prefijo, valor, onCambiar, horario, onHorario, errorHorario, deteccion, placaObligatoria = false, placaOpcional = false, placaFija, vehiculoObligatorio = false, incluirFotoPlaca = false, distribucion = 'normal', mostrarMotivo = true, accionesVehiculo, children }) => {
+  const placaRequerida = !placaOpcional && (placaObligatoria || vehiculoObligatorio);
   return <div className={`completo formulario-permiso${distribucion === 'panoramica' ? ' panoramico' : ''}`}>
     {deteccion && <FotoVehiculoPermiso deteccion={deteccion} incluirPlaca={incluirFotoPlaca} />}
     <fieldset className="permiso-persona formulario-seccion">
@@ -33,7 +34,7 @@ export const CamposFormularioPermiso: React.FC<{
     <fieldset className="permiso-vehiculo" style={{ border: '1px dashed var(--border-strong)', borderRadius: 10, padding: '10px 14px 14px' }}>
       <legend className="etiqueta-campo" style={{ padding: '0 6px' }}>Datos del vehículo</legend>
       <div className="form-grid">
-        <CampoPlaca id={`${prefijo}-placa`} className="completo" etiqueta={placaObligatoria || vehiculoObligatorio ? 'Placa*' : 'Placa (opcional)'} requerido={placaObligatoria || vehiculoObligatorio} valor={valor.placa} onCambiar={v => onCambiar({ placa: v })} deshabilitado={placaFija} />
+        <CampoPlaca id={`${prefijo}-placa`} className="completo" etiqueta={placaRequerida ? 'Placa*' : 'Placa (opcional)'} requerido={placaRequerida} valor={valor.placa} onCambiar={v => onCambiar({ placa: v })} deshabilitado={placaFija} />
         <CamposVehiculoPermiso prefijo={prefijo} valor={valor} onCambiar={(k, v) => onCambiar({ [k]: v })} obligatorio={vehiculoObligatorio} />
       </div>
       {accionesVehiculo}

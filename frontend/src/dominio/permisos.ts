@@ -11,8 +11,8 @@ export type Rol = 'Admin' | 'Guardia' | 'GestorPermisos';
 export const ROLES_ORDEN: Rol[] = ['Guardia', 'GestorPermisos', 'Admin'];
 
 export type Permiso =
-  | 'operacion:monitorear' | 'detecciones:validar' | 'detecciones:eliminar'
-  | 'listas:ver' | 'padron:gestionar' | 'padron:supervisar' | 'alertas:restringir' | 'alertas:gestionar' | 'accesos:excepcion'
+  | 'operacion:monitorear' | 'detecciones:validar' | 'detecciones:gestionar' | 'detecciones:eliminar-individual' | 'detecciones:eliminar'
+  | 'listas:ver' | 'padron:agregar' | 'padron:gestionar' | 'padron:supervisar' | 'alertas:restringir' | 'alertas:gestionar' | 'accesos:excepcion'
   | 'solicitudes:crear' | 'solicitudes:resolver'
   | 'avisos:garita' | 'avisos:acceso' | 'avisos:seguridad' | 'avisos:sistema' | 'avisos:padron' | 'alarmas:escalamiento'
   | 'reportes:ver'
@@ -30,12 +30,15 @@ export function esVistaGestionPermisos(puede: (p: Permiso) => boolean): boolean 
 export const ETIQUETA_PERMISO: Record<Permiso, string> = {
   'operacion:monitorear': 'Gestión de Accesos, panel de inicio y registro de ingresos',
   'detecciones:validar': 'Confirmar o corregir lecturas y registrar ingresos manuales',
-  'detecciones:eliminar': 'Eliminar ingresos y su evidencia',
+  'detecciones:gestionar': 'Corregir los datos históricos de ingresos y salidas',
+  'detecciones:eliminar-individual': 'Eliminar un registro y su evidencia con motivo auditado',
+  'detecciones:eliminar': 'Eliminar múltiples registros y su evidencia',
   'listas:ver': 'Consultar la lista blanca y la lista negra',
-  'padron:gestionar': 'Registrar vehículos en la lista blanca: vigencia, horarios y categoría',
+  'padron:agregar': 'Agregar vehículos a la lista blanca',
+  'padron:gestionar': 'Editar y retirar permisos de la lista blanca: vigencia, horarios y categoría',
   'padron:supervisar': 'Consultar y gestionar los permisos otorgados por todos los usuarios, incluidos los retirados',
   'alertas:restringir': 'Agregar placas a la lista negra',
-  'alertas:gestionar': 'Registrar placas en la lista negra',
+  'alertas:gestionar': 'Editar y quitar placas de la lista negra',
   'accesos:excepcion': 'Autorizar ingresos por excepción (fuera de horario o vigencia)',
   'solicitudes:crear': 'Solicitar la autorización de una placa',
   'solicitudes:resolver': 'Aprobar o rechazar solicitudes de acceso',
@@ -46,7 +49,7 @@ export const ETIQUETA_PERMISO: Record<Permiso, string> = {
   'avisos:padron': 'Notificaciones de vehículos agregados a la lista blanca',
   'alarmas:escalamiento': 'Alarmas no atendidas escaladas',
   'reportes:ver': 'Reportes por período y cámara',
-  'camaras:operar': 'Cambiar la cámara del motor y su región de interés',
+  'camaras:operar': 'Cambiar la región de interés y las zonas de exclusión de las cámaras',
   'camaras:gestionar': 'Alta y diagnóstico de cámaras',
   'usuarios:gestionar': 'Cuentas, roles y bloqueos del personal',
   'auditoria:ver': 'Consultar la auditoría',

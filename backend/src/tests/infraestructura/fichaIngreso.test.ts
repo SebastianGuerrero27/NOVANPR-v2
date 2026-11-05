@@ -2,6 +2,19 @@ jest.mock('../../infraestructura/servicios/configuracion', () => ({ politicaAuto
 jest.mock('../../infraestructura/servicios/media', () => ({ urlMedia: (ruta: unknown) => ruta ?? null }));
 import { presentarDeteccion } from '../../infraestructura/presentacionDetecciones';
 
+it('presenta un ingreso cerrado completo con placa null y conserva la foto y observación de concesionaria', () => {
+  const dto = presentarDeteccion({ id: 28, tipo_movimiento: 'ingreso', estado_procesamiento: 'procesado', estado_validacion: 'no_reconocido',
+    placa_validada: null, placa_reconocida: null, placa_ocr_original: 'QIH6060', validado_manualmente: true,
+    persona_ingreso: 'Ana Torres', tipo_vehiculo: 'Automóvil', vehiculo_marca: 'Haval', motivo_ingreso: 'Jornada laboral',
+    fecha_hora_ingreso: '2026-11-04T14:00:00Z', fecha_hora_salida: '2026-11-04T15:00:00Z',
+    ruta_imagen_ingreso: 'vehiculo.jpg', ruta_imagen_placa: 'rotulo.jpg',
+    evidencia_lectura: JSON.stringify({ observacion_ocr: 'HAVAL / ambacar', motivo: 'texto_no_matricula' }),
+  }, true);
+  expect(dto).toMatchObject({ placa: null, registro_completo: true, datos_faltantes_registro: [],
+    imagen_vehiculo: 'vehiculo.jpg', imagen_placa: 'rotulo.jpg', evidencia_lectura: { observacion_ocr: 'HAVAL / ambacar' },
+    lectura_automatica: { placa: 'QIH6060' } });
+});
+
 it('editar una celda conserva los datos del padrón que la ficha aún no contiene', () => {
   const dto = presentarDeteccion({ id: 15, estado_validacion: 'autorizado', estado_procesamiento: 'procesado',
     vehiculo_autorizado_id: 7, propietario: 'Ana Torres', autorizado_cedula: '0102030405', autorizado_institucion: 'ECU 911',

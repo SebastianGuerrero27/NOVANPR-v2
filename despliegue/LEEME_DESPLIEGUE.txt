@@ -1,0 +1,326 @@
+==============================================================================
+ SISTEMA ANPR ECU 911 · COORDINACIÓN ZONAL 3
+ Paquete de producción para Docker (instalación sin internet)
+==============================================================================
+
+Versión ......... __VERSION__
+Contenido ....... imágenes ya compiladas y probadas, con los pesos de los
+                  modelos dentro de la imagen del motor
+Internet ........ no hace falta: el servidor no compila ni descarga nada
+Datos ........... el paquete NO trae datos: ni base de datos, ni cámaras, ni
+                  usuarios, ni fotos, ni contraseñas. El sistema arranca
+                  vacío y los secretos se generan en el servidor durante la
+                  instalación. La cámara de la garita se registra en la
+                  aplicación (sección 6).
+
+
+------------------------------------------------------------------------------
+ 1. QUÉ CONTIENE
+------------------------------------------------------------------------------
+
+  LEEME_DESPLIEGUE.txt         Este archivo
+  docker-compose.yml           Servicios de producción (sin compilación)
+  .env.example                 Todas las variables posibles, comentadas
+  imagenes/anpr_imagenes.tar   Las 5 imágenes de Docker:
+                                 anpr-backend:produccion    API (Node.js)
+                                 anpr-frontend:produccion   Interfaz web (nginx)
+                                 anpr-motor:produccion      Motor ANPR (detector,
+                                                            OCR, verificador y
+                                                            sus modelos)
+                                 postgres:17-alpine         Base de datos
+                                 bluenviron/mediamtx:1.21.3 Video de las cámaras
+  mediamtx/mediamtx.yml        Configuración del servidor de video
+  frontend/nginx.compose.conf  Configuración del servidor web
+  scripts/instalar.sh          Instalación automática en Linux
+  scripts/instalar.ps1         Instalación automática en Windows
+  codigo/                      Código fuente del mismo commit (para auditar
+                               o recompilar; no hace falta para instalar).
+                               Para recompilar el motor hace falta además
+                               yolo26n.pt (pesos oficiales de Ultralytics)
+                               en services/anpr/
+  SHA256SUMS.txt               Huellas para comprobar que nada se dañó al copiar
+
+
+------------------------------------------------------------------------------
+ 2. REQUISITOS DEL SERVIDOR
+------------------------------------------------------------------------------
+
+  Sistema   Linux de 64 bits con Docker Engine y Docker Compose v2
+            (recomendado Ubuntu Server 22.04 o 24.04), o Windows 10/11 con
+            Docker Desktop.
+  CPU       4 núcleos x86-64 como mínimo; recomendado 8 o más.
+            La detección y el OCR corren en CPU (no hace falta GPU).
+            Con 4 núcleos se midió p50 0,99 s por lectura; con ~9, 0,48 s.
+  Memoria   8 GB mínimo, 16 GB recomendado.
+  Disco     25 GB libres para instalar; 100 GB recomendado para la
+            evidencia fotográfica (la conservación por omisión es de 90 días
+            o 15 GB, en Configuración > Almacenamiento).
+  Red       IP fija, acceso a la red de las cámaras y a la red del personal.
+
+  Comprobar Docker:   docker version      y      docker compose version
+
+
+------------------------------------------------------------------------------
+ 3. INSTALACIÓN
+------------------------------------------------------------------------------
+
+ Copie el .rar al servidor y descomprímalo en una carpeta fija, por ejemplo
+ /opt/novanpr (Linux) o C:\NOVANPR (Windows). Esa carpeta queda como la
+ carpeta del sistema: no la mueva después.
+
+ 3.1 LINUX (recomendado)
+
+   sudo apt install unrar            # si no lo tiene
+   unrar x NOVANPR_produccion_<fecha>.rar /opt/
+   cd /opt/NOVANPR_produccion
+   sha256sum -c SHA256SUMS.txt       # opcional: todo debe decir OK
+   sudo bash scripts/instalar.sh 192.168.1.50
+
+   (Reemplace 192.168.1.50 por la IP del servidor en la red local.)
+
+ 3.2 WINDOWS (Docker Desktop abierto y en ejecución)
+
+   Descomprima con WinRAR en C:\NOVANPR y, en PowerShell:
+
+   cd C:\NOVANPR\NOVANPR_produccion
+   powershell -ExecutionPolicy Bypass -File scripts\instalar.ps1 -Ip 192.168.1.50
+
+ El script hace 3 pasos y se puede repetir sin perder nada:
+   1/3 Carga las imágenes (docker load; tarda de 3 a 10 minutos).
+   2/3 Crea el archivo .env con contraseñas y claves NUEVAS y aleatorias, y
+       las direcciones con la IP indicada. Si ya existe un .env, lo respeta.
+   3/3 Arranca los 5 servicios.
+
+ IMPORTANTE: al terminar, guarde una copia del archivo .env en un lugar
+ seguro (fuera del servidor). La variable CAMARAS_CLAVE_CIFRADO cifra las
+ contraseñas de las cámaras y del correo: si se pierde, hay que volver a
+ escribirlas en el sistema.
+
+ 3.3 INSTALACIÓN MANUAL (si prefiere no usar el script)
+
+   docker load -i imagenes/anpr_imagenes.tar
+   cp .env.example .env
+   (edite .env: ver la sección 4)
+   docker compose up -d
+
+
+------------------------------------------------------------------------------
+ 4. CONFIGURACIÓN (.env)
+------------------------------------------------------------------------------
+
+ El script ya lo deja listo. Si lo arma a mano, son obligatorias (sin ellas
+ docker compose se detiene con "Defina … en .env"):
+
+   DB_PASSWORD             Contraseña de PostgreSQL (fuerte, 24+ caracteres)
+   JWT_SECRET              openssl rand -base64 48
+   CAMARAS_CLAVE_CIFRADO   openssl rand -base64 32   (exactamente 32 bytes)
+   ANPR_SERVICE_TOKEN      openssl rand -hex 24
+
+ Y las de red, con la IP del servidor (ejemplo 192.168.1.50):
+
+   FRONTEND_URL=http://192.168.1.50:3000
+   WEBRTC_HOSTS=127.0.0.1,192.168.1.50
+   WEBRTC_PUBLIC_URL=http://192.168.1.50:8889
+   ANPR_PUBLIC_URL=http://192.168.1.50:8000
+
+ Recomendada en producción: CAMARAS_REDES_PERMITIDAS con solo la red de
+ las cámaras, por ejemplo 10.20.30.0/24 (vacío acepta cualquier red privada).
+
+ Después de cambiar el .env:   docker compose up -d
+ (recrea solo los servicios afectados; los datos se conservan).
+
+ El correo (SMTP) NO va en el .env: se configura en la aplicación, en
+ Configuración > Correo saliente (sección 6).
+
+
+------------------------------------------------------------------------------
+ 5. COMPROBAR QUE TODO FUNCIONA
+------------------------------------------------------------------------------
+
+   docker compose ps
+
+ Los 5 servicios deben estar "running"; db, backend, frontend y anpr además
+ "healthy" (el motor tarda de 1 a 5 minutos mientras carga los modelos).
+ Luego, desde otro equipo de la red, abra:
+
+   http://192.168.1.50:3000
+
+ Si algo no arranca, vea sus registros:
+
+   docker compose logs --tail 100 backend
+   docker compose logs --tail 100 anpr
+
+
+------------------------------------------------------------------------------
+ 6. PRIMER USO: CÁMARA REAL DE LA GARITA
+------------------------------------------------------------------------------
+
+ 1. Abra http://<IP>:3000. La primera vez aparece la "configuración inicial"
+    para crear el ADMINISTRADOR (solo mientras no exista ninguno).
+ 2. Registro de cámaras > Registrar cámara > perfil "Cámara Hikvision":
+    IP de la cámara, usuario y contraseña (puerto 554; canal 101 principal y
+    102 para la vista). Dirección "Ingreso" para la cámara de entrada; si hay
+    una cámara de salida, regístrela con dirección "Salida".
+    La contraseña se guarda cifrada y la interfaz no la vuelve a mostrar.
+    Pruebe con "Ping" y "Play".
+ 3. Botón "Zonas": dibuje el área del carril donde se leen las placas y, si
+    hace falta, zonas de exclusión (árboles, banderas, reflejos). Encuadre y
+    zoom: la placa debe verse de más de 40 px de ancho para leerse bien. Tras
+    5 placas, Monitoreo sugiere ajustes de zoom, obturación o luz.
+ 4. Gestión de Accesos: el motor toma la cámara habilitada; ahí se ve el video
+    con las detecciones.
+ 5. Configuración > Correo saliente: cuenta de Gmail con una "contraseña de
+    aplicación" de 16 letras (requiere la verificación en dos pasos de Google:
+    myaccount.google.com/apppasswords). Pulse "Enviar prueba".
+ 6. Usuarios: cree las cuentas del personal (Guardia y Gestor de permisos).
+ 7. Lista blanca: registre o importe (Excel) los vehículos autorizados.
+ 8. Configuración > Operación: revise la autorización automática, la salida
+    automática y la confianza mínima antes de dejar el sistema solo.
+
+ Cada motor analiza hasta 4 cámaras a la vez (ANPR_MAX_CAMARAS). Más
+ cámaras necesitan otro motor en otro equipo.
+
+
+------------------------------------------------------------------------------
+ 7. PUERTOS DEL FIREWALL
+------------------------------------------------------------------------------
+
+   Abrir hacia la red del personal:
+     3000/TCP        Interfaz web y API
+     8000/TCP        Cajas de detección sobre el video
+     8889/TCP        Video en vivo (WebRTC, señalización)
+     8189/UDP y TCP  Video en vivo (WebRTC, medios)
+
+   NO abrir (quedan solo dentro del servidor): 5433 (PostgreSQL),
+   5000 (API directa) y 8554 (RTSP interno).
+
+   El servidor debe llegar a la cámara por RTSP (554/TCP) y responderle al
+   ping (ICMP).
+
+   En Ubuntu con ufw:
+     sudo ufw allow 3000/tcp && sudo ufw allow 8000/tcp
+     sudo ufw allow 8889/tcp && sudo ufw allow 8189
+
+
+------------------------------------------------------------------------------
+ 8. OPERACIÓN DIARIA
+------------------------------------------------------------------------------
+
+ Ejecute los comandos dentro de la carpeta del sistema.
+
+   docker compose ps                     Estado de los servicios
+   docker compose logs -f backend anpr   Registros en vivo (Ctrl+C para salir)
+   docker compose restart anpr           Reiniciar solo el motor
+   docker compose stop                   Detener todo (los datos se conservan)
+   docker compose start                  Volver a arrancar
+
+ Los servicios arrancan solos al reiniciar el servidor (restart: always).
+
+ NUNCA ejecute "docker compose down -v" ni borre los volúmenes
+ anpr-produccion_db_data, anpr-produccion_anpr_media ni
+ anpr-produccion_listas_evidencia: son la base de datos y la evidencia.
+
+
+------------------------------------------------------------------------------
+ 9. RESPALDOS
+------------------------------------------------------------------------------
+
+ Base de datos (archivo portable):
+
+   mkdir -p respaldos
+   docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+     > respaldos/ANPR_$(date +%F).dump
+
+ Fotografías de evidencia (pasos y listas):
+
+   docker run --rm -v anpr-produccion_anpr_media:/m -v "$PWD/respaldos":/r \
+     postgres:17-alpine tar czf /r/media_$(date +%F).tar.gz -C /m .
+   docker run --rm -v anpr-produccion_listas_evidencia:/m -v "$PWD/respaldos":/r \
+     postgres:17-alpine tar czf /r/evidencia_listas_$(date +%F).tar.gz -C /m .
+
+ Guarde también el .env. Los respaldos tienen datos personales (placas,
+ nombres, cédulas): guárdelos fuera del servidor y con acceso restringido
+ (LOPDP).
+
+ Restaurar la base en un servidor nuevo (con el sistema ya instalado):
+
+   docker compose stop backend anpr
+   docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' \
+     < respaldos/ANPR_AAAA-MM-DD.dump
+   docker compose start backend anpr
+
+
+------------------------------------------------------------------------------
+ 10. ACTUALIZAR A UNA VERSIÓN NUEVA
+------------------------------------------------------------------------------
+
+ 1. Haga un respaldo (sección 9).
+ 2. Descomprima el paquete nuevo en otra carpeta y copie en ella su .env.
+ 3. docker compose stop                 (en la carpeta anterior)
+ 4. bash scripts/instalar.sh <IP>       (en la carpeta nueva; respeta el .env
+                                         y los volúmenes, que conservan los datos)
+ La base de datos se actualiza sola al arrancar el backend (migraciones).
+
+ Si viene del paquete del 29-10-2026: el .env anterior sirve tal cual, y el
+ volumen anpr-produccion_anpr_model_cache ya no se usa (los modelos van en la
+ imagen). Cuando la versión nueva funcione, puede borrarlo con
+   docker volume rm anpr-produccion_anpr_model_cache
+
+
+------------------------------------------------------------------------------
+ 11. PROBLEMAS FRECUENTES
+------------------------------------------------------------------------------
+
+ * "Defina DB_PASSWORD en .env" (u otra variable): falta el .env o esa línea.
+   Ejecute de nuevo el script o complete el .env (sección 4).
+
+ * "pull access denied" o intenta descargar una imagen: no se cargaron las
+   imágenes. Ejecute: docker load -i imagenes/anpr_imagenes.tar
+
+ * La web abre pero no inicia sesión desde otro equipo: FRONTEND_URL debe ser
+   exactamente la dirección con que se abre el sistema. Luego: docker compose up -d
+
+ * La web abre pero el video en vivo queda en negro: revise WEBRTC_HOSTS y
+   WEBRTC_PUBLIC_URL (deben tener la IP del servidor) y que el firewall deje
+   pasar 8889/TCP y 8189/UDP. Luego: docker compose up -d
+
+ * La cámara figura "SIN_CONEXION": pruebe desde el servidor
+   "ping <IP de la cámara>". Si responde, revise usuario y contraseña en el
+   formulario de la cámara y que su red esté en CAMARAS_REDES_PERMITIDAS.
+
+ * Se ve el video pero no las cajas de detección: ANPR_PUBLIC_URL debe tener la
+   IP del servidor y el puerto 8000/TCP debe estar abierto.
+
+ * El motor tarda en quedar "healthy": es normal hasta 5 minutos (carga los
+   modelos). Vea: docker compose logs --tail 50 anpr
+
+ * Puerto 3000 ocupado: agregue PUERTO_WEB=8080 (u otro libre) al .env,
+   cambie FRONTEND_URL con ese puerto y ejecute docker compose up -d.
+
+ * Se perdió la contraseña del administrador: otro administrador puede
+   restablecerla en Usuarios; si no hay otro, con el correo configurado use
+   "¿Olvidó su contraseña?" en la pantalla de acceso.
+
+
+------------------------------------------------------------------------------
+ 12. SEGURIDAD
+------------------------------------------------------------------------------
+
+ * El .env tiene todos los secretos: solo el administrador del servidor debe
+   leerlo (el script le pone permisos 600 en Linux). No lo envíe por correo.
+ * Las contraseñas de las cámaras y del correo se guardan cifradas
+   (AES-256-GCM) en la base; la interfaz nunca las vuelve a mostrar.
+ * Use una contraseña propia en la cámara (no la de fábrica) y cámbiela si
+   alguna vez quedó escrita en un archivo o un correo.
+ * Use HTTPS si el sistema se abre fuera de la red interna (proxy inverso
+   con certificado delante del puerto 3000).
+ * Cada acción del personal queda en la Auditoría del sistema.
+
+
+------------------------------------------------------------------------------
+ 13. COMPROBAR LA INTEGRIDAD DEL PAQUETE
+------------------------------------------------------------------------------
+
+   Linux:    sha256sum -c SHA256SUMS.txt
+   Windows:  Get-FileHash imagenes\anpr_imagenes.tar -Algorithm SHA256
+             (compare con la línea correspondiente de SHA256SUMS.txt)

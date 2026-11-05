@@ -2,6 +2,7 @@ import sql from '../postgres';
 import { getDB } from '../db';
 import type { RepositorioPanel } from '../../aplicacion/panel';
 import { hoyLocalSql } from '../servicios/tiempo';
+import { conCacheBreve } from '../servicios/cacheBreve';
 import { REGISTRO_COMPLETO_SQL } from './registroCompletoSql';
 
 /**
@@ -22,6 +23,26 @@ const BASE = `estado_procesamiento IN ('procesado', 'no_legible', 'pendiente_ocr
 
 const db = () => getDB();
 
+/**
+ * Totales de todo el historial del panel. Recorren la tabla completa (3 s con 1 millón de pasos, 16 s con la base ocupada) y
+ * cambian poco: se comparten entre sesiones durante 60 s y, mientras se recalculan, se entrega el
+ * último valor para que ninguna sesión espere.
+ */
+export const totalesHistoricos = conCacheBreve(async () => {
+  const q = (consulta: string) => db().request().query(consulta);
+  // Mismo total histórico que /detecciones sin filtros: incluye ingresos y salidas,
+  // cualquier validación y registros abiertos o cerrados, con la misma base del historial.
+  const [completos, accesos] = await Promise.all([
+    q(`SELECT COALESCE(SUM(CASE WHEN ${REGISTRO_COMPLETO_SQL} THEN 1 ELSE 0 END), 0) AS registros_completos
+       FROM DeteccionVehiculo d WHERE ${BASE} AND COALESCE(tipo_movimiento, 'ingreso') = 'ingreso'`),
+    q(`SELECT COUNT(*) AS registros_acceso FROM DeteccionVehiculo WHERE ${BASE}`),
+  ]);
+  return {
+    registros_completos: completos.recordset[0]?.registros_completos ?? 0,
+    registros_acceso: accesos.recordset[0]?.registros_acceso ?? 0,
+  };
+}, { vigenciaMs: 60_000, servirVencidoMs: 10 * 60_000 });
+
 export const repositorioPanelSql: RepositorioPanel = {
   async operacion(p) {
     const q = (consulta: string) => db().request()
@@ -30,7 +51,7 @@ export const repositorioPanelSql: RepositorioPanel = {
       .query(consulta);
     const h = hoyLocalSql();
 
-    const [dia, ayer, porHora, tendencia, camaras, cola, alertas, listas, movimientos, registrosAcceso] = await Promise.all([
+    const [dia, ayer, porHora, tendencia, camaras, cola, alertas, listas, movimientos, historicos] = await Promise.all([
       q(`SELECT ${CONTEOS} FROM DeteccionVehiculo WHERE ${BASE} AND fecha_hora_ingreso >= @hoy`),
       q(`SELECT COUNT(*) AS total FROM DeteccionVehiculo WHERE ${BASE} AND fecha_hora_ingreso >= @ayer AND fecha_hora_ingreso < @mismaHoraAyer`),
       q(`
@@ -64,16 +85,13 @@ export const repositorioPanelSql: RepositorioPanel = {
           COALESCE(SUM(CASE WHEN fecha_hora_ingreso >= @hoy THEN 1 ELSE 0 END), 0) AS ingresos,
           COALESCE(SUM(CASE WHEN fecha_hora_ingreso >= @hoy AND fecha_hora_salida IS NULL THEN 1 ELSE 0 END), 0) AS entradas,
           COALESCE(SUM(CASE WHEN fecha_hora_ingreso >= @hoy AND fecha_hora_salida IS NOT NULL THEN 1 ELSE 0 END), 0) AS salidas,
-          COALESCE(SUM(CASE WHEN estado_validacion = 'autorizado' AND fecha_hora_salida IS NULL THEN 1 ELSE 0 END), 0) AS dentro,
-          COALESCE(SUM(CASE WHEN ${REGISTRO_COMPLETO_SQL} THEN 1 ELSE 0 END), 0) AS registros_completos
+          COALESCE(SUM(CASE WHEN estado_validacion = 'autorizado' AND fecha_hora_salida IS NULL THEN 1 ELSE 0 END), 0) AS dentro
         FROM DeteccionVehiculo d WHERE ${BASE} AND COALESCE(tipo_movimiento, 'ingreso') = 'ingreso'`),
-      // Mismo total histórico que /detecciones sin filtros: incluye ingresos y salidas,
-      // cualquier validación y registros abiertos o cerrados, con la misma base del historial.
-      q(`SELECT COUNT(*) AS registros_acceso FROM DeteccionVehiculo WHERE ${BASE}`),
+      totalesHistoricos(),
     ]);
 
     return {
-      movimientos: { ...movimientos.recordset[0], registros_acceso: registrosAcceso.recordset[0]?.registros_acceso ?? 0 },
+      movimientos: { ...movimientos.recordset[0], ...historicos },
       hoy: dia.recordset[0],
       ayer: ayer.recordset[0],
       porHora: porHora.recordset,

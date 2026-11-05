@@ -1327,6 +1327,7 @@ class DetectionPipeline:
         frame: np.ndarray,
         capture_fps: float = 0.0,
         inference_fps: float = 0.0,
+        posiciones: Optional[dict[int, tuple[tuple[float, float, float, float], Optional[list[tuple[float, float]]]]]] = None,
     ) -> np.ndarray:
         """
         Dibuja el HUD del modo de compatibilidad con el mismo estilo que el del navegador (hud.ts),
@@ -1335,6 +1336,9 @@ class DetectionPipeline:
         - Caja fina (orientada si la placa está inclinada) sobre un contorno oscuro
         - Etiqueta oscura con la barra del color del estado
         NUNCA muta el fotograma original en memoria (usa frame.copy()).
+
+        `posiciones`: caja y cuadrilátero de cada pista en este mismo cuadro (seguidor por flujo óptico).
+        Sin ellas se dibuja la posición del último análisis, que entre análisis queda detrás de la placa.
         """
         out_frame = frame.copy()
         h, w = out_frame.shape[:2]
@@ -1387,11 +1391,15 @@ class DetectionPipeline:
         escala = 0.5 * w / 1280
         for ov in overlays:
             x1, y1, x2, y2 = ov.x1, ov.y1, ov.x2, ov.y2
+            cuadrilatero = ov.oriented_box
+            seguida = posiciones.get(ov.tracking_id) if posiciones else None
+            if seguida:
+                (x1, y1, x2, y2), cuadrilatero = seguida
             color = ov.color
 
             # 1. Caja fina como en el HUD del navegador: línea del color del estado sobre un
             #    contorno oscuro que la hace legible en cualquier fondo, sin relleno
-            pts = np.int32(ov.oriented_box) if ov.oriented_box and len(ov.oriented_box) == 4 else np.int32(
+            pts = np.int32(cuadrilatero) if cuadrilatero and len(cuadrilatero) == 4 else np.int32(
                 [[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
             cv2.polylines(out_frame, [pts], isClosed=True, color=(0, 0, 0), thickness=grosor + 2, lineType=cv2.LINE_AA)
             cv2.polylines(out_frame, [pts], isClosed=True, color=color, thickness=grosor, lineType=cv2.LINE_AA)
@@ -1434,26 +1442,24 @@ class DetectionPipeline:
 
 def create_detection_pipeline(detector: Optional[BaseDetector] = None) -> DetectionPipeline:
     """
-    Factory unificada que resuelve la configuración del entorno y devuelve un
-    DetectionPipeline listo para producción.
-    
-    Punto de acoplamiento único entre el entorno (variables de configuración,
-    pesos de modelos, dispositivo GPU/CPU) y el pipeline desacoplado.
-    Permite además inyectar detectores mock o personalizados para testing.
+    Pipeline listo para producción con su propio detector o, con uno inyectado (mock o personalizado),
+    pipeline base para pruebas: sin compuerta de movimiento ni recorte de la región de interés.
     """
     if detector is not None:
         return DetectionPipeline(detector=detector)
+    return pipeline_de_camara(crear_detector_placas())
 
+
+def crear_detector_placas() -> BaseDetector:
+    """
+    Detector de placas según el entorno (pesos, dispositivo GPU/CPU, hilos). Varias cámaras comparten
+    el mismo detector (infraestructura/detectors.py → PoolDetector): el modelo solo se carga una vez.
+    """
     from app.infraestructura.config import (
         DETECTOR_BACKEND,
         TORCH_THREADS,
-        MOTION_GATE_ENABLED,
-        MOTION_GATE_MAX_SKIP,
-        MOTION_GATE_MIN_FRACTION,
         PLATE_DETECTOR_ARCH,
-        ROI_CROP_INFERENCE,
         PLATE_MODEL_PATH,
-        PLATE_CONFIDENCE_THRESHOLD,
     )
     import torch
 
@@ -1500,8 +1506,20 @@ def create_detection_pipeline(detector: Optional[BaseDetector] = None) -> Detect
         )
 
     logger.info("Detector de placas listo (512 px) en device=%s", device)
+    return rtsp_det
+
+
+def pipeline_de_camara(detector: BaseDetector) -> DetectionPipeline:
+    """Pipeline de una cámara (seguimiento, compuerta y movimiento propios) sobre un detector compartido."""
+    from app.infraestructura.config import (
+        MOTION_GATE_ENABLED,
+        MOTION_GATE_MAX_SKIP,
+        MOTION_GATE_MIN_FRACTION,
+        ROI_CROP_INFERENCE,
+    )
+
     compuerta = CompuertaInferencia(activa=MOTION_GATE_ENABLED, umbral=MOTION_GATE_MIN_FRACTION, max_omitidos=MOTION_GATE_MAX_SKIP)
     logger.info("Compuerta de movimiento: %s (umbral %.3f, control cada %d cuadros)",
                 "activa" if compuerta.activa else "desactivada", compuerta.umbral, compuerta.max_omitidos)
     logger.info("Inferencia sobre el recorte de la región de interés: %s", "sí" if ROI_CROP_INFERENCE else "no")
-    return DetectionPipeline(detector=rtsp_det, compuerta=compuerta, recorte_roi=ROI_CROP_INFERENCE)
+    return DetectionPipeline(detector=detector, compuerta=compuerta, recorte_roi=ROI_CROP_INFERENCE)

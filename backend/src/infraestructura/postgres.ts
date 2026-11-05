@@ -4,6 +4,10 @@ import { Pool, PoolClient, QueryResult, types } from 'pg';
 // 'AAAA-MM-DD'. Con el lector por omisión de node-postgres eran la medianoche UTC del servidor y,
 // mostradas en America/Guayaquil, aparecían un día antes (29 oct → «28 oct»).
 types.setTypeParser(types.builtins.DATE, (valor: string) => valor);
+// COUNT(*) y SUM() son bigint, que node-postgres entrega como texto para no perder precisión. Aquí son
+// conteos, muy lejos de ese límite, y en el navegador '0' cuenta como verdadero: el botón de eliminar una
+// cámara quedaba deshabilitado aunque no tuviera detecciones.
+types.setTypeParser(types.builtins.INT8, (valor: string) => Number(valor));
 
 type Parametro = { valor: unknown };
 

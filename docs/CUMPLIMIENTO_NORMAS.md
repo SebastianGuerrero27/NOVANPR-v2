@@ -78,7 +78,7 @@ fila indica **dónde** está la evidencia; lo que aún no se cumple se declara e
 |---|---|
 | Minimización | Solo se guardan placa, imagen del paso y datos del titular del permiso necesarios para el control de acceso |
 | Seguridad y confidencialidad | Acceso por rol, enlaces firmados a la evidencia, auditoría de consultas al propietario |
-| Conservación limitada | Retención configurable de la auditoría; eliminación de detecciones con motivo auditado |
+| Conservación limitada | Retención configurable de la auditoría y de las fotos de los pasos (por antigüedad y por capacidad, auditada); eliminación de detecciones con motivo auditado |
 
 ## 7. Reproducibilidad científica del componente de aprendizaje automático
 

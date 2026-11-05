@@ -1,0 +1,163 @@
+# Banco de pruebas de varias cámaras: el sistema completo (base, backend, MediaMTX, motor) con los mismos
+# límites que producción y cámaras simuladas que repiten un video. Secretos de un solo uso (entorno.sh) y
+# datos desechables: otro proyecto, otros puertos, otro volumen. El video no se versiona: VIDEO_CLIP.
+name: anpr-multicamara
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_DB=ANPR_ECU911
+      - POSTGRES_USER=anpr
+      - POSTGRES_PASSWORD=${CARGA_DB_PASSWORD:?}
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anpr -d ANPR_ECU911"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  # Cámaras simuladas: cada ruta camN repite el video sin recodificar (rtsp://camaras:8554/camN)
+  camaras:
+    image: bluenviron/mediamtx:1.21.1-ffmpeg
+    environment:
+      - MTX_LOGLEVEL=warn
+      - MTX_RTSPADDRESS=:8554
+      - MTX_API=no
+      - MTX_WEBRTC=no
+      - MTX_HLS=no
+      - MTX_RTMP=no
+      - MTX_SRT=no
+    volumes:
+      - ./camaras_simuladas.yml:/mediamtx.yml:ro
+      - ${VIDEO_CLIP:?Indique el video de prueba}:/video/clip.mp4:ro
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.3
+    volumes:
+      - ../../../mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "127.0.0.1:18889:8889"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  backend:
+    image: ${IMAGEN_BACKEND:-anpr-backend:produccion}
+    command: ["node", "scripts/supervisar.cjs"]
+    ports:
+      - "127.0.0.1:15000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - DB_USER=anpr
+      - DB_PASSWORD=${CARGA_DB_PASSWORD:?}
+      - DB_SERVER=db
+      - DB_PORT=5432
+      - DB_NAME=ANPR_ECU911
+      - JWT_SECRET=${CARGA_JWT_SECRET:?}
+      - CAMARAS_CLAVE_CIFRADO=${CARGA_CLAVE_CIFRADO:?}
+      - ANPR_SERVICE_TOKEN=${CARGA_SERVICE_TOKEN:?}
+      - CAMARAS_REDES_PERMITIDAS=172.16.0.0/12,192.168.0.0/16,10.0.0.0/8
+      - LIMITE_API_POR_MINUTO=100000000
+      - LIMITE_ACCESO_POR_15_MIN=100000000
+      - FRONTEND_URL=http://localhost:3000
+      - MEDIA_DIR=/app/media
+      - EVIDENCIA_LISTAS_DIR=/app/evidencia-listas
+      - ANPR_SERVICE_URL=${MOTORES:-http://anpr:8000}
+      - ANPR_PUBLIC_URL=${MOTORES_PUBLICOS:-http://localhost:18000}
+      - MEDIAMTX_API_URL=http://mediamtx:9997
+      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
+      - WEBRTC_PUBLIC_URL=http://localhost:18889
+      - DOCKER_CONTAINER=true
+    volumes:
+      - media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/health/ready > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 768m
+
+  anpr: &motor
+    image: ${IMAGEN_MOTOR:-anpr-motor:produccion}
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:18000:8000"
+    environment:
+      - BACKEND_URL=http://backend:5000
+      - ANPR_SERVICE_TOKEN=${CARGA_SERVICE_TOKEN:?}
+      - OCR_ENGINE=plate
+      - OCR_VERIFIER_ENABLED=true
+      - MEDIA_DIR=/app/media
+      - RTSP_HILOS_DECODIFICADOR=1
+      - RUNNING_IN_DOCKER=true
+      - DEBUG_VISUAL=true
+      - DEBUG_SHOW_WINDOW=false
+      - ANPR_MAX_CAMARAS=${ANPR_MAX_CAMARAS:-8}
+      - ANPR_DETECTORES=${ANPR_DETECTORES:-1}
+      - ANPR_INTERVALO_GIL_MS=${ANPR_INTERVALO_GIL_MS:-0.5}
+      - ANPR_HILOS_OPENCV=${ANPR_HILOS_OPENCV:-2}
+    volumes:
+      - media:/app/media
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+
+  # Más motores, uno por proceso: --profile varios-motores con MOTORES=http://anpr:8000,http://anpr2:8000,…
+  anpr2:
+    <<: *motor
+    profiles: [varios-motores]
+    ports:
+      - "127.0.0.1:18001:8000"
+  anpr3:
+    <<: *motor
+    profiles: [varios-motores]
+    ports:
+      - "127.0.0.1:18002:8000"
+  anpr4:
+    <<: *motor
+    profiles: [varios-motores]
+    ports:
+      - "127.0.0.1:18003:8000"
+  anpr5:
+    <<: *motor
+    profiles: [varios-motores]
+    ports:
+      - "127.0.0.1:18004:8000"
+  anpr6:
+    <<: *motor
+    profiles: [varios-motores]
+    ports:
+      - "127.0.0.1:18005:8000"
+  anpr7:
+    <<: *motor
+    profiles: [varios-motores]
+    ports:
+      - "127.0.0.1:18006:8000"
+  anpr8:
+    <<: *motor
+    profiles: [varios-motores]
+    ports:
+      - "127.0.0.1:18007:8000"
+
+volumes:
+  media:
+  # Los pesos ya descargados por el sistema local: no se vuelven a bajar

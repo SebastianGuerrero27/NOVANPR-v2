@@ -71,6 +71,9 @@ export interface MovimientoControl {
   id: number;
   tipo_movimiento: 'ingreso' | 'salida';
   fecha_hora_ingreso: Date | string;
+  /** Cierre guardado en este ingreso; también identifica salidas manuales sin matrícula. */
+  fecha_hora_salida?: Date | string | null;
+  salida_deteccion_id?: number | null;
   placa: string | null;
   persona_ingreso: string | null;
   motivo_ingreso: string | null;
@@ -142,8 +145,9 @@ function tipoSinPlaca(evidencia: string | null): string | null {
 
 /**
  * Filas de la hoja: los ingresos de los turnos del período (días `primerDia` a `ultimoDia`), en
- * orden, cada uno con la primera salida de su misma placa antes del siguiente ingreso de esa placa
- * (y dentro de las 24 h). Sin el nombre de quien ingresó se usa el titular del padrón; el tipo y la
+ * orden, cada uno con su cierre guardado o la primera salida de su misma placa antes del siguiente
+ * ingreso de esa placa (y dentro de las 24 h). Nunca empareja movimientos sin matrícula. Sin el
+ * nombre de quien ingresó se usa el titular del padrón; el tipo y la
  * marca, los confirmados o del padrón antes que los observados por la cámara.
  */
 export function filasControlVehicular(
@@ -160,8 +164,11 @@ export function filasControlVehicular(
 
     const placa = normalizarPlaca(m.placa);
     const inicio = new Date(m.fecha_hora_ingreso).getTime();
+    const finGuardado = m.fecha_hora_salida ? new Date(m.fecha_hora_salida).getTime() : NaN;
+    const cierreGuardado = Number.isFinite(finGuardado) && finGuardado >= inicio ? m.fecha_hora_salida : null;
+    if (cierreGuardado && m.salida_deteccion_id) usadas.add(m.salida_deteccion_id);
     let salida: MovimientoControl | undefined;
-    if (placa) {
+    if (!cierreGuardado && placa) {
       for (const s of ordenados.slice(i + 1)) {
         const t = new Date(s.fecha_hora_ingreso).getTime();
         if (t - inicio > MAX_PERMANENCIA_MS) break;
@@ -184,7 +191,7 @@ export function filasControlVehicular(
       marca: capital(m.autorizado_marca || m.vehiculo_marca),
       placa: placaHoja(m.placa),
       ingreso: horaLocal(m.fecha_hora_ingreso, o.desfase),
-      salida: salida ? horaLocal(salida.fecha_hora_ingreso, o.desfase) : '',
+      salida: cierreGuardado ? horaLocal(cierreGuardado, o.desfase) : salida ? horaLocal(salida.fecha_hora_ingreso, o.desfase) : '',
       observaciones,
     });
   });

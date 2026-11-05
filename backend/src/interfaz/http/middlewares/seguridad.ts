@@ -91,3 +91,16 @@ export const RUTAS_ACCESO = [
   '/api/auth/login', '/api/auth/registro', '/api/auth/olvide-password', '/api/auth/restablecer-password',
   '/api/auth/reenviar-verificacion', '/api/auth/configuracion-inicial',
 ];
+
+/**
+ * /metrics solo sale de la red interna (nginx no lo publica). Con METRICS_TOKEN definido, además
+ * exige `Authorization: Bearer <token>`, para despliegues donde el puerto del backend quede expuesto.
+ */
+export const autorizarMetricas: RequestHandler = (req, res, next) => {
+  const esperado = process.env.METRICS_TOKEN || '';
+  if (!esperado) return next();
+  const a = Buffer.from(req.get('Authorization') || '');
+  const b = Buffer.from(`Bearer ${esperado}`);
+  if (a.length === b.length && crypto.timingSafeEqual(a, b)) return next();
+  return res.status(401).end();
+};

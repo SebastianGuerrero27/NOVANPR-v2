@@ -109,17 +109,13 @@ jest.mock('../../infraestructura/servicios/medios', () => ({
 jest.mock('../../infraestructura/servicios/servicioAnpr', () => ({
   ...jest.requireActual('../../infraestructura/servicios/servicioAnpr'),
   estadoServicioAnpr: jest.fn().mockResolvedValue({ en_linea: false, error: 'Servicio no disponible' }),
-  cambiarCamaraAnpr: jest.fn().mockResolvedValue({}),
-  fijarZonasAnpr: jest.fn().mockResolvedValue({}),
-  zonasActivasAnpr: jest.fn().mockResolvedValue(undefined),
-  fuenteActivaAnpr: jest.fn().mockResolvedValue(null),
+  enviarCamarasAnpr: jest.fn().mockResolvedValue({}),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { crearApp } = require('../../app') as { crearApp: () => Express };
 const conectividad = jest.requireMock('../../infraestructura/servicios/conectividadCamaras') as Record<string, jest.Mock>;
 const medios = jest.requireMock('../../infraestructura/servicios/medios') as Record<string, jest.Mock>;
-const anpr = jest.requireMock('../../infraestructura/servicios/servicioAnpr') as Record<string, jest.Mock>;
 
 const ROLES = { Admin: 1, Guardia: 3, GestorPermisos: 4 } as const;
 type Rol = keyof typeof ROLES;
@@ -311,7 +307,7 @@ describe('API · cámaras, monitoreo y medios', () => {
 
   describe('monitoreo', () => {
     it('estado del motor y ticket de video (solo el alcance stream: la webcam se retiró)', async () => {
-      await request(app).get('/api/monitoreo/estado').set(como('Guardia')).expect(200, { en_linea: false, error: 'Servicio no disponible' });
+      await request(app).get('/api/monitoreo/estado').set(como('Guardia')).expect(200, { en_linea: false, error: 'Servicio no disponible', salida_manual: true });
       await request(app).get('/api/monitoreo/estado').set(como('GestorPermisos')).expect(403);
       const t = await request(app).post('/api/monitoreo/ticket').set(como('Guardia')).send({}).expect(200);
       expect(Object.keys(t.body).sort()).toEqual(['ticket', 'url', 'webrtc']);
@@ -323,16 +319,8 @@ describe('API · cámaras, monitoreo y medios', () => {
         .expect(400, { error: 'Alcance inválido. Valores: stream.' });
     });
 
-    it('cambiar la cámara del motor: 400, 409, 200, 502 si el motor no responde y 403 sin camaras:operar', async () => {
-      await request(app).post('/api/monitoreo/camara-activa').set(como('Admin')).send({ camara_id: 'abc' }).expect(400, { error: 'Seleccione una cámara.' });
-      await request(app).post('/api/monitoreo/camara-activa').set(como('Admin')).send({ camara_id: 5 }).expect(409, { error: 'La cámara está deshabilitada.' });
-      await request(app).post('/api/monitoreo/camara-activa').set(como('Admin')).send({ camara_id: 3 })
-        .expect(200, { message: 'El motor ANPR ahora procesa Garita norte.' });
-      expect(anpr.cambiarCamaraAnpr).toHaveBeenCalledWith(expect.objectContaining({ id: 3, rtsp_url: expect.stringMatching(/\/cam_3$/) }), true);
-      anpr.cambiarCamaraAnpr.mockRejectedValueOnce(new Error('HTTP 503'));
-      await request(app).post('/api/monitoreo/camara-activa').set(como('Admin')).send({ camara_id: 3 })
-        .expect(502, { error: 'El servicio ANPR no respondió al cambio de cámara.' });
-      await request(app).post('/api/monitoreo/camara-activa').set(como('Guardia')).send({ camara_id: 3 }).expect(403);
+    it('ya no se elige una sola cámara para el motor: la ruta no existe', async () => {
+      await request(app).post('/api/monitoreo/camara-activa').set(como('Admin')).send({ camara_id: 3 }).expect(404);
     });
   });
 

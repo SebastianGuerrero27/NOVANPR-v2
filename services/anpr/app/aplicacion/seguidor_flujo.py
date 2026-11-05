@@ -144,11 +144,15 @@ def _distancia_en_anchos(a: Caja, b: Caja) -> float:
     return float(np.hypot(dx, dy)) / max(1.0, b[2] - b[0])
 
 
-def _poner_al_dia(pista: CajaSeguida, cuadros: list[_Cuadro]) -> CajaSeguida:
+def _poner_al_dia(pista: CajaSeguida, cuadros: list[_Cuadro], medidas: Optional[dict[int, Caja]] = None) -> CajaSeguida:
+    """La pista llevada cuadro a cuadro hasta el último de `cuadros`; en `medidas`, la caja de cada cuadro
+    en que el flujo la midió (no las que avanzó a ciegas)."""
     previo = None
     for cuadro in cuadros:
         if previo is not None and previo.indice == pista.indice and cuadro.indice > pista.indice:
             pista = mover(pista, previo, cuadro)
+            if medidas is not None and pista.a_ciegas == 0:
+                medidas[pista.indice] = pista.caja
         previo = cuadro
     return pista
 
@@ -168,13 +172,19 @@ class SeguidorFlujo:
         self._retraso: deque[int] = deque(maxlen=300)
         self._correccion: deque[float] = deque(maxlen=300)
         self._con_flujo: deque[bool] = deque(maxlen=2000)
+        #: Caja de cada pista en los cuadros guardados (índice → caja): la del detector al anclar y las
+        #: que midió el flujo. Con ellas se lee la placa en cuadros que el detector no analizó.
+        self._medidas: dict[int, dict[int, Caja]] = {}
 
     def avanzar(self, frame: np.ndarray, indice: int, hora: float) -> None:
         """Cuadro nuevo de la fuente. Se guarda sin copiarlo: no debe modificarse después."""
         actual = _Cuadro(indice, hora, frame)
         with self._candado:
             previo = self._cuadros[-1] if self._cuadros else None
+            lleno = len(self._cuadros) == self._cuadros.maxlen
             self._cuadros.append(actual)
+            if lleno:
+                self._olvidar_medidas_viejas()
             if previo is None:
                 return
             for tid, pista in list(self._pistas.items()):
@@ -186,6 +196,18 @@ class SeguidorFlujo:
                         del self._pistas[tid]
                     else:
                         self._pistas[tid] = movida
+                        if movida.a_ciegas == 0:
+                            self._medidas.setdefault(tid, {})[actual.indice] = movida.caja
+
+    def _olvidar_medidas_viejas(self) -> None:
+        """Solo se conservan las cajas de los cuadros que siguen guardados (con el candado tomado)."""
+        primero = self._cuadros[0].indice
+        for tid in list(self._medidas):
+            vigentes = {i: c for i, c in self._medidas[tid].items() if i >= primero}
+            if vigentes:
+                self._medidas[tid] = vigentes
+            else:
+                del self._medidas[tid]
 
     def anclar(self, cajas: dict[int, tuple], indice: int, hora: float) -> None:
         """Posiciones del detector en el cuadro `indice` ((caja, puntos) o (caja, puntos, predicha)),
@@ -204,6 +226,7 @@ class SeguidorFlujo:
                     self._fuera_de_lo_guardado += 1
         guardado = bool(tramo) and tramo[0].indice == indice
         nuevas: dict[int, CajaSeguida] = {}
+        medidas: dict[int, dict[int, Caja]] = {}
         for tid, (caja, puntos, *resto) in cajas.items():
             previa = previas.get(tid)
             if previa is not None and resto and resto[0]:
@@ -217,17 +240,23 @@ class SeguidorFlujo:
                     nuevas[tid] = previa
                 continue
             pista = CajaSeguida(tuple(float(v) for v in caja), puntos, previa.velocidad if previa else (0.0, 0.0), indice, hora)
-            nuevas[tid] = _poner_al_dia(pista, tramo)
+            # La caja del detector en su cuadro y las que mide el flujo desde ahí reemplazan a las que
+            # venían del análisis anterior; una predicción del Kalman no es una medida
+            if not (resto and resto[0]):
+                medidas[tid] = {indice: pista.caja}
+            nuevas[tid] = _poner_al_dia(pista, tramo, medidas.get(tid))
         with self._candado:
             # Cuadros que llegaron mientras se ponían al día
             ultimo = tramo[-1].indice if tramo else indice
             restantes = [c for c in self._cuadros if c.indice >= ultimo]
-            al_dia = {tid: _poner_al_dia(p, restantes) for tid, p in nuevas.items()}
+            al_dia = {tid: _poner_al_dia(p, restantes, medidas.get(tid)) for tid, p in nuevas.items()}
             for tid, p in al_dia.items():
                 previa = self._pistas.get(tid)
                 if previa is not None and previa.indice == p.indice:
                     self._correccion.append(_distancia_en_anchos(previa.caja, p.caja))
             self._pistas = al_dia
+            for tid, m in medidas.items():
+                self._medidas.setdefault(tid, {}).update(m)
 
     def estadisticas(self) -> dict:
         """Para /status: retraso de los análisis (cuadros), análisis cuyo cuadro ya no estaba
@@ -255,7 +284,18 @@ class SeguidorFlujo:
         with self._candado:
             return dict(self._pistas)
 
+    def cuadros_de(self, tid: int, desde: int, hasta: int) -> list[tuple[int, float, np.ndarray, Caja]]:
+        """Cuadros guardados con índice entre `desde` y `hasta` (sin incluirlos) en que se conoce la caja
+        de la pista `tid`: (índice, hora, imagen, caja). La imagen no se copia: no debe modificarse."""
+        with self._candado:
+            medidas = self._medidas.get(tid)
+            if not medidas:
+                return []
+            return [(c.indice, c.hora, c.imagen, medidas[c.indice]) for c in self._cuadros
+                    if desde < c.indice < hasta and c.indice in medidas]
+
     def reiniciar(self) -> None:
         with self._candado:
             self._cuadros.clear()
             self._pistas.clear()
+            self._medidas.clear()

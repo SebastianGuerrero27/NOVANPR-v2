@@ -26,6 +26,8 @@ export interface Deteccion {
   confianza_ocr: number | null;
   fecha_hora_ingreso: string;
   fecha_hora_salida?: string | null;
+  /** La salida la registró la cámara de salida, no una persona */
+  salida_automatica?: boolean;
   tipo_movimiento: 'ingreso' | 'salida';
   fecha_hora_procesamiento: string | null;
   fuente: string | null;
@@ -66,6 +68,24 @@ export interface ResumenHistorial {
   autorizados: number; alertas: number; no_registrados: number; pendientes: number; sin_lectura: number;
   placas: number; camara: number; manuales: number;
   primero: string | null; ultimo: string | null;
+}
+
+/**
+ * Cuándo y quiénes ingresan, con los filtros del historial y en hora de Ecuador; solo ingresos
+ * (GET /detecciones/historial/analisis). Alimenta los informes analíticos de Reportes.
+ */
+export interface AnalisisHistorial {
+  por_dia: { dia: string; ingresos: number; autorizados: number; no_registrados: number; alertas: number; pendientes: number }[];
+  /** De lunes (0) a domingo (6) */
+  por_dia_semana: number[];
+  /** De 0 a 23 h */
+  por_hora: number[];
+  /** Filas lunes a domingo, columnas 0 a 23 h */
+  dia_hora: number[][];
+  /** Tiempo dentro de los ingresos con salida registrada, en minutos */
+  permanencia: { n: number; media_min: number; mediana_min: number; p90_min: number } | null;
+  frecuentes: { placa: string; ingresos: number; ultimo: string; persona: string | null }[];
+  personas: { nombre: string; ingresos: number; placas: number; ultimo: string }[];
 }
 
 export interface DeteccionDetalle extends Deteccion {
@@ -137,6 +157,8 @@ export interface Camara {
   ip: string;
   ubicacion: string;
   direccion: 'ingreso' | 'salida';
+  /** El motor busca placas en esta cámara; false: solo se ve su video */
+  analisis_anpr: boolean;
   rtsp_url: string;
   /** Flujo secundario para la vista en vivo (contraseña enmascarada); null: la vista usa el principal */
   rtsp_url_vista: string | null;
@@ -201,18 +223,45 @@ export interface LatenciaMotor {
   cuadros_descartados_pct: number | null;
 }
 
+/** Una cámara en análisis y el motor que la atiende. */
+export interface CamaraEnAnalisis {
+  id: number;
+  /** Posición del motor en ANPR_SERVICE_URL */
+  motor: number;
+  conectada: boolean;
+  fps_captura: number;
+  fps_procesamiento: number;
+  latencia: LatenciaMotor | null;
+  enlace: EnlaceVideo | null;
+  /** Tamaño, nitidez y brillo de las últimas placas registradas y qué ajustar en la cámara */
+  captura?: CalidadCaptura | null;
+}
+
+export interface CalidadCaptura {
+  placas: number;
+  ancho_px_p50: number | null;
+  nitidez_p50: number | null;
+  brillo_p50: number | null;
+  saturada_pct_p50: number | null;
+  recomendaciones: { codigo: string; texto: string }[];
+}
+
 export interface EstadoAnpr {
   en_linea: boolean;
+  /** false: «Registrar salida» está desactivado en Configuración */
+  salida_manual?: boolean;
+  /** Promedio de las cámaras que reciben video */
   fps_captura?: number;
   fps_procesamiento?: number;
-  latencia?: LatenciaMotor | null;
   detector?: string | null;
   ocr?: string | null;
   verificador?: string | null;
-  camara_activa?: { id: number; conectada: boolean } | null;
-  enlace?: EnlaceVideo | null;
-  /** true si el motor procesa una fuente que no corresponde a ninguna cámara registrada */
-  fuente_externa?: boolean;
+  camaras?: CamaraEnAnalisis[];
+  motores?: { indice: number; en_linea: boolean; max_camaras: number; camaras: number[]; cpu_pct: number | null }[];
+  /** Cámaras que caben en total en los motores en línea */
+  capacidad?: number;
+  /** Cámaras con análisis que no caben en los motores en línea */
+  sin_capacidad?: number[];
   error?: string;
 }
 

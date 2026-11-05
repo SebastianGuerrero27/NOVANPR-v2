@@ -1,17 +1,16 @@
 """
 Servidor HTTP y WebSocket del motor ANPR (capa de interfaz).
 
-Las rutas solo verifican el acceso, leen la petición y delegan en `MotorAnpr`
-(app/aplicacion/motor.py); no guardan estado propio. `crear_app(motor)` permite construir el
-servidor con un motor de prueba.
+Las rutas solo verifican el acceso, leen la petición y delegan en `GestorCamaras` y en el `MotorAnpr`
+de cada cámara; no guardan estado propio. `crear_app(gestor)` permite construir el servidor con un
+gestor de prueba.
 
 Acceso (app/infraestructura/acceso.py):
-  - Control (cambio de cámara, región de interés, MJPEG de depuración): encabezado
-    X-Servicio-Token, que solo conoce el backend.
+  - Control (cámaras, MJPEG de depuración, historial): encabezado X-Servicio-Token, que solo conoce el backend.
   - Video y pistas: ticket de 60 s emitido por el backend a un usuario con sesión.
 
-La única entrada de video es la cámara RTSP asignada por el backend (su ruta en MediaMTX): el motor
-no recibe cuadros del navegador ni abre conexiones a URLs arbitrarias.
+La única entrada de video son las cámaras RTSP asignadas por el backend (sus rutas en MediaMTX): el
+motor no recibe cuadros del navegador ni abre conexiones a URLs arbitrarias.
 """
 
 from __future__ import annotations
@@ -23,8 +22,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from app.aplicacion.motor import MotorAnpr
-from app.infraestructura.acceso import ticket_valido, token_servicio_valido
+from app.aplicacion.gestor_camaras import GestorCamaras
+from app.infraestructura.acceso import acceso_interno, ticket_valido, token_servicio_valido
+from app.infraestructura.config import METRICAS_PUBLICAS
 from app.infraestructura.debug_stream import _get_standby_jpeg, mjpeg_generator
 from app.infraestructura.logger import get_logger
 from app.infraestructura.metrics import get_metrics
@@ -45,12 +45,16 @@ def _param_int(websocket: WebSocket, nombre: str, defecto: int, minimo: int, max
         return defecto
 
 
-def crear_app(motor: MotorAnpr) -> FastAPI:
+def _sin_camara() -> JSONResponse:
+    return JSONResponse({"error": "Este motor no analiza esa cámara"}, status_code=404)
+
+
+def crear_app(gestor: GestorCamaras) -> FastAPI:
     @asynccontextmanager
     async def ciclo_de_vida(_app: FastAPI):
-        motor.iniciar()
+        gestor.iniciar()
         yield
-        motor.detener()
+        gestor.detener()
 
     app = FastAPI(
         title="ECU 911 ANPR Microservice",
@@ -70,6 +74,7 @@ def crear_app(motor: MotorAnpr) -> FastAPI:
         Video anotado en vivo para el monitoreo (JPEG binario por WebSocket).
 
           ticket   credencial de 60 s emitida por el backend (obligatoria con ANPR_SERVICE_TOKEN)
+          camara_id  cámara que se quiere ver (cierre 4404 si este motor no la analiza)
           ancho    ancho máximo en px (320–1280, por omisión 640)
           fps      cuadros por segundo máximos (1–25, por omisión 10)
           calidad  calidad JPEG (30–90, por omisión 60)
@@ -78,6 +83,10 @@ def crear_app(motor: MotorAnpr) -> FastAPI:
         """
         if not ticket_valido(websocket.query_params.get("ticket"), "stream"):
             await websocket.close(code=4401)
+            return
+        motor = gestor.motor(websocket.query_params.get("camara_id"))
+        if motor is None:
+            await websocket.close(code=4404)
             return
         ancho = _param_int(websocket, "ancho", 640, 320, 1280)
         intervalo = 1.0 / _param_int(websocket, "fps", 10, 1, 25)
@@ -126,6 +135,10 @@ def crear_app(motor: MotorAnpr) -> FastAPI:
         if not ticket_valido(websocket.query_params.get("ticket"), "stream"):
             await websocket.close(code=4401)
             return
+        motor = gestor.motor(websocket.query_params.get("camara_id"))
+        if motor is None:
+            await websocket.close(code=4404)
+            return
         await websocket.accept()
         ultimo = None
         enviado = 0.0
@@ -149,83 +162,85 @@ def crear_app(motor: MotorAnpr) -> FastAPI:
         """Stream MJPEG anotado (diagnóstico; requiere X-Servicio-Token)."""
         if not token_servicio_valido(request.headers.get("X-Servicio-Token")):
             return _denegado()
+        motor = gestor.motor(request.query_params.get("camara_id"))
+        if motor is None:
+            return _sin_camara()
         return StreamingResponse(mjpeg_generator(motor.buffer_video, target_fps=30.0),
                                  media_type="multipart/x-mixed-replace; boundary=frame", headers=SIN_CACHE)
 
-    @app.post("/api/camera/switch")
-    async def cambiar_camara(request: Request):
-        """Cambia en caliente la cámara RTSP del motor sin reiniciar el servicio."""
-        if not token_servicio_valido(request.headers.get("X-Servicio-Token")):
-            return _denegado()
-        try:
-            payload = await request.json()
-        except Exception:
-            payload = {}
-        codigo, cuerpo = motor.cambiar_camara(payload)
-        return cuerpo if codigo == 200 else JSONResponse(cuerpo, status_code=codigo)
-
-    @app.post("/api/camera/roi")
-    async def region_de_interes(request: Request):
-        """
-        Región de interés de la cámara activa (equivalente a la "detection mask" de OpenALPR):
-        {"roi": [[x, y], ...]} normalizada 0–1, o {"roi": null} para el cuadro completo.
-        """
+    @app.put("/api/camaras")
+    async def reconciliar_camaras(request: Request):
+        """Lista completa de cámaras que debe analizar este motor (el backend la reenvía periódicamente)."""
         if not token_servicio_valido(request.headers.get("X-Servicio-Token")):
             return _denegado()
         try:
             payload = await request.json()
         except Exception:
             return JSONResponse({"error": "JSON inválido"}, status_code=400)
-        codigo, cuerpo = motor.fijar_roi(payload)
+        codigo, cuerpo = gestor.reconciliar(payload)
         return cuerpo if codigo == 200 else JSONResponse(cuerpo, status_code=codigo)
 
     @app.get("/api/historial")
     def historial(request: Request):
-        """Miniaturas de los últimos 30 s de la cámara que procesa el motor, para elegir la foto de
-        evidencia de un registro manual (requiere X-Servicio-Token)."""
+        """Miniaturas de los últimos 30 s de una cámara, para elegir la foto de evidencia de un
+        registro manual (requiere X-Servicio-Token)."""
         if not token_servicio_valido(request.headers.get("X-Servicio-Token")):
             return _denegado()
-        return motor.historial_cuadros()
+        motor = gestor.motor(request.query_params.get("camara_id"))
+        return motor.historial_cuadros() if motor else _sin_camara()
 
     @app.post("/api/historial/guardar")
     async def guardar_historial(request: Request):
-        """{"t": hora} → guarda ese cuadro del historial como foto de evidencia: {"ruta": "/media/…"}."""
+        """{"camara_id": id, "t": hora} → guarda ese cuadro del historial como foto de evidencia: {"ruta": "/media/…"}."""
         if not token_servicio_valido(request.headers.get("X-Servicio-Token")):
             return _denegado()
         try:
             payload = await request.json()
         except Exception:
             payload = {}
-        hora = payload.get("t") if isinstance(payload, dict) else None
+        payload = payload if isinstance(payload, dict) else {}
+        hora = payload.get("t")
         if isinstance(hora, bool) or not isinstance(hora, (int, float)):
             return JSONResponse({"error": "Indique la hora del cuadro (t)."}, status_code=400)
+        motor = gestor.motor(payload.get("camara_id"))
+        if motor is None:
+            return _sin_camara()
         ruta = motor.guardar_cuadro_historial(float(hora))
         if ruta is None:
             return JSONResponse({"error": "El cuadro ya no está en el historial de los últimos 30 s."}, status_code=404)
         return {"ruta": ruta}
 
-    @app.get("/api/camera/active")
-    def camara_activa():
-        """Cámara y fuente activas en el motor."""
-        return motor.camara_activa()
+    def _interno(request: Request) -> bool:
+        return acceso_interno(request.client.host if request.client else None, request.headers.get("X-Servicio-Token"))
+
+    @app.get("/healthz")
+    def vida():
+        """Vida del proceso, sin datos: para las sondas de Kubernetes, que no pueden enviar el token."""
+        return {"status": "ok"}
 
     @app.get("/status")
-    def estado():
-        """Estado y rendimiento del microservicio."""
-        return motor.estado()
+    def estado(request: Request):
+        """Estado y rendimiento del microservicio y de cada cámara (requiere X-Servicio-Token o ser local)."""
+        if not _interno(request):
+            return _denegado()
+        return gestor.estado()
 
     @app.get("/metrics")
-    def metricas():
-        """Métricas Prometheus."""
+    def metricas(request: Request):
+        """Métricas Prometheus (token o local; ANPR_METRICAS_PUBLICAS=true para un scrape sin token)."""
+        if not METRICAS_PUBLICAS and not _interno(request):
+            return _denegado()
         return Response(content=get_metrics(), media_type="text/plain")
 
     @app.get("/")
-    def raiz():
+    def raiz(request: Request):
+        if not _interno(request):
+            return _denegado()
         return {
             "service": "ECU 911 ANPR Microservice",
             "version": "2.0.0",
-            "status": "running" if motor.activo else "starting",
-            **motor.info_modelos(),
+            "status": "running" if gestor.activo else "starting",
+            "camaras": [c["id"] for c in gestor.camaras()],
         }
 
     return app

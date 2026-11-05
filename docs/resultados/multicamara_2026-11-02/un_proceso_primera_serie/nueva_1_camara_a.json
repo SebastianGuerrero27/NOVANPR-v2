@@ -1,0 +1,40 @@
+{
+ "etiqueta": "nueva_1_camara_a",
+ "camaras": 1,
+ "segundos": 360,
+ "imagen_motor": "anpr-motor:produccion",
+ "detectores": "1",
+ "esperadas": 10,
+ "exactas": 8,
+ "exactitud_pct": 80.0,
+ "cpu_nucleos": {
+  "media": 3.22,
+  "p95": 5.54,
+  "max": 10.62
+ },
+ "memoria_mib": {
+  "media": 1412,
+  "max": 1501
+ },
+ "fps_analisis_medio": 8.6,
+ "reinicios_motor": "0",
+ "detalle": [
+  {
+   "camara": "1",
+   "registros": 13,
+   "exactas": 8,
+   "erroneas": 3,
+   "sin_lectura": 2,
+   "confirmadas": 6,
+   "confirmadas_erroneas": 1,
+   "fps_captura": 29.9,
+   "fps_analisis": 7.3,
+   "registro_p50_ms": 476,
+   "registro_p95_ms": 56609,
+   "edad_cuadro_p50_ms": 17,
+   "edad_cuadro_p95_ms": 35,
+   "lectura_vivo_p50_ms": 238,
+   "omitidas_pct": 12.0
+  }
+ ]
+}

@@ -1,0 +1,10 @@
+{
+  "fecha": "2026-11-04",
+  "api": "Interceptada con datos artificiales",
+  "pruebas": [
+    "Guardia conserva reloj, acciones, contador y balance sin las cuatro tarjetas ni la consulta de su cola",
+    "Gestión de Permisos oculto al guardia y acceso directo/alias redirigen al inicio",
+    "El dashboard del administrador conserva sus gráficos y tabla"
+  ],
+  "errores": []
+}

@@ -126,16 +126,22 @@ integraciones es usar **H.265 o H.264 estándar** con un intervalo de cuadros cl
           (URL descifrada solo en memoria) y autoriza cada lectura (/api/medios/autorizar).
 ```
 
- Cada cámara tiene una dirección (`ingreso` o `salida`, migración v13), copiada en el evento al
- registrarse. Una salida se almacena como movimiento independiente: no consulta las listas de
- autorización ni altera el ingreso del mismo vehículo.
+ Cada cámara tiene una dirección (`ingreso` o `salida`), copiada en el evento al registrarse. Una salida
+ se almacena como movimiento propio y no consulta las listas de autorización. Si se activa
+ **Configuración › Operación › Registrar la salida automáticamente**, una salida cierra además el ingreso
+ abierto más reciente de esa placa exacta. Hace falta que al menos una de las dos lecturas esté confirmada:
+ - Si la de la salida lo está (por el motor o por una persona), cierra el ingreso abierto de esa placa.
+ - Si no lo está, cierra solo un ingreso cuya lectura sí se confirmó.
 
- **Límite de procesamiento vigente:** el servicio ANPR compone una sola instancia `MotorAnpr` y
- `camaraMotor` asigna una cámara activa a ese motor. La Vista cuadrícula de 1, 2 o 4 celdas reproduce
- flujos, pero no equivale a varios procesos ANPR; solo la cámara activa genera pistas, OCR y
- decisiones. Por ello el HUD se conecta únicamente al flujo de esa cámara. No se debe anunciar
- procesamiento simultáneo ni capacidad para cientos de cámaras hasta desplegar workers aislados
- por cámara y superar pruebas de carga en el hardware objetivo.
+ Si ninguna de las dos está confirmada, el ingreso queda abierto y se corrige a mano. La salida que cerró
+ un ingreso se muestra en la fila de ese ingreso en Monitoreo, no como otra fila (filtro
+ `unir_salidas=si`). Ver docs/GUIA_SISTEMA_Y_MEJORAS_ECU911.md.
+
+ **Varias cámaras:** el motor crea un `MotorAnpr` por cámara (`GestorCamaras`) con los modelos compartidos.
+ Toda cámara habilitada y con **Analizar esta cámara con el motor ANPR** marcado se analiza a la vez, hasta
+ `ANPR_MAX_CAMARAS` por motor; las que no caben quedan a la espera y Monitoreo lo avisa. Para más cámaras se
+ agregan motores: `ANPR_SERVICE_URL` y `ANPR_PUBLIC_URL` admiten listas y el backend reparte las cámaras
+ (`dominio/camaras.ts → asignarCamaras`). La capacidad medida está en la guía.
 
  ### 3.1 Flujo de vista
 
@@ -248,8 +254,8 @@ teleobjetivo (o una cámara ANPR dedicada con obturación de 1/1000 s o menos e 
    cámbielo a H.264 en la cámara.
 5. Guardar. En Monitoreo, seleccione **Vista cuadrícula** y arrastre las cámaras desde el menú
    lateral a las celdas. Puede mostrar 1, 2 o 4 cámaras; las asignaciones y la cantidad elegida se
-   conservan entre sesiones. Para asignar el análisis ANPR, use el selector **Cámara que procesa el
-   motor** en la vista ANPR; la cuadrícula por sí sola solo visualiza video.
+   conservan entre sesiones. Las cámaras con análisis ANPR muestran sus cajas de detección en ambas vistas;
+   las marcadas **solo video** no registran pasos.
 
 ## 6. Validación de punta a punta
 
@@ -368,9 +374,8 @@ ser pareada.
 
 ## 8. Limitaciones
 
-- El servicio ANPR procesa una sola cámara activa; la Vista cuadrícula de hasta cuatro streams es
-  solo de visualización. Cientos de cámaras requieren workers distribuidos, aislamiento de trackers
-  y pruebas de capacidad (CPU/GPU) todavía no implementados.
+- Cada motor analiza hasta `ANPR_MAX_CAMARAS` cámaras; la capacidad se midió con un solo equipo y cámaras
+  simuladas (docs/resultados/multicamara_2026-11-02/). Cientos de cámaras requieren más equipos o GPU.
 - No se ha probado con la cámara física: la validación de §6 usa una cámara simulada que
   reproduce su comportamiento en la red (Digest, rutas, códecs, GOP). La prueba de campo de §7 es
   obligatoria antes de producción.

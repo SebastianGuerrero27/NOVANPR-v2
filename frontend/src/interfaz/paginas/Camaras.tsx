@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Camera, Cpu, Crop, Edit3, Loader2, Play, Plus, RadioTower, RefreshCw, Trash2 } from 'lucide-react';
+import { Camera, Cpu, Crop, Edit3, Loader2, Play, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { BotonPing, type EstadoPing } from '../componentes/AntenaPing';
 import api, { mensajeError } from '../../infraestructura/api';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta } from '../../aplicacion/hooks';
@@ -11,6 +12,14 @@ import { useNotificar } from '../componentes/Notificaciones';
 import { FormularioCamara, PanelDiagnostico, ResultadoDiagnostico } from '../componentes/FormularioCamara';
 import { ReproductorPrueba } from '../componentes/envivo';
 import { EditorRoi } from '../componentes/EditorRoi';
+
+const ANIMACION_PING_MS = 900;
+
+function estadoPing(c: Camara, probando: number | 'todas' | null): EstadoPing {
+  if (probando === c.id || probando === 'todas') return 'probando';
+  if (!c.activa) return 'reposo';
+  return c.estado === 'EN_LINEA' ? 'ok' : c.estado === 'SIN_CONEXION' ? 'error' : 'reposo';
+}
 
 const ESTADO: Record<Camara['estado'], { p: string; t: string }> = {
   EN_LINEA: { p: 'verde', t: 'En línea' }, SIN_CONEXION: { p: 'rojo', t: 'Sin conexión' }, SIN_VERIFICAR: { p: 'gris', t: 'Sin verificar' },
@@ -26,7 +35,7 @@ const Camaras: React.FC = () => {
   const [reproduciendo, setReproduciendo] = useState<Camara | null>(null);
   const [area, setArea] = useState<Camara | null>(null);
   const motor = useConsulta<EstadoAnpr>(() => api.get('/monitoreo/estado').then(r => r.data), []);
-  useEvento('monitoreo:camara', () => motor.recargar(true));
+  useEvento('monitoreo:camaras', () => motor.recargar(true));
 
   const reemplazar = (c: Camara) => setDatos(l => l && (l.some(x => x.id === c.id) ? l.map(x => (x.id === c.id ? { ...x, ...c } : x)) : [...l, c]));
   useEvento<Camara>('camara:actualizada', reemplazar);
@@ -37,7 +46,9 @@ const Camaras: React.FC = () => {
   const probar = async (c: Camara) => {
     setProbando(c.id);
     try {
-      const r = await api.post(`/camaras/${c.id}/ping`);
+      // Una respuesta inmediata no deja ver que se probó: la antena se anima al menos este tiempo
+      const [r] = await Promise.all([api.post(`/camaras/${c.id}/ping`), new Promise(listo => setTimeout(listo, ANIMACION_PING_MS))]);
+      setDatos(l => l && l.map(x => (x.id === c.id ? { ...x, estado: r.data.rtsp?.en_linea ? 'EN_LINEA' : 'SIN_CONEXION' } : x)));
       setDiagnostico({ camara: c, resultado: r.data });
     } catch (e) {
       notificar('error', 'No se pudo probar la conexión', mensajeError(e));
@@ -83,7 +94,9 @@ const Camaras: React.FC = () => {
                   return (
                     <tr key={c.id} className={c.activa ? '' : 'inactivo'}>
                       <td><strong style={{ color: 'var(--text)' }}>{c.nombre}</strong><span className="secundario">{c.ubicacion}</span>
-                        {motor.datos?.camara_activa?.id === c.id && <span className="insignia info" style={{ marginTop: 4 }}><Cpu size={12} /> Procesando en el motor ANPR</span>}
+                        {motor.datos?.camaras?.some(x => x.id === c.id) && <span className="insignia info" style={{ marginTop: 4 }}><Cpu size={12} /> Analizando placas</span>}
+                        {c.activa && !c.analisis_anpr && <span className="insignia" style={{ marginTop: 4 }} title="No registra pasos: se activa al editar la cámara">Solo video</span>}
+                        {motor.datos?.sin_capacidad?.includes(c.id) && <span className="insignia alerta" style={{ marginTop: 4 }} title="Los motores ANPR en línea ya analizan su máximo de cámaras">A la espera de capacidad</span>}
                         {c.roi && <span className="insignia" style={{ marginTop: 4 }} title="El motor solo busca placas dentro del área marcada"><Crop size={12} /> Área de interés ({c.roi.length} vértices)</span>}
                         </td>
                       <td><span className={`insignia ${c.direccion === 'salida' ? 'info' : 'autorizado'}`}>{c.direccion === 'salida' ? 'Salida' : 'Ingreso'}</span></td>
@@ -92,19 +105,18 @@ const Camaras: React.FC = () => {
                         <span className="secundario">{c.ultimo_ping ? `${c.mensaje_ping ?? ''} · ${relativo(c.ultimo_ping)}` : 'Aún no verificada'}</span>
                       </td>
                       <td className="ocultar-movil mono truncar" style={{ fontSize: 12, maxWidth: 320 }} title={c.rtsp_url}>{c.rtsp_url}</td>
-                      <td className="num">{c.detecciones ? <Link to={`/historial?camara=${c.id}`}>{numero(c.detecciones)}</Link> : '0'}</td>
+                      <td className="num">{Number(c.detecciones) > 0 ? <Link to={`/historial?camara=${c.id}`}>{numero(c.detecciones)}</Link> : '0'}</td>
                       <td><Interruptor activo={c.activa} onCambiar={() => alternar(c)} etiqueta={c.activa ? 'Deshabilitar cámara' : 'Habilitar cámara'} /></td>
                       <td className="acciones-celda">
-                        <button className="btn btn-secondary btn-sm" title="Ping de red y diagnóstico RTSP" onClick={() => probar(c)} disabled={probando !== null}>
-                          {probando === c.id ? <Loader2 size={14} className="girar" /> : <RadioTower size={14} />} Ping</button>
+                        <BotonPing pequeno estado={estadoPing(c, probando)} onClick={() => probar(c)} deshabilitado={probando !== null} />
                         <button className="btn btn-secondary btn-sm" title={c.activa ? 'Reproducir el flujo de video' : 'Habilite la cámara para reproducirla'} disabled={!c.activa} onClick={() => setReproduciendo(c)}>
                           <Play size={14} /> Play</button>
                         <button className="btn btn-secondary btn-sm" title={c.activa ? 'Dibujar la zona de interés; el exterior se ignora automáticamente' : 'Habilite la cámara para dibujar su zona de interés'} disabled={!c.activa} onClick={() => setArea(c)}>
                           <Crop size={14} /> Zona de interés</button>
                         <button className="btn btn-ghost btn-sm btn-icono" title="Editar" aria-label="Editar"
                           onClick={() => setEditando(c)}><Edit3 size={15} /></button>
-                        <button className="btn btn-ghost btn-sm btn-icono" title={c.detecciones ? 'Tiene historial: deshabilítela en su lugar' : 'Eliminar'} aria-label="Eliminar"
-                          disabled={Boolean(c.detecciones)} onClick={() => setEliminando(c)}><Trash2 size={15} color={c.detecciones ? undefined : 'var(--alerta)'} /></button>
+                        <button className="btn btn-ghost btn-sm btn-icono" title={Number(c.detecciones) > 0 ? `Tiene ${c.detecciones} detecciones en el historial: deshabilítela en su lugar` : 'Eliminar'} aria-label="Eliminar"
+                          disabled={Number(c.detecciones) > 0} onClick={() => setEliminando(c)}><Trash2 size={15} color={Number(c.detecciones) > 0 ? undefined : 'var(--alerta)'} /></button>
                       </td>
                     </tr>
                   );

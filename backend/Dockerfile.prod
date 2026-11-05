@@ -27,6 +27,8 @@ COPY --chown=node:node db ./db
 # Logo del ECU 911 de los PDF, los Excel y los correos (documentosControl.ts, emailService.ts → /app/assets)
 COPY --chown=node:node backend/assets ./assets
 RUN mkdir -p /app/media /app/evidencia-listas /app/logs && chown node:node /app/media /app/evidencia-listas /app/logs
+# En ejecución solo hace falta node: sin npm, corepack ni yarn hay menos superficie de ataque y menos alertas
+RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 USER node
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \

@@ -16,7 +16,7 @@ vi.mock('../src/interfaz/componentes/envivo', async () => {
 import { VistaCuadricula } from '../src/interfaz/componentes/VistaCuadricula';
 
 const camaras: Camara[] = [1, 2, 3, 4].map(id => ({
-  id, nombre: `Cámara ${id}`, ip: `192.0.2.${id}`, ubicacion: 'Acceso', direccion: 'ingreso',
+  id, nombre: `Cámara ${id}`, ip: `192.0.2.${id}`, ubicacion: 'Acceso', direccion: 'ingreso', analisis_anpr: true,
   rtsp_url: 'rtsp://camera/stream', rtsp_url_vista: null, tiene_credenciales: false,
   activa: true, estado: 'EN_LINEA', ultimo_ping: null, tiempo_respuesta_ms: null,
   mensaje_ping: null, created_at: '2026-10-17T00:00:00Z', roi: null,
@@ -31,7 +31,7 @@ describe('Vista cuadrícula de Monitoreo', () => {
   afterEach(() => localStorage.clear());
 
   it('permite ver 1, 2 o 4 cámaras dentro de la vista cuadrícula y persiste la selección', () => {
-    const { container } = render(<VistaCuadricula camaras={camaras} motorId={1} />);
+    const { container } = render(<VistaCuadricula camaras={camaras} analizadas={[1]} />);
     const celdas = () => container.querySelectorAll('.nvr-celda');
     expect(celdas()).toHaveLength(4);
 
@@ -47,8 +47,40 @@ describe('Vista cuadrícula de Monitoreo', () => {
     expect(screen.getByLabelText('Vista cuadrícula de 4 cámaras')).toBeInTheDocument();
   });
 
+  describe('sin distribución guardada', () => {
+    const ingreso = { ...camaras[0], id: 4, nombre: 'Ingreso' };
+    const salida = { ...camaras[0], id: 5, nombre: 'Salida', direccion: 'salida' as const };
+    beforeEach(() => localStorage.clear());
+
+    it('se llena sola con el ingreso y la salida, en dos celdas', () => {
+      const { container } = render(<VistaCuadricula camaras={[salida, ingreso]} analizadas={[4, 5]} />);
+      expect(container.querySelectorAll('.nvr-celda')).toHaveLength(2);
+      expect(container.querySelector('[aria-label="Cámara 1: Ingreso"]')).not.toBeNull();
+      expect(within(container.querySelector('[aria-label="Cámara 2: Salida"]') as HTMLElement).getByText('SALIDA')).toBeInTheDocument();
+      expect(screen.getByTestId('video-4')).toBeInTheDocument();
+      expect(screen.getByTestId('video-5')).toBeInTheDocument();
+      expect(localStorage.getItem('anpr_nvr_slots_v1')).toBeNull();
+    });
+
+    it('también si lo guardado solo tiene cámaras ya eliminadas', () => {
+      localStorage.setItem('anpr_nvr_slots_v1', JSON.stringify([3, null, null, null]));
+      render(<VistaCuadricula camaras={[ingreso, salida]} analizadas={[4, 5]} />);
+      expect(screen.getByTestId('video-4')).toBeInTheDocument();
+      expect(screen.getByTestId('video-5')).toBeInTheDocument();
+    });
+
+    it('si la persona quita una cámara, se respeta y no vuelve sola', () => {
+      render(<VistaCuadricula camaras={[ingreso, salida]} analizadas={[4, 5]} />);
+      fireEvent.click(screen.getAllByRole('button', { name: 'Quitar cámara' })[1]);
+      expect(screen.queryByTestId('video-5')).toBeNull();
+      expect(screen.getByTestId('video-4')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Quitar cámara' }));
+      expect(screen.queryByTestId('video-4')).toBeNull();
+    });
+  });
+
   it('muestra el video y la dirección de cada cámara asignada', () => {
-    const { container } = render(<VistaCuadricula camaras={camaras} motorId={1} />);
+    const { container } = render(<VistaCuadricula camaras={camaras} analizadas={[1]} />);
     expect(screen.getByTestId('video-1')).toBeInTheDocument();
     expect(within(container.querySelector('[aria-label="Cámara 1: Cámara 1"]')!).getByText('INGRESO')).toBeInTheDocument();
     expect(container.querySelector('[aria-label="Cámara 2: Cámara 2"]')).not.toBeNull();
@@ -57,7 +89,7 @@ describe('Vista cuadrícula de Monitoreo', () => {
   it('una cámara sin conexión muestra el motivo en lugar de un reproductor que no abre', () => {
     // La cámara física de la garita vista desde otra red: no responde al ping ni al puerto RTSP
     const sinRed = camaras.map(c => c.id === 2 ? { ...c, estado: 'SIN_CONEXION' as const, mensaje_ping: 'Sin respuesta (tiempo de espera agotado)' } : c);
-    const { container } = render(<VistaCuadricula camaras={sinRed} motorId={1} />);
+    const { container } = render(<VistaCuadricula camaras={sinRed} analizadas={[1]} />);
     const celda = within(container.querySelector('[aria-label="Cámara 2: Cámara 2"]') as HTMLElement);
     expect(celda.getByText('Sin conexión con la cámara')).toBeInTheDocument();
     expect(celda.getByText(/192\.0\.2\.2 · Sin respuesta \(tiempo de espera agotado\)/)).toBeInTheDocument();

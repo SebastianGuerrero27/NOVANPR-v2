@@ -88,7 +88,7 @@ Método, regla de decisión y protocolo de evaluación: [METODO_VERIFICACION_LEC
 - **Tiempo real sin sondeo:** una sola conexión Socket.IO autenticada por sesión (salas
   `usuario:{id}` y `rol:{rol}`, adaptador Redis para varias instancias). Eventos:
   `deteccion:nueva | actualizada | alerta | eliminada`, `camara:estado | actualizada | eliminada`,
-  `listas:actualizadas`, `monitoreo:camara`, `solicitudes:actualizadas`,
+  `listas:actualizadas`, `monitoreo:camaras`, `solicitudes:actualizadas`,
   `notificacion:nueva | actualizada`. Los paneles agrupan recargas (5 s) y, con la pestaña
   oculta, esperan a que vuelva a ser visible.
 - **Centro de notificaciones:** bandeja persistente con reconocimiento (ACK), escalamiento y Web Push

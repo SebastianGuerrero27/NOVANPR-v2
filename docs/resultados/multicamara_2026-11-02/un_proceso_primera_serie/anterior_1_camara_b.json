@@ -1,0 +1,57 @@
+{
+ "etiqueta": "anterior_1_camara_b",
+ "camaras": 1,
+ "segundos": 360,
+ "imagen_motor": "anpr-motor:antes-multicamara",
+ "detectores": "1",
+ "esperadas": 10,
+ "exactas": 9,
+ "exactitud_pct": 90.0,
+ "cpu_nucleos": {
+  "media": 9.04,
+  "p95": 11.43,
+  "max": 11.94
+ },
+ "memoria_mib": {
+  "media": 1318,
+  "max": 1404
+ },
+ "fps_analisis_medio": 15.7,
+ "reinicios_motor": "0",
+ "detalle": [
+  {
+   "camara": "1",
+   "registros": 11,
+   "exactas": 9,
+   "erroneas": 2,
+   "sin_lectura": 0,
+   "confirmadas": 7,
+   "confirmadas_erroneas": 1,
+   "fps_captura": null,
+   "fps_analisis": null,
+   "registro_p50_ms": null,
+   "registro_p95_ms": null,
+   "edad_cuadro_p50_ms": null,
+   "edad_cuadro_p95_ms": null,
+   "lectura_vivo_p50_ms": null,
+   "omitidas_pct": null
+  },
+  {
+   "camara": "None",
+   "registros": 0,
+   "exactas": 0,
+   "erroneas": 0,
+   "sin_lectura": 0,
+   "confirmadas": 0,
+   "confirmadas_erroneas": 0,
+   "fps_captura": 29.9,
+   "fps_analisis": 12.3,
+   "registro_p50_ms": 475,
+   "registro_p95_ms": 790,
+   "edad_cuadro_p50_ms": 19,
+   "edad_cuadro_p95_ms": 36,
+   "lectura_vivo_p50_ms": 208,
+   "omitidas_pct": 11.2
+  }
+ ]
+}

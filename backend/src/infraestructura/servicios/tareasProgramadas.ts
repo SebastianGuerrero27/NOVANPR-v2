@@ -1,13 +1,15 @@
 import { getDB } from '../db';
 import { hoyLocalSql } from './tiempo';
 import { config } from './configuracion';
+import { depurarEvidencia } from './conservacionEvidencia';
 import { escalarPendientes, notificar, purgarAntiguas } from './notificaciones';
 
 /**
  * Tareas periódicas del centro de notificaciones:
  *   - cada 15 s: escalamiento de alarmas críticas/altas no reconocidas (ISA-18.2);
  *   - cada hora: resumen diario de permisos por vencer para quien gestiona el padrón (una vez por
- *     día gracias a la clave de supresión) y depuración según la retención configurada.
+ *     día gracias a la clave de supresión), depuración según la retención configurada y
+ *     conservación de las fotos de los pasos.
  * Son seguras con varias instancias del backend (UPDATE … OUTPUT atómico y claves diarias).
  */
 
@@ -49,6 +51,7 @@ export function iniciarTareasProgramadas(): void {
     await resumenPermisosPorVencer();
     const n = await purgarAntiguas();
     if (n) console.log(`[TAREAS] ${n} notificaciones antiguas depuradas.`);
+    await depurarEvidencia();
   });
   setInterval(escalar, SEGUNDOS_ESCALAMIENTO * 1000).unref();
   setInterval(horaria, MS_HORA).unref();

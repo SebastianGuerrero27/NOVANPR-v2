@@ -19,6 +19,7 @@ import { VisorZoom } from '../componentes/ZoomDual';
 import { EliminarUno, EliminarVarios } from '../componentes/EliminarDetecciones';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useNotificar } from '../componentes/Notificaciones';
+import { horasDelMovimiento } from '../../dominio/movimiento';
 
 const Detecciones: React.FC = () => {
   const [params, setParams] = useSearchParams();
@@ -32,8 +33,9 @@ const Detecciones: React.FC = () => {
   const [eliminarVarios, setEliminarVarios] = useState(false);
   const { puede } = useAuth();
   const esAdmin = puede('detecciones:eliminar');
+  const puedeEliminar = puede('detecciones:eliminar-individual');
   const puedeEditarCampos = puede('detecciones:validar');
-  const tieneAcciones = puedeEditarCampos || esAdmin;
+  const tieneAcciones = puedeEditarCampos || puedeEliminar;
   const [exportando, setExportando] = useState(false);
   const [nuevos, setNuevos] = useState(0);
   const [placaTexto, setPlacaTexto] = useState(() => normalizarPlaca(params.get('placa')).slice(0, 10));
@@ -72,6 +74,15 @@ const Detecciones: React.FC = () => {
   const { datos: camaras } = useConsulta<Camara[]>(() => api.get('/camaras').then(r => r.data), []);
   const alEditar = (actualizada: Deteccion, campo?: CampoIngreso) => {
     setDatos(actuales => actuales && { ...actuales, items: actuales.items.map(d => d.id === actualizada.id ? actualizarCampoIngreso(d, actualizada, campo) : d) });
+  };
+
+  const alEliminar = (id: number) => {
+    setDatos(actual => actual && { ...actual, items: actual.items.filter(d => d.id !== id),
+      total: Math.max(0, actual.total - (actual.items.some(d => d.id === id) ? 1 : 0)) });
+    setZoom(actual => actual?.id === id ? null : actual);
+    setEditando(actual => actual?.id === id ? null : actual);
+    if (filtros.pagina > 1 && datos?.items.length === 1) cambiar('pagina', String(filtros.pagina - 1));
+    else void recargar(true);
   };
 
   // En vivo: las filas visibles se actualizan; los ingresos nuevos se anuncian sin mover la tabla
@@ -163,7 +174,7 @@ const Detecciones: React.FC = () => {
         )}
         {error && <Aviso tipo="error">{error}</Aviso>}
 
-        <Tarjeta titulo="Registros completos con salida" subtitulo={datos ? `${datos.total.toLocaleString('es-EC')} registros${hayFiltros ? ' con los filtros aplicados' : ''} · Nombre, placa, tipo, marca, motivo e ingreso y salida válidos` : undefined}
+        <Tarjeta titulo="Registros completos con salida" subtitulo={datos ? `${datos.total.toLocaleString('es-EC')} ${datos.total === 1 ? 'registro' : 'registros'}${hayFiltros ? ' con los filtros aplicados' : ''} · Nombre, vehículo, marca, motivo e ingreso y salida válidos · Placa opcional` : undefined}
           acciones={<>
             <Link to="/historial" className="btn btn-ghost btn-sm"><History size={14} /> Historial completo</Link>
             <button className="btn btn-navy btn-sm" onClick={exportarPdf} disabled={exportando || !datos?.total}><FileText size={14} /> {exportando ? 'Generando…' : 'Descargar PDF'}</button>
@@ -181,7 +192,7 @@ const Detecciones: React.FC = () => {
               </tr></thead>
               <tbody>
                 {cargando && !datos ? <FilasEsqueleto columnas={tieneAcciones ? 16 : 15} /> : datos?.items.map((d, i) => (
-                  <tr key={d.id} className={`clic ${ESTADOS_ACCESO[estadoAcceso(d)].clase}`} onClick={() => navigate(`/detecciones/${d.id}`)}>
+                  <tr key={d.id} className={`clic ${ESTADOS_ACCESO[estadoAcceso(d)].clase}`} onClick={() => navigate(`/monitoreo?registro=${d.id}`)}>
                     <td className="num texto-secundario">{(filtros.pagina - 1) * (datos?.tamano ?? 25) + i + 1}</td>
                     <CeldaIngreso d={d} campo="cedula" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
                     <CeldaIngreso d={d} campo="persona_ingreso" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
@@ -190,8 +201,8 @@ const Detecciones: React.FC = () => {
                     </td>
                     <CeldaIngreso d={d} campo="motivo_ingreso" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
                     <td className="nowrap">{fecha(d.fecha_hora_ingreso)}</td>
-                    <td className="nowrap"><strong>{hora(d.fecha_hora_ingreso)}</strong></td>
-                    <td className="nowrap">{d.fecha_hora_salida ? hora(d.fecha_hora_salida) : '—'}</td>
+                    <td className="nowrap">{horasDelMovimiento(d).entrada ? <strong>{hora(d.fecha_hora_ingreso)}</strong> : '—'}</td>
+                    <td className="nowrap">{horasDelMovimiento(d).salida ? hora(horasDelMovimiento(d).salida!) : '—'}</td>
                     <CeldaIngreso d={d} campo="tipo_vehiculo" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
                     <CeldaIngreso d={d} campo="marca" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
                     <CeldaIngreso d={d} campo="modelo" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
@@ -199,9 +210,9 @@ const Detecciones: React.FC = () => {
                     <td className="nowrap"><InsigniaEstado estado={d.estado_validacion} corta /></td>
                     <td className="nowrap"><ConfianzaRegistro valor={d.confianza_ocr} /></td>
                     <td className="nowrap">{d.fecha_hora_salida ? 'Registrada' : '—'}</td>
-                    {tieneAcciones && <td className="acciones-celda" onClick={e => e.stopPropagation()}><div className="acciones-registro">
+                    {tieneAcciones && <td className="acciones-celda" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}><div className="acciones-registro">
                       {puedeEditarCampos && <button className="btn btn-ghost btn-sm btn-icono" title="Editar registro" aria-label="Editar registro" onClick={() => setEditando(d)}><Edit3 size={14} /></button>}
-                      {esAdmin && <button className="btn btn-ghost btn-sm btn-icono" title="Eliminar registro" aria-label="Eliminar registro" onClick={() => setEliminando(d)}><Trash2 size={15} color="var(--alerta)" /></button>}
+                      {puedeEliminar && <button className="btn btn-ghost btn-sm btn-icono" title="Eliminar registro" aria-label="Eliminar registro" onClick={() => setEliminando(d)}><Trash2 size={15} color="var(--alerta)" /></button>}
                     </div></td>}
                   </tr>
                 ))}
@@ -210,7 +221,7 @@ const Detecciones: React.FC = () => {
           </div>
           {datos && datos.items.length === 0 && (
             <Vacio titulo={hayFiltros ? 'Sin resultados' : 'Aún no hay registros completos con salida'} icono={hayFiltros ? <Filter size={22} /> : undefined}
-              texto={hayFiltros ? 'Ningún registro completo con salida coincide con los filtros.' : 'Se requiere nombre, placa, tipo, marca, motivo y fechas de ingreso y salida válidas. Los incompletos permanecen en Movimientos recientes para completarlos.'} />
+              texto={hayFiltros ? 'Ningún registro completo con salida coincide con los filtros.' : 'Se requiere nombre, tipo de vehículo, marca, motivo y fechas de ingreso y salida válidas. La placa puede quedar vacía si es ilegible o corresponde a un rótulo de concesionaria. Los datos pendientes se completan en monitoreo.'} />
           )}
           {datos && datos.total > 0 && <Paginacion pagina={datos.pagina} tamano={datos.tamano} total={datos.total} onCambiar={p => cambiar('pagina', String(p))} />}
         </Tarjeta>
@@ -218,8 +229,8 @@ const Detecciones: React.FC = () => {
 
       {zoom && <VisorZoom d={zoom} onCerrar={() => setZoom(null)} />}
       {editando && <ValidarModal d={editando} onCerrar={() => setEditando(null)} onValidada={actualizada => alEditar(actualizada)} />}
-      {eliminando && <EliminarUno d={eliminando} onCerrar={() => setEliminando(null)} />}
-      {eliminarVarios && datos && (
+      {puedeEliminar && eliminando && <EliminarUno d={eliminando} onCerrar={() => setEliminando(null)} onEliminada={alEliminar} />}
+      {esAdmin && eliminarVarios && datos && (
         <EliminarVarios total={datos.total} filtros={consultaParams} onCerrar={() => setEliminarVarios(false)} onHecho={() => recargar(true)}
           descripcion={hayFiltros ? 'Registros completos con salida que cumplen los filtros aplicados' : 'Todos los registros completos con salida del sistema'} />
       )}

@@ -13,7 +13,7 @@ Guía para instalar el sistema en el servidor de la institución con Docker Comp
 | Memoria | 8 GB | 16 GB | PostgreSQL limitado a 768 MiB; el motor ANPR es el principal consumidor |
 | Disco | 30 GB libres | 100 GB | Imágenes (~10 GB), base de datos y evidencia fotográfica |
 | Red | Acceso a la VLAN de cámaras y a la LAN del personal | IP fija | El navegador del personal abre el sistema por la IP del servidor |
-| Internet | Solo en la instalación y en las actualizaciones | — | Descargar imágenes base, dependencias y los pesos de OCR/CLIP del primer arranque |
+| Internet | Solo para compilar las imágenes (no hace falta con el paquete sin internet) | — | Imágenes base y dependencias; los pesos de los modelos van dentro de la imagen del motor |
 
 ## 2. Contenido del paquete
 
@@ -23,13 +23,18 @@ NOVANPR/
 ├── docker-compose.yml           # Desarrollo (no usar en el servidor)
 ├── .env.example                 # Plantilla de configuración y secretos
 ├── INSTALAR_PRODUCCION.md       # Esta guía
-├── backend/  frontend/  services/anpr/  db/  mediamtx/  monitoring/  k8s/
+├── backend/  frontend/  services/anpr/  db/  mediamtx/  k8s/
 └── docs/                        # Documentación técnica
 ```
 
 Incluye los pesos del detector de placas (`services/anpr/models/license_plate_detector.pt`) y del
-detector de vehículos (`services/anpr/yolo26n.pt`). **No incluye** archivos `.env`, contraseñas,
-datos de la base ni fotografías de evidencia.
+detector de vehículos (`services/anpr/yolo26n.pt`); al compilar, la imagen del motor descarga y guarda
+los de OCR, del verificador y de CLIP, y en operación no se conecta a Internet. **No incluye** archivos
+`.env`, contraseñas, cámaras, usuarios, datos de la base ni fotografías de evidencia.
+
+Para un servidor sin Internet use el paquete con las imágenes ya compiladas
+(`NOVANPR_produccion_<fecha>.rar`, armado con `despliegue/empaquetar.sh`): trae su propio
+`LEEME_DESPLIEGUE.txt` y los scripts `instalar.sh` / `instalar.ps1`, que generan el `.env`.
 
 ## 3. Instalación
 
@@ -50,9 +55,9 @@ Complete en `.env` **los secretos** (genere cada uno; no reutilice los de desarr
 | `JWT_SECRET` | `openssl rand -base64 48` |
 | `CAMARAS_CLAVE_CIFRADO` | `openssl rand -base64 32` (obligatoria en producción; guárdela: sin ella hay que reescribir las contraseñas de las cámaras) |
 | `ANPR_SERVICE_TOKEN` | `openssl rand -base64 32` |
-| `GRAFANA_ADMIN_PASSWORD` | Contraseña fuerte |
 
-Y **la red** (reemplace `192.168.1.50` por la IP del servidor en la LAN):
+Y **la red**, también obligatoria: sin ella `docker compose` no arranca (reemplace `192.168.1.50`
+por la IP del servidor en la LAN):
 
 ```dotenv
 FRONTEND_URL=http://192.168.1.50:3000
@@ -76,14 +81,15 @@ chmod 600 .env    # solo el administrador puede leerlo
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-La primera vez compila las imágenes (10–30 min según la conexión) y el motor descarga los pesos de
-OCR, del verificador y de CLIP (puede tardar unos minutos más en quedar *healthy*). Compruebe:
+La primera vez compila las imágenes (10–30 min según la conexión; la del motor descarga y guarda los
+pesos de OCR, del verificador y de CLIP). El motor tarda de 1 a 5 minutos en quedar *healthy* mientras
+carga los modelos. Compruebe:
 
 ```bash
 docker compose -f docker-compose.prod.yml ps
 ```
 
-Todos los servicios deben estar `running`; db, redis, backend y anpr además `healthy`.
+Todos los servicios deben estar `running`; db, backend y anpr además `healthy`.
 
 ### 3.3 Abrir los puertos del firewall
 
@@ -94,8 +100,8 @@ Todos los servicios deben estar `running`; db, redis, backend y anpr además `he
 | 8889 | TCP | Video en vivo WebRTC (señalización) |
 | 8189 | UDP y TCP | Video en vivo WebRTC (medios) |
 
-PostgreSQL (5432), la API directa (5000), RTSP (8554), Prometheus (9090) y Grafana (3001) quedan
-solo en `127.0.0.1` del servidor y no deben abrirse.
+PostgreSQL (5433), la API directa (5000) y RTSP (8554) quedan solo en `127.0.0.1` del servidor y no
+deben abrirse.
 
 ### 3.4 Primer uso
 
@@ -162,4 +168,5 @@ Copie los respaldos fuera del servidor según la política de retención de la i
 | La página carga pero no inicia sesión | `FRONTEND_URL` no coincide con la dirección usada | Ponga en `FRONTEND_URL` la URL exacta con la que se abre el sistema |
 | Video en negro desde otros equipos | Falta la IP del servidor en `WEBRTC_HOSTS` o el puerto 8189 está bloqueado | Revise `.env` y el firewall |
 | Sin cajas de detección sobre el video | `ANPR_PUBLIC_URL` apunta a `localhost` o el puerto 8000 está cerrado | Use la IP del servidor y abra el puerto |
-| anpr reinicia en el primer arranque | Descargando pesos sin Internet | Dé salida a Internet en la instalación |
+| anpr tarda en quedar *healthy* | Carga de los modelos (hasta 5 min la primera vez) | `docker compose -f docker-compose.prod.yml logs --tail 50 anpr` |
+| La cámara queda `SIN_CONEXION` | IP, usuario o contraseña RTSP, o su red no está en `CAMARAS_REDES_PERMITIDAS` | `ping` a la cámara desde el servidor; revise el formulario de la cámara y `.env` |

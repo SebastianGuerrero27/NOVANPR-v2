@@ -1,0 +1,42 @@
+.reporte-paso {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.reporte-paso > span {
+  display: inline-grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reporte-paso + .reporte-barra {
+  margin-top: -12px;
+}
+
+.reporte-paso > small {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+@media (max-width: 600px) {
+  .reporte-paso > small { display: none; }
+}
+
+.reporte-aviso {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.reportes-vista { width: min(100%, 340px); }
