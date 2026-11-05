@@ -9,12 +9,25 @@
 #   - PostgreSQL 17 con volumen persistente y puerto enlazado solo a localhost.
 #   - La evidencia fotográfica vive en un volumen compartido por el backend y el motor.
 #   - El navegador entra por un solo puerto web (3000) y la API queda detrás de nginx.
+#   - Sin valores de red por omisión: FRONTEND_URL, WEBRTC_HOSTS, WEBRTC_PUBLIC_URL y ANPR_PUBLIC_URL
+#     llevan la IP del servidor y son obligatorias (con localhost, desde otro equipo no se inicia
+#     sesión ni se ve el video).
+#   - No trae cámaras, usuarios ni datos: las cámaras se registran en la aplicación.
 #
 # Guía completa: INSTALAR_PRODUCCION.md. Secretos en .env (copiar de .env.example).
 name: anpr-produccion
 
+# Registros de cada contenedor con tope: sin él crecen hasta llenar el disco
+x-registros: &registros
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   db:
+    <<: *registros
     image: postgres:17-alpine
     environment:
       - POSTGRES_DB=ANPR_ECU911
@@ -36,10 +49,11 @@ services:
         limits:
           memory: 768m
   mediamtx:
+    <<: *registros
     image: bluenviron/mediamtx:1.21.3
     environment:
       # IP del servidor en la LAN que el navegador usa para WebRTC (además de 127.0.0.1)
-      - MTX_WEBRTCADDITIONALHOSTS=${WEBRTC_HOSTS:-127.0.0.1}
+      - MTX_WEBRTCADDITIONALHOSTS=${WEBRTC_HOSTS:?Defina WEBRTC_HOSTS en .env (127.0.0.1,IP del servidor)}
     ports:
       - "127.0.0.1:8554:8554"   # RTSP: solo diagnóstico local; el motor lo lee en la red de Docker
       - "8889:8889"             # WebRTC (WHEP) para los navegadores, con ticket del backend
@@ -54,6 +68,7 @@ services:
           memory: 512m
 
   backend:
+    <<: *registros
     build:
       context: .
       dockerfile: backend/Dockerfile.prod
@@ -81,9 +96,6 @@ services:
       - TRUST_PROXY=${TRUST_PROXY:-1}
       - LIMITE_API_POR_MINUTO=${LIMITE_API_POR_MINUTO:-600}
       - METRICS_TOKEN=${METRICS_TOKEN:-}
-      - ECUADORAPI_KEY=${ECUADORAPI_KEY:-}
-      - CONSULTA_PERSONA_PROVEEDOR=${CONSULTA_PERSONA_PROVEEDOR:-ecuadorapi}
-      - SOCKET_STUDIO_TOKEN=${SOCKET_STUDIO_TOKEN:-}
       - LIMITE_ACCESO_POR_15_MIN=${LIMITE_ACCESO_POR_15_MIN:-20}
       - ANPR_SERVICE_TOKEN=${ANPR_SERVICE_TOKEN:?Defina ANPR_SERVICE_TOKEN en .env}
       - SMTP_HOST=${SMTP_HOST:-}
@@ -94,15 +106,15 @@ services:
       - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-ecu911.gob.ec}
       - REGISTRO_VERIFICACION_EMAIL_HABILITADA=${REGISTRO_VERIFICACION_EMAIL_HABILITADA:-false}
       # URL con la que el personal abre el sistema (enlaces de correo y origen permitido)
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - FRONTEND_URL=${FRONTEND_URL:?Defina FRONTEND_URL en .env (http://IP del servidor:3000)}
       - CORS_ORIGINS=${CORS_ORIGINS:-}
       - MEDIA_DIR=/app/media
       - EVIDENCIA_LISTAS_DIR=/app/evidencia-listas
       - ANPR_SERVICE_URL=${ANPR_SERVICE_URL:-http://anpr:8000}
-      - ANPR_PUBLIC_URL=${ANPR_PUBLIC_URL:-http://localhost:8000}
+      - ANPR_PUBLIC_URL=${ANPR_PUBLIC_URL:?Defina ANPR_PUBLIC_URL en .env (http://IP del servidor:8000)}
       - MEDIAMTX_API_URL=http://mediamtx:9997
       - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554
-      - WEBRTC_PUBLIC_URL=${WEBRTC_PUBLIC_URL:-http://localhost:8889}
+      - WEBRTC_PUBLIC_URL=${WEBRTC_PUBLIC_URL:?Defina WEBRTC_PUBLIC_URL en .env (http://IP del servidor:8889)}
       - DOCKER_CONTAINER=true
       # Centro de notificaciones: Socket.IO en memoria (una instancia del backend) y Web Push
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
@@ -128,6 +140,7 @@ services:
           memory: 768m
 
   frontend:
+    <<: *registros
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
@@ -151,6 +164,7 @@ services:
           memory: 128m
 
   anpr:
+    <<: *registros
     build: ./services/anpr
     image: anpr-motor:produccion
     # Sin cap_drop: corre como root y necesita CAP_DAC_OVERRIDE para escribir en anpr_media, del usuario
@@ -175,8 +189,7 @@ services:
       - DEBUG_SHOW_WINDOW=false
     volumes:
       - anpr_media:/app/media
-      # Pesos que el motor descarga en el primer arranque (OCR, verificador PP-OCRv6, CLIP)
-      - anpr_model_cache:/root/.cache
+      # Los pesos de OCR, del verificador PP-OCRv6 y de CLIP van dentro de la imagen: no descarga nada
     depends_on:
       mediamtx:
         condition: service_started
@@ -197,5 +210,4 @@ services:
 volumes:
   db_data:
   anpr_media:
-  anpr_model_cache:
   listas_evidencia:

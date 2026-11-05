@@ -20,7 +20,7 @@ it('permite avanzar después de los primeros 30 accesos y consultar los autoriza
   render(<MemoryRouter><TablaIngresosRecientes items={[] as Deteccion[]} onValidar={vi.fn()}
     puedeEditarCampos={false} seleccionada={null} onSeleccionar={seleccionar}
     registrandoSalida={null} onRegistrarSalida={vi.fn()} /></MemoryRouter>);
-  await screen.findByText(/61 accesos en el historial/);
+  await screen.findByText(/61 accesos sin salida o con datos pendientes/);
   fireEvent.click(screen.getByRole('button', { name: /Siguiente/ }));
   await waitFor(() => expect(get).toHaveBeenLastCalledWith('/detecciones', expect.objectContaining({ params: expect.objectContaining({ pagina: 2 }) })));
   const placa = await screen.findByText(/ABC-0031|ABC0031/);

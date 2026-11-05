@@ -25,15 +25,15 @@ import { actorDe, controlador, idDe } from '../respuesta';
  *                           y el resumen de lo que otorgó cada gestor
  *   DELETE /:id/definitivo  elimina un permiso retirado o vencido sin ingresos en el historial
  *
- * Lectura: listas:ver. Cambios: el permiso de cada lista (padron:gestionar para la lista
- * blanca, alertas:gestionar para la lista negra). Las reglas están en dominio/listas.ts y los
+ * Lectura: listas:ver. Alta: padron:agregar o alertas:restringir. Edición y retiro: el permiso de cada
+ * lista (padron:gestionar para la lista blanca, alertas:gestionar para la lista negra). Las reglas están en dominio/listas.ts y los
  * casos de uso en aplicacion/listas.ts.
  */
 function crearRouter(def: DefinicionLista): Router {
   const router = Router();
   const lectura = [authMiddleware, requierePermiso('listas:ver')];
   const edicion = [authMiddleware, requierePermiso(def.permisoEdicion)];
-  const alta = def.tipo === 'alertas' ? [authMiddleware, requierePermiso('alertas:restringir')] : edicion;
+  const alta = [authMiddleware, requierePermiso(def.tipo === 'alertas' ? 'alertas:restringir' : 'padron:agregar')];
   const contexto = `LISTAS ${def.nombre}`;
   // Los clientes anteriores reciben un cierre explícito; ninguna de estas rutas carga
   // conectores externos ni puede consumir créditos del proveedor.

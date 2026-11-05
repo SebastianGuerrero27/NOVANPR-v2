@@ -75,6 +75,7 @@ class GestorCamaras:
                 "capture_fps": estado["capture_fps"], "tracker_fps": estado["tracker_fps"],
                 "inferencias_omitidas_pct": estado["inferencias_omitidas_pct"], "enlace_video": estado["enlace_video"],
                 "latencia": estado["latencia"], "etapas_ms": estado["etapas_ms"], "seguidor": estado["seguidor"],
+                "calidad_captura": estado.get("calidad_captura"),
             })
         return sorted(resultado, key=lambda c: c["id"])
 

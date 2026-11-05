@@ -1,5 +1,6 @@
+import { BotonPing } from './AntenaPing';
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, Eye, EyeOff, Loader2, Play, RadioTower, XCircle } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, Loader2, Play, XCircle } from 'lucide-react';
 import api, { mensajeError } from '../../infraestructura/api';
 import type { Camara } from '../../dominio/tipos';
 import { type ReglaTexto, errorDe, sinErrores, validarEntero, validarHost, validarTexto } from '../../dominio/validacion';
@@ -261,6 +262,7 @@ export const FormularioCamara: React.FC<{ camara?: Camara; onCerrar: () => void;
       const [principal, vista] = await Promise.all([
         api.post('/camaras/probar', { rtsp_url: url, camara_id: camara?.id }),
         urlVista ? api.post('/camaras/probar', { rtsp_url: urlVista, camara_id: camara?.id, vista: true }).catch(() => null) : null,
+        new Promise(listo => setTimeout(listo, 900)),
       ]);
       setPrueba(principal.data);
       setPruebaVista(vista?.data?.rtsp ?? null);
@@ -286,8 +288,7 @@ export const FormularioCamara: React.FC<{ camara?: Camara; onCerrar: () => void;
     <Modal titulo={camara ? 'Editar cámara' : 'Registrar cámara'} subtitulo="El enlace RTSP se genera con los datos del equipo" onCerrar={onCerrar} bloquear={enviando} tamano="ancho"
       pie={<>
         <button className="btn btn-secondary" onClick={onCerrar} disabled={enviando}>Cancelar</button>
-        <button className="btn btn-secondary" onClick={probar} disabled={!url || !hostValido || probando || enviando}>
-          {probando ? <Loader2 size={14} className="girar" /> : <RadioTower size={14} />} Ping</button>
+        <BotonPing estado={probando ? 'probando' : errorPrueba || (prueba && !prueba.rtsp.en_linea) ? 'error' : prueba ? 'ok' : 'reposo'} onClick={probar} deshabilitado={!url || !hostValido || enviando} />
         <button className="btn btn-secondary" onClick={() => setReproducir(true)} disabled={!url || !hostValido || enviando}><Play size={14} /> Play</button>
         <button className="btn btn-navy" onClick={guardar} disabled={!valido || enviando}>{enviando && <Loader2 size={14} className="girar" />} Guardar</button>
       </>}>
@@ -339,7 +340,7 @@ export const FormularioCamara: React.FC<{ camara?: Camara; onCerrar: () => void;
               <CampoTexto id="c-ruta" etiqueta="Ruta del flujo" valor={ruta} onCambiar={v => { setRuta(v); setPrueba(null); }}
                 regla={REGLA_RUTA} filtrar={sinEspacios} literal claseControl="mono" />
             </div>
-            <CampoTexto id="c-usuario" etiqueta={`Usuario${exigeCredenciales ? '*' : ' (si el equipo lo pide)'}`} valor={usuario}
+            <CampoTexto id="c-usuario" etiqueta={`Usuario${exigeCredenciales ? '*' : ''}`} valor={usuario}
               onCambiar={v => { setUsuario(v); setPrueba(null); }} regla={reglaUsuario(exigeCredenciales)} filtrar={sinEspacios} literal autoComplete="off" />
             <div className="campo"><label htmlFor="c-clave">Contraseña{exigeCredenciales && !claveGuardada ? '*' : ''}</label>
               <div style={{ position: 'relative' }}>

@@ -11,7 +11,7 @@ describe('Tipo y marca editables con sugerencias', () => {
     render(<FormularioLista tipo={tipo} onCerrar={() => undefined} onGuardado={() => undefined} />);
     if (tipo === 'autorizados') fireEvent.change(screen.getByLabelText('Nombres y apellidos*'), { target: { value: 'Ana Pérez' } });
     else {
-      fireEvent.change(screen.getByLabelText('Placa*'), { target: { value: 'PBA1234' } });
+      fireEvent.change(screen.getByLabelText('Placa (opcional)'), { target: { value: 'PBA1234' } });
       fireEvent.change(screen.getByLabelText('Motivo*'), { target: { value: 'Alerta de prueba' } });
     }
     const campoTipo = screen.getByRole('combobox', { name: 'Tipo de vehículo' });

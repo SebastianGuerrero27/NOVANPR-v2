@@ -6,6 +6,7 @@ import { casosMonitoreo } from '../aplicacion/monitoreo';
 import { auditoriaSql, eventosSocket } from '../infraestructura/adaptadores';
 import { repositorioCamarasSql } from '../infraestructura/persistencia/camarasSql';
 import { camarasSinCapacidad, sincronizarMotores } from '../infraestructura/servicios/camaraMotor';
+import { salidaManualPermitida } from '../infraestructura/servicios/configuracion';
 import { destinoRtsp, diagnosticar, probarConexion, registrarConexion } from '../infraestructura/servicios/conectividadCamaras';
 import { custodiaCredenciales } from '../infraestructura/servicios/custodiaCredenciales';
 import {
@@ -53,5 +54,5 @@ const motor: PuertoMotorAnpr = {
 const comunes = { repositorio: repositorioCamarasSql, video, tickets, motor, auditoria: auditoriaSql, eventos: eventosSocket };
 
 export const camaras = casosCamaras({ ...comunes, conectividad, custodia: custodiaCredenciales });
-export const monitoreo = casosMonitoreo(comunes);
+export const monitoreo = casosMonitoreo({ ...comunes, salidaManual: salidaManualPermitida });
 export const medios = casosMedios({ video, tickets });

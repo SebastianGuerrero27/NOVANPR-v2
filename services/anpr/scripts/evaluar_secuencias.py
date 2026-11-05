@@ -12,6 +12,8 @@ Cada secuencia es un JSON (ver scripts/secuencias/*.json):
   {"secuencia": "...", "video": "ruta relativa al JSON", "particion": "calibracion|prueba",
    "condiciones": ["dia", "noche", "lluvia", ...], "zonas": {"roi": null, "exclusiones": []},
    "pasos": [{"placa": "PSY589", "legible": true, "inicio_s": 0.8, "fin_s": 4.5}, ...]}
+Opcional: "desde_s" y "hasta_s" para evaluar solo un tramo del video (los tiempos de los pasos
+siguen contados desde el inicio del video).
 
 Métricas (por secuencia y agregadas por partición y condición; proporciones con IC 95 % de
 Wilson, falsas detecciones por hora con IC exacto de Poisson, latencias p50/p95/p99 con n):
@@ -99,11 +101,14 @@ class VideoGrabado:
     """Entrega los cuadros de un video a su FPS, con número de cuadro y hora de entrega, como
     RTSPSource: el motor descarta los que no alcanza a analizar."""
 
-    def __init__(self, ruta: str) -> None:
+    def __init__(self, ruta: str, desde_s: float = 0.0, hasta_s: float | None = None) -> None:
         self._cap = cv2.VideoCapture(ruta)
         if not self._cap.isOpened():
             raise RuntimeError(f"No se pudo abrir el video {ruta}")
         self.fps = self._cap.get(cv2.CAP_PROP_FPS) or 25.0
+        if desde_s > 0:
+            self._cap.set(cv2.CAP_PROP_POS_FRAMES, round(desde_s * self.fps))
+        self._quedan = round((hasta_s - desde_s) * self.fps) if hasta_s is not None else None
         self._name = os.path.basename(ruta)
         self.is_connected = True
         self.frame_seq = 0
@@ -130,10 +135,12 @@ class VideoGrabado:
             # Aún no llega el siguiente cuadro: se repite el último (como RTSPSource)
             time.sleep(min(0.005, self._siguiente - ahora))
             return (True, self._ultimo.copy()) if self._ultimo is not None else (False, None)
-        ok, cuadro = self._cap.read()
+        ok, cuadro = self._cap.read() if self._quedan is None or self._quedan > 0 else (False, None)
         if not ok:
             self.terminada = True
             return False, None
+        if self._quedan is not None:
+            self._quedan -= 1
         self._siguiente += 1.0 / self.fps
         self.frame_seq += 1
         self.hora_entregada = time.time()
@@ -160,21 +167,29 @@ class SinFuente:
         return False, None
 
 
-def evaluar(motor, ruta_json: str, carpeta_videos: str | None = None) -> dict:
+def evaluar(motor, ruta_json: str, carpeta_videos: str | None = None, tope_analisis: float | None = None) -> dict:
+    """Una secuencia de punta a punta. Con `tope_analisis`, el detector no analiza más de esos cuadros
+    por segundo: reproduce la CPU ocupada (en el portátil, con dos cámaras, ~3,5 análisis por segundo)."""
     with open(ruta_json, encoding="utf-8") as f:
         etiqueta = json.load(f)
     if carpeta_videos:
         ruta_video = os.path.join(carpeta_videos, os.path.basename(etiqueta["video"]))
     else:
         ruta_video = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(ruta_json)), etiqueta["video"]))
-    camara = VideoGrabado(ruta_video)
+    desde = float(etiqueta.get("desde_s", 0.0))
+    camara = VideoGrabado(ruta_video, desde, etiqueta.get("hasta_s"))
     backend = motor._http
 
     # Estado limpio: sin memoria de la secuencia anterior
     motor._pipeline.clear_all_tracks()
     for registro in ("_placas_registradas", "_capturas_por_track", "_intentos_captura", "_vehiculos", "_horas_cuadro",
-                     "_pistas_resueltas", "_placa_de_pista", "_pistas_activas", "_crudos_rapidos"):
+                     "_pistas_resueltas", "_placa_de_pista", "_pistas_activas", "_crudos_rapidos",
+                     "_ultimo_rescate", "_fotos_restantes", "_vistas", "_pistas_registradas", "_correcciones_en_espera",
+                     "_observaciones_en_espera"):
         getattr(motor, registro).clear()
+    motor._pasos_recientes.clear()
+    motor._seguidor.reiniciar()
+    motor._rescate.update(cuadros=0, otras_fotos=0)
     for registro in ("_active_candidates", "_captured_history", "_prev_area", "_track_first_seen"):
         getattr(motor._selector, registro).clear()
     zonas = etiqueta.get("zonas") or {}
@@ -200,10 +215,18 @@ def evaluar(motor, ruta_json: str, carpeta_videos: str | None = None) -> dict:
     motor.disparar_captura = disparar
     analizados = [0]
     original_detectar = motor._pipeline.detect_and_track
+    ultimo_analisis = [0.0]
 
     def detectar(frame, *a, **k):
         analizados[0] += 1
-        return original_detectar(frame, *a, **k)
+        resultado = original_detectar(frame, *a, **k)
+        if tope_analisis:
+            # El resultado llega tarde, como con la CPU ocupada: el cuadro siguiente es más nuevo
+            espera = ultimo_analisis[0] + 1.0 / tope_analisis - time.monotonic()
+            if espera > 0:
+                time.sleep(espera)
+            ultimo_analisis[0] = time.monotonic()
+        return resultado
 
     motor._pipeline.detect_and_track = detectar
 
@@ -230,7 +253,8 @@ def evaluar(motor, ruta_json: str, carpeta_videos: str | None = None) -> dict:
     motor.disparar_captura = original_disparar
     motor._pipeline.detect_and_track = original_detectar
 
-    t0 = camara.emitidos.get(1, time.time())
+    # Hora (en el reloj del proceso) del segundo 0 del video
+    t0 = camara.emitidos.get(1, time.time()) - desde
     envios = backend.envios[n_envios:]
     registros = []
     for t, url, datos in envios:
@@ -254,7 +278,8 @@ def evaluar(motor, ruta_json: str, carpeta_videos: str | None = None) -> dict:
         if url.endswith("/detecciones/ingreso"):
             k += 1
             pista_de_ingreso[k] = datos.get("tracking_id")
-    pasos = etiqueta["pasos"]
+    hasta = etiqueta.get("hasta_s")
+    pasos = [p for p in etiqueta["pasos"] if p["fin_s"] >= desde and (hasta is None or p["inicio_s"] <= hasta)]
     asignados: dict[int, list[dict]] = defaultdict(list)
     sin_paso = []
     lat_registro, lat_final = [], []
@@ -309,6 +334,7 @@ def evaluar(motor, ruta_json: str, carpeta_videos: str | None = None) -> dict:
         "registros_falsos": [r["placa"] for r in sin_paso],
         "latencia_motor": estado.get("latencia"),
         "etapas_ms": estado.get("etapas_ms"),
+        "rescate": estado.get("rescate"),
     }
 
 
@@ -340,6 +366,20 @@ def resumir(resultados: list[dict]) -> dict:
     }
 
 
+def crear_motor_de_evaluacion():
+    """Motor de producción con el backend sustituto y sin cámara hasta la primera secuencia."""
+    from app import main as composicion
+
+    motor = composicion.crear_motor(1, "Evaluacion", "")
+    # La cámara real se reemplaza por los videos; arranca sin fuente hasta la primera secuencia
+    motor._dep.crear_fuente_video = SinFuente
+    motor._http = BackendRegistrador()
+    motor._dir_media = tempfile.mkdtemp(prefix="evaluacion_")
+    motor.iniciar()
+    motor._dep.verificador(), motor._dep.reconocedor_vehiculo()  # precarga de modelos
+    return motor
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("etiquetas", nargs="+", help="JSON de cada secuencia")
@@ -349,30 +389,24 @@ def main() -> None:
                     help="Ablación: esperar al verificador sin tope (comportamiento anterior al 2026-10-12)")
     ap.add_argument("--ventana-antiduplicados", type=float, default=None,
                     help="Solo para medir latencias en escenas que repiten la misma placa: ventana anti-duplicados del motor (s)")
+    ap.add_argument("--tope-analisis", type=float, default=None,
+                    help="Máximo de cuadros analizados por segundo (CPU ocupada: ~3,5 con dos cámaras en el portátil)")
     args = ap.parse_args()
 
     import dataclasses
 
-    from app import main as composicion
     from app.aplicacion import motor as modulo_motor
     from app.infraestructura.config import TORCH_THREADS
 
-    motor = composicion.crear_motor(1, "Evaluacion", "")
+    motor = crear_motor_de_evaluacion()
     if args.sin_tope_verificador:
         motor._config = dataclasses.replace(motor._config, espera_verificador_s=None)
     if args.ventana_antiduplicados is not None:
         modulo_motor.PLATE_DEBOUNCE_SECONDS = args.ventana_antiduplicados
-    backend = BackendRegistrador()
-    # La cámara real se reemplaza por los videos; arranca sin fuente hasta la primera secuencia
-    motor._dep.crear_fuente_video = SinFuente
-    motor._http = backend
-    motor._dir_media = tempfile.mkdtemp(prefix="evaluacion_")
-    motor.iniciar()
-    motor._dep.verificador(), motor._dep.reconocedor_vehiculo()  # precarga de modelos
 
     resultados = []
     for ruta in args.etiquetas:
-        r = evaluar(motor, ruta, args.videos)
+        r = evaluar(motor, ruta, args.videos, args.tope_analisis)
         resultados.append(r)
         print(f"{r['secuencia']}: {r['correctos']}/{r['pasos_legibles']} pasos correctos, {r['registros']} registros "
               f"({r['registros_sin_paso']} sin paso, {r['duplicados']} duplicados), {r['fps_analizados']} fps analizados", flush=True)

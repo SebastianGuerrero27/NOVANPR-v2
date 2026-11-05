@@ -250,8 +250,13 @@ class BestFrameSelector:
         plate_bbox: list[int],
         confidence: float,
         frame_idx: int,
+        solo_acumular: bool = False,
     ) -> Optional[FrameCandidate]:
         """
+        Con `solo_acumular`, el cuadro solo se suma a los candidatos del track (cuadros que el detector
+        no analizó, con la caja que midió el flujo óptico): la decisión de disparar la toma el cuadro
+        analizado, con todos los candidatos a la vista.
+
         Evalua el fotograma usando mecanismos adaptativos, en orden de preferencia
         (el primero que aplica gana, priorizando siempre la mejor calidad disponible):
           1. Zona de distancia operativa con nitidez adaptativa (mejor caso: se dispara
@@ -345,6 +350,8 @@ class BestFrameSelector:
         self._active_candidates[tracking_id].append(candidate)
         self._prune_buffer(tracking_id)
         candidates = self._active_candidates[tracking_id]
+        if solo_acumular:
+            return None
 
         # Confirmación multi-frame: un track necesita al menos min_consecutive_frames
         # candidatos acumulados antes de ser elegible para disparar cualquier mecanismo.

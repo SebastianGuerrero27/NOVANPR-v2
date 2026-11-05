@@ -28,9 +28,30 @@ function leerCantidad(): CantidadCeldas {
   }
 }
 
+function hayGuardado(clave: string): boolean {
+  try {
+    return localStorage.getItem(clave) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Primeras cámaras registradas, el ingreso antes que la salida, para no empezar con las celdas vacías. */
+function distribucionInicial(camaras: Camara[]): (number | null)[] {
+  const orden = [...camaras].sort((a, b) => Number(a.direccion === 'salida') - Number(b.direccion === 'salida'));
+  return Array.from({ length: 4 }, (_, i) => orden[i]?.id ?? null);
+}
+
 export const VistaCuadricula: React.FC<{ camaras: Camara[]; analizadas: number[] }> = ({ camaras, analizadas }) => {
-  const [slots, setSlots] = useState<(number | null)[]>(leerSlots);
-  const [cantidad, setCantidad] = useState<CantidadCeldas>(leerCantidad);
+  const [guardados, setSlots] = useState<(number | null)[]>(leerSlots);
+  const [cantidadGuardada, setCantidad] = useState<CantidadCeldas>(leerCantidad);
+  const [distribucionElegida, setDistribucionElegida] = useState(() => hayGuardado(CLAVE_SLOTS));
+  const [cantidadElegida, setCantidadElegida] = useState(() => hayGuardado(CLAVE_CANTIDAD));
+  // Sin distribución, o si solo quedan cámaras ya eliminadas, se llena sola. Si la persona vació las celdas, se respeta
+  const conCamaras = guardados.some(id => id !== null);
+  const automatica = conCamaras ? !guardados.some(id => camaras.some(c => c.id === id)) : !distribucionElegida;
+  const slots = automatica ? distribucionInicial(camaras) : guardados;
+  const cantidad: CantidadCeldas = automatica && !cantidadElegida ? (camaras.length <= 1 ? 1 : camaras.length === 2 ? 2 : 4) : cantidadGuardada;
   const [errorVideo, setErrorVideo] = useState<string | null>(null);
   // Conexión de cada cámara: la de la lista y luego la de cada verificación periódica del backend
   // (evento camara:estado). Sin conexión, el reproductor giraba sin fin con un error genérico
@@ -40,10 +61,12 @@ export const VistaCuadricula: React.FC<{ camaras: Camara[]; analizadas: number[]
 
   const guardarSlots = (siguiente: (number | null)[]) => {
     setSlots(siguiente);
+    setDistribucionElegida(true);
     try { localStorage.setItem(CLAVE_SLOTS, JSON.stringify(siguiente)); } catch { /* almacenamiento no disponible */ }
   };
   const cambiarCantidad = (siguiente: CantidadCeldas) => {
     setCantidad(siguiente);
+    setCantidadElegida(true);
     try { localStorage.setItem(CLAVE_CANTIDAD, String(siguiente)); } catch { /* preferencia no disponible */ }
   };
   const colocar = (id: number, destino: number) => {

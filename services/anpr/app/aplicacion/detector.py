@@ -1327,6 +1327,7 @@ class DetectionPipeline:
         frame: np.ndarray,
         capture_fps: float = 0.0,
         inference_fps: float = 0.0,
+        posiciones: Optional[dict[int, tuple[tuple[float, float, float, float], Optional[list[tuple[float, float]]]]]] = None,
     ) -> np.ndarray:
         """
         Dibuja el HUD del modo de compatibilidad con el mismo estilo que el del navegador (hud.ts),
@@ -1335,6 +1336,9 @@ class DetectionPipeline:
         - Caja fina (orientada si la placa está inclinada) sobre un contorno oscuro
         - Etiqueta oscura con la barra del color del estado
         NUNCA muta el fotograma original en memoria (usa frame.copy()).
+
+        `posiciones`: caja y cuadrilátero de cada pista en este mismo cuadro (seguidor por flujo óptico).
+        Sin ellas se dibuja la posición del último análisis, que entre análisis queda detrás de la placa.
         """
         out_frame = frame.copy()
         h, w = out_frame.shape[:2]
@@ -1387,11 +1391,15 @@ class DetectionPipeline:
         escala = 0.5 * w / 1280
         for ov in overlays:
             x1, y1, x2, y2 = ov.x1, ov.y1, ov.x2, ov.y2
+            cuadrilatero = ov.oriented_box
+            seguida = posiciones.get(ov.tracking_id) if posiciones else None
+            if seguida:
+                (x1, y1, x2, y2), cuadrilatero = seguida
             color = ov.color
 
             # 1. Caja fina como en el HUD del navegador: línea del color del estado sobre un
             #    contorno oscuro que la hace legible en cualquier fondo, sin relleno
-            pts = np.int32(ov.oriented_box) if ov.oriented_box and len(ov.oriented_box) == 4 else np.int32(
+            pts = np.int32(cuadrilatero) if cuadrilatero and len(cuadrilatero) == 4 else np.int32(
                 [[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
             cv2.polylines(out_frame, [pts], isClosed=True, color=(0, 0, 0), thickness=grosor + 2, lineType=cv2.LINE_AA)
             cv2.polylines(out_frame, [pts], isClosed=True, color=color, thickness=grosor, lineType=cv2.LINE_AA)

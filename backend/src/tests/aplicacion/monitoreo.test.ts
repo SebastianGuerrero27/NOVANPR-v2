@@ -25,6 +25,7 @@ function preparar() {
     motor,
     video: { urlWebrtc: jest.fn(() => 'https://video.ecu911.local') },
     tickets: { emitir: jest.fn((usuarioId: number, alcance: AlcanceTicket) => `ticket-${usuarioId}-${alcance}`) },
+    salidaManual: jest.fn(() => true),
   };
   return { casos: casosMonitoreo(dependencias), ...dependencias };
 }
@@ -43,14 +44,14 @@ describe('Casos de uso · monitoreo', () => {
   describe('estado', () => {
     it('motor fuera de línea: se informa tal cual', async () => {
       const { casos, motor } = preparar();
-      expect(await casos.estado()).toEqual({ en_linea: false, error: 'Sin respuesta' });
+      expect(await casos.estado()).toEqual({ en_linea: false, error: 'Sin respuesta', salida_manual: true });
       expect(motor.sinCapacidad).not.toHaveBeenCalled();
     });
 
     it('informa cada cámara en análisis y las que no caben en los motores', async () => {
       const { casos, motor } = preparar();
       motor.estado.mockResolvedValue(EN_LINEA);
-      expect(await casos.estado()).toEqual({ ...EN_LINEA, sin_capacidad: [] });
+      expect(await casos.estado()).toEqual({ ...EN_LINEA, sin_capacidad: [], salida_manual: true });
       motor.sinCapacidad.mockReturnValue([7, 8]);
       expect(await casos.estado()).toMatchObject({ en_linea: true, sin_capacidad: [7, 8] });
     });

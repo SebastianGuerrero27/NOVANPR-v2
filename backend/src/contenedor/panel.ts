@@ -7,6 +7,8 @@ import { config } from '../infraestructura/servicios/configuracion';
 import { emailService } from '../infraestructura/servicios/emailService';
 import { estadoServicioAnpr } from '../infraestructura/servicios/servicioAnpr';
 
+export { usoCpuSistema } from '../infraestructura/servicios/recursosCpu';
+
 /** Raíz de composición del panel de inicio: agregaciones en SQL Server, calendario local y estado de los servicios. */
 export const panel = casosPanel({
   // Cada paso vehicular recarga el panel de todas las sesiones: comparten una sola lectura cada 2 s

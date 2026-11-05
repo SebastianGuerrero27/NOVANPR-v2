@@ -52,8 +52,8 @@ describe('Cliente de los motores ANPR', () => {
     const e = await estadoServicioAnpr();
     expect(e).toMatchObject({ en_linea: true, detector: 'license_plate_detector.pt', ocr: 'fastalpr', capacidad: 6 });
     expect(e.camaras).toEqual([
-      { id: 3, motor: 0, conectada: true, fps_captura: 25, fps_procesamiento: 3.1, latencia: LATENCIA, enlace: { codec: 'h264' } },
-      { id: 9, motor: 1, conectada: false, fps_captura: 0, fps_procesamiento: 3.1, latencia: LATENCIA, enlace: { codec: 'h264' } },
+      { id: 3, motor: 0, conectada: true, fps_captura: 25, fps_procesamiento: 3.1, latencia: LATENCIA, enlace: { codec: 'h264' }, captura: null },
+      { id: 9, motor: 1, conectada: false, fps_captura: 0, fps_procesamiento: 3.1, latencia: LATENCIA, enlace: { codec: 'h264' }, captura: null },
     ]);
     expect(e.motores).toEqual([
       { indice: 0, en_linea: true, max_camaras: 4, camaras: [3], cpu_pct: 20 },

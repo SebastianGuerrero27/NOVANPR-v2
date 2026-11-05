@@ -10,6 +10,7 @@ import { PlacaFoto, ValidarModal } from './deteccion';
 import { VisorZoom } from './ZoomDual';
 import { useCentroNotificaciones } from '../../aplicacion/notificaciones';
 import { RestringirVehiculoModal } from './RestringirVehiculoModal';
+import './AvisosAcceso.css';
 
 /**
  * Avisos de acceso en tiempo real, visibles en cualquier pantalla del sistema:
@@ -27,6 +28,19 @@ import { RestringirVehiculoModal } from './RestringirVehiculoModal';
 
 const VENTANA_S = 120;
 const reciente = (d: Deteccion, segundos = VENTANA_S) => Date.now() - new Date(d.fecha_hora_ingreso).getTime() < segundos * 1000;
+
+/** Abrir el registro no reconoce la alarma. Los controles y los portales conservan su acción. */
+function useMonitoreoDelAviso(d: Deteccion, alAbrir?: () => void) {
+  const navigate = useNavigate();
+  const abrir = () => { alAbrir?.(); navigate(`/monitoreo?registro=${d.id}`); };
+  const pulsarCaja = (e: React.MouseEvent<HTMLDivElement>) => {
+    const destino = e.target;
+    if (!(destino instanceof Element) || !e.currentTarget.contains(destino)) return;
+    if (destino.closest('button, a, details, summary, input, select, textarea, [role="button"]')) return;
+    abrir();
+  };
+  return { abrir, pulsarCaja };
+}
 
 // La institución no cuenta con barrera o pluma mecánica: el control del acceso es verbal y
 // visual por parte del personal en el punto de control.
@@ -63,16 +77,19 @@ const AvisoNoAutorizado: React.FC<{
   d: Deteccion; pendientes: number; onCerrar: () => void; onValidar: () => void;
   onRestringir?: () => void;
 }> = ({ d, pendientes, onCerrar, onValidar, onRestringir }) => {
+  const { abrir, pulsarCaja } = useMonitoreoDelAviso(d);
   const [sonido, setSonido] = useState(sonidoActivo());
   const [zoom, setZoom] = useState(false);
   const esAlerta = d.estado_validacion === 'alerta';
   const restringido = !esAlerta ? d.restriccion_acceso : null;
   const protocolo = esAlerta ? PROTOCOLO_ALERTA : restringido ? PROTOCOLO_RESTRINGIDO : PROTOCOLO_NO_REGISTRADO;
   useEffect(() => alCambiarSonido(setSonido), []);
-  return <div className="aviso-autorizado aviso-denegado" role="alert">
+  return <div className="aviso-autorizado aviso-denegado aviso-navegable" role="alert" onClick={pulsarCaja}>
     <span className="icono"><ShieldAlert size={22} /></span>
     <div className="aviso-denegado-contenido">
-      <strong>{esAlerta ? 'ALERTA DE SEGURIDAD' : 'ACCESO NO AUTORIZADO'}</strong>
+      <button type="button" className="aviso-ir-monitoreo" onClick={abrir} aria-label={`Ver registro ${d.id} en monitoreo en vivo`} title="Ver este registro en el monitoreo en vivo">
+        <strong>{esAlerta ? 'ALERTA DE SEGURIDAD' : 'ACCESO NO AUTORIZADO'}</strong>
+      </button>
       <PlacaFoto d={d} alto={34} onClick={() => setZoom(true)} />
       <span className="detalle motivo">{esAlerta ? d.alerta?.motivo || 'Placa en lista negra' : restringido ? TITULO_RESTRICCION[restringido] : 'Vehículo no registrado en la lista blanca'}</span>
       {esAlerta && d.alerta && <span className="detalle">Nivel: {NIVELES_ALERTA[d.alerta.nivel]?.etiqueta ?? d.alerta.nivel}</span>}
@@ -94,8 +111,8 @@ const AvisoNoAutorizado: React.FC<{
 };
 
 const AvisoAutorizado: React.FC<{ d: Deteccion; onCerrar: () => void; onConfirmar: (d: Deteccion) => void; onRestringir?: (d: Deteccion) => void }> = ({ d, onCerrar, onConfirmar, onRestringir }) => {
-  const navigate = useNavigate();
   const confirmar = d.estado_validacion === 'pendiente_revision';
+  const { abrir, pulsarCaja } = useMonitoreoDelAviso(d, confirmar ? undefined : onCerrar);
   // El aviso de confirmación permanece hasta que el personal actúe; el de autorizado se cierra solo
   useEffect(() => {
     if (confirmar) return;
@@ -104,10 +121,10 @@ const AvisoAutorizado: React.FC<{ d: Deteccion; onCerrar: () => void; onConfirma
   }, [onCerrar, confirmar]);
   if (confirmar) {
     return (
-      <div className="aviso-autorizado confirmar" role="alert">
+      <div className="aviso-autorizado confirmar aviso-navegable" role="alert" onClick={pulsarCaja}>
         <span className="icono"><ShieldCheck size={24} /></span>
         <div style={{ minWidth: 0 }}>
-          <strong>CONFIRME EL INGRESO</strong>
+          <button type="button" className="aviso-ir-monitoreo" onClick={abrir} aria-label={`Ver registro ${d.id} en monitoreo en vivo`} title="Ver este registro en el monitoreo en vivo"><strong>CONFIRME EL INGRESO</strong></button>
           <PlacaFoto d={d} alto={34} />
           <span className="detalle" style={{ whiteSpace: 'normal' }}>{d.motivo_revision}</span>
           <button className="btn btn-sm btn-exito" style={{ marginTop: 8 }} onClick={() => { onCerrar(); onConfirmar(d); }}>Autorizar</button>
@@ -118,10 +135,10 @@ const AvisoAutorizado: React.FC<{ d: Deteccion; onCerrar: () => void; onConfirma
     );
   }
   return (
-    <div className="aviso-autorizado" role="status" onClick={() => { onCerrar(); navigate(`/detecciones/${d.id}`); }}>
+    <div className="aviso-autorizado aviso-navegable" role="status" onClick={pulsarCaja}>
       <span className="icono"><ShieldCheck size={24} /></span>
       <div style={{ minWidth: 0 }}>
-        <strong>ACCESO AUTORIZADO{d.validado_manualmente ? ' · CONFIRMADO' : ''}</strong>
+        <button type="button" className="aviso-ir-monitoreo" onClick={abrir} aria-label={`Ver registro ${d.id} en monitoreo en vivo`} title="Ver este registro en el monitoreo en vivo"><strong>ACCESO AUTORIZADO{d.validado_manualmente ? ' · CONFIRMADO' : ''}</strong></button>
         <PlacaFoto d={d} alto={34} />
         <span className="detalle">{d.autorizado?.propietario ?? 'Padrón institucional'}{d.autorizado?.departamento ? ` · ${d.autorizado.departamento}` : ''}</span>
         <span className="detalle">{d.camara?.nombre ?? 'Acceso'} · {hora(d.fecha_hora_ingreso)}</span>

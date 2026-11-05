@@ -1,0 +1,122 @@
+{
+ "original/M0_produccion": {
+  "exacta_pct": 82.7,
+  "confirmada_correcta_pct": 78.8,
+  "confirmada_erronea": 0,
+  "sin_lectura": 2,
+  "n": 104,
+  "pasos_correctos": "8/8",
+  "ms_p50": 531,
+  "ms_p95": 1030
+ },
+ "original/M1_baja_luz_clasico": {
+  "exacta_pct": 83.7,
+  "confirmada_correcta_pct": 79.8,
+  "confirmada_erronea": 0,
+  "sin_lectura": 1,
+  "n": 104,
+  "pasos_correctos": "8/8",
+  "ms_p50": 565,
+  "ms_p95": 1001
+ },
+ "original/M2_acuerdo_lectores": {
+  "exacta_pct": 86.5,
+  "confirmada_correcta_pct": 83.7,
+  "confirmada_erronea": 2,
+  "sin_lectura": 0,
+  "n": 104,
+  "pasos_correctos": "8/8",
+  "ms_p50": 855,
+  "ms_p95": 1877
+ },
+ "noche/M0_produccion": {
+  "exacta_pct": 57.7,
+  "confirmada_correcta_pct": 52.9,
+  "confirmada_erronea": 4,
+  "sin_lectura": 3,
+  "n": 104,
+  "pasos_correctos": "7/8",
+  "ms_p50": 336,
+  "ms_p95": 544
+ },
+ "noche/M1_baja_luz_clasico": {
+  "exacta_pct": 54.8,
+  "confirmada_correcta_pct": 41.3,
+  "confirmada_erronea": 1,
+  "sin_lectura": 8,
+  "n": 104,
+  "pasos_correctos": "7/8",
+  "ms_p50": 325,
+  "ms_p95": 603
+ },
+ "noche/M2_acuerdo_lectores": {
+  "exacta_pct": 63.5,
+  "confirmada_correcta_pct": 55.8,
+  "confirmada_erronea": 5,
+  "sin_lectura": 1,
+  "n": 104,
+  "pasos_correctos": "7/8",
+  "ms_p50": 779,
+  "ms_p95": 1360
+ },
+ "pequena/M0_produccion": {
+  "exacta_pct": 76.9,
+  "confirmada_correcta_pct": 73.1,
+  "confirmada_erronea": 0,
+  "sin_lectura": 4,
+  "n": 104,
+  "pasos_correctos": "7/8",
+  "ms_p50": 389,
+  "ms_p95": 660
+ },
+ "pequena/M1_baja_luz_clasico": {
+  "exacta_pct": 73.1,
+  "confirmada_correcta_pct": 70.2,
+  "confirmada_erronea": 0,
+  "sin_lectura": 3,
+  "n": 104,
+  "pasos_correctos": "7/8",
+  "ms_p50": 354,
+  "ms_p95": 580
+ },
+ "pequena/M2_acuerdo_lectores": {
+  "exacta_pct": 86.5,
+  "confirmada_correcta_pct": 78.8,
+  "confirmada_erronea": 1,
+  "sin_lectura": 3,
+  "n": 104,
+  "pasos_correctos": "8/8",
+  "ms_p50": 587,
+  "ms_p95": 901
+ },
+ "movida/M0_produccion": {
+  "exacta_pct": 20.2,
+  "confirmada_correcta_pct": 12.5,
+  "confirmada_erronea": 1,
+  "sin_lectura": 44,
+  "n": 104,
+  "pasos_correctos": "1/8",
+  "ms_p50": 312,
+  "ms_p95": 566
+ },
+ "movida/M1_baja_luz_clasico": {
+  "exacta_pct": 21.2,
+  "confirmada_correcta_pct": 12.5,
+  "confirmada_erronea": 1,
+  "sin_lectura": 41,
+  "n": 104,
+  "pasos_correctos": "1/8",
+  "ms_p50": 231,
+  "ms_p95": 431
+ },
+ "movida/M2_acuerdo_lectores": {
+  "exacta_pct": 22.1,
+  "confirmada_correcta_pct": 14.4,
+  "confirmada_erronea": 2,
+  "sin_lectura": 34,
+  "n": 104,
+  "pasos_correctos": "2/8",
+  "ms_p50": 734,
+  "ms_p95": 1466
+ }
+}

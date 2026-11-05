@@ -104,7 +104,7 @@ export async function estadoServicioAnpr(): Promise<EstadoAnpr> {
   }
   const camaras: CamaraEnAnalisis[] = respuestas.flatMap((r, indice) => (r.status === 'fulfilled' ? (r.value.camaras ?? []) : []).map((c: any) => ({
     id: c.id, motor: indice, conectada: Boolean(c.conectada), fps_captura: c.capture_fps, fps_procesamiento: c.tracker_fps,
-    latencia: c.latencia ?? null, enlace: c.enlace_video ?? null,
+    latencia: c.latencia ?? null, enlace: c.enlace_video ?? null, captura: c.calidad_captura ?? null,
   })));
   const conVideo = camaras.filter(c => c.conectada);
   const promedio = (campo: 'fps_captura' | 'fps_procesamiento') => (conVideo.length

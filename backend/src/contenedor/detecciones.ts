@@ -4,7 +4,7 @@ import { auditoriaSql, eventosSocket } from '../infraestructura/adaptadores';
 import { repositorioDeteccionesSql } from '../infraestructura/persistencia/deteccionesSql';
 import { presentarDeteccion } from '../infraestructura/presentacionDetecciones';
 import { notificarDecision, type PasoNotificable } from '../infraestructura/servicios/avisosAcceso';
-import { politicaAutorizacion, salidaAutomatica } from '../infraestructura/servicios/configuracion';
+import { politicaAutorizacion, salidaAutomatica, salidaManualPermitida } from '../infraestructura/servicios/configuracion';
 import { eliminarEvidencia } from '../infraestructura/servicios/media';
 import { guardarCuadroAnpr, historialAnpr } from '../infraestructura/servicios/servicioAnpr';
 import { resolverPorDeteccion } from '../infraestructura/servicios/notificaciones';
@@ -12,7 +12,7 @@ import { findBlacklistMatch, findPermisoExacto } from '../infraestructura/servic
 import { ZONA_HORARIA } from '../infraestructura/servicios/tiempo';
 import { conCachePorClave } from '../infraestructura/servicios/cacheBreve';
 import { compararVehiculo } from '../dominio/vehiculoAtributos';
-import { pdfRegistros } from '../infraestructura/servicios/documentosRegistros';
+import { pdfHistorial, pdfRegistros } from '../infraestructura/servicios/documentosRegistros';
 import { conservarEvidenciaListas } from '../infraestructura/servicios/evidenciaListas';
 import { LISTA_BLANCA } from '../dominio/listas';
 import { listas } from './listas';
@@ -23,10 +23,12 @@ import { listas } from './listas';
  */
 export const detecciones = casosDetecciones({
   pdfRegistros,
+  pdfHistorial,
   repositorio: {
     ...repositorioDeteccionesSql,
     // Sin filtro de fechas recorre toda la tabla: las sesiones con los mismos filtros comparten el total 5 s
     resumenHistorial: conCachePorClave(repositorioDeteccionesSql.resumenHistorial, f => JSON.stringify(f), { vigenciaMs: 5000 }),
+    analisisHistorial: conCachePorClave(repositorioDeteccionesSql.analisisHistorial, f => JSON.stringify(f), { vigenciaMs: 5000 }),
   },
   listas: {
     alerta: placa => findBlacklistMatch(getDB(), placa),
@@ -35,6 +37,7 @@ export const detecciones = casosDetecciones({
   presentar: presentarDeteccion,
   politica: politicaAutorizacion,
   salidaAutomatica,
+  salidaManual: salidaManualPermitida,
   compararVehiculo: (registrado, observado) => compararVehiculo(registrado, observado),
   avisos: {
     // Sin esperar: un fallo de notificación no interrumpe el registro del paso

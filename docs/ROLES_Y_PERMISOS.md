@@ -27,7 +27,7 @@ Solo existen **tres roles** (migración `db/migration_v6_tres_roles.sql`: `OPERA
 
 | Rol | Código | Propósito |
 |---|---|---|
-| **Guardia** | `GUARDIA` | Punto de control: monitoreo en vivo, validación de lecturas, registro manual y solicitudes de acceso. Recibe el aviso a pantalla completa con el protocolo y la notificación **"Se ha otorgado permiso a … con vehículo de placa …"**, que abre la lista blanca filtrada por la placa. |
+| **Guardia** | `GUARDIA` | Punto de control: monitoreo en vivo, validación de lecturas, registro manual y solicitudes de acceso. Puede eliminar un registro individual con motivo auditado. Agrega placas a la lista blanca y a la lista negra, pero no las edita ni las quita. Recibe el aviso a pantalla completa con el protocolo y la notificación **"Se ha otorgado permiso a … con vehículo de placa …"**, que abre la lista blanca filtrada por la placa. |
 | **Gestor de permisos** | `GESTOR_PERMISOS` | Otorga los **permisos de placa** (lista blanca): categoría, vigencia y franjas horarias; resuelve las solicitudes de acceso. Trabaja en **una sola vista** (*Gestión de permisos*), sin monitoreo en vivo. No recibe avisos de monitoreo: solo la **llegada del vehículo** al que dio permiso, además de las solicitudes nuevas y los permisos por vencer. |
 | **Administrador** | `ADMIN` | Todos los permisos: usuarios, cámaras, configuración, auditoría, lista de alertas, excepciones de acceso, reportes, evaluación y alarmas escaladas. |
 
@@ -37,16 +37,20 @@ Solo existen **tres roles** (migración `db/migration_v6_tres_roles.sql`: `OPERA
 |---|:-:|:-:|:-:|
 | `operacion:monitorear` — monitoreo, inicio, registro de ingresos | ✓ | | ✓ |
 | `detecciones:validar` — confirmar/corregir lecturas, registro manual | ✓ | | ✓ |
+| `detecciones:eliminar-individual` — eliminar un registro con motivo y auditoría | ✓ | | ✓ |
+| `detecciones:eliminar` — eliminación masiva del historial | | | ✓ |
 | `listas:ver` — consultar lista blanca y lista de alertas | ✓ | ✓ | ✓ |
 | `solicitudes:crear` — solicitar la autorización de una placa | ✓ | | ✓ |
-| `padron:gestionar` — permisos de placa (vigencia, horario, categoría) | | ✓ | ✓ |
+| `padron:agregar` — agregar vehículos a la lista blanca | ✓ | ✓ | ✓ |
+| `alertas:restringir` — agregar placas a la lista negra | ✓ | | ✓ |
+| `padron:gestionar` — editar, retirar e importar permisos de placa (vigencia, horario, categoría) | | ✓ | ✓ |
 | `padron:supervisar` — permisos de todos los usuarios, incluidos los retirados (Permisos por usuario) | | | ✓ |
 | `solicitudes:resolver` — aprobar o rechazar solicitudes | | ✓ | ✓ |
 | `avisos:garita` — aviso a pantalla completa con protocolo | ✓ | | ✓ |
 | `avisos:acceso` — accesos denegados/restringidos, reincidencias | ✓ | | ✓ |
 | `avisos:seguridad` — placas en lista de alertas | ✓ | | ✓ |
 | `avisos:padron` — permisos de placa otorgados | ✓ | | ✓ |
-| `accesos:excepcion`, `alertas:gestionar`, `avisos:sistema`, `alarmas:escalamiento`, `reportes:ver`, `camaras:operar`, `detecciones:eliminar`, `camaras:gestionar`, `usuarios:gestionar`, `auditoria:ver`, `configuracion:gestionar`, `propietario:consultar` | | | ✓ |
+| `accesos:excepcion`, `alertas:gestionar`, `avisos:sistema`, `alarmas:escalamiento`, `reportes:ver`, `camaras:operar`, `camaras:gestionar`, `usuarios:gestionar`, `auditoria:ver`, `configuracion:gestionar`, `propietario:consultar` | | | ✓ |
 
 ### Flujo de notificaciones de permisos
 

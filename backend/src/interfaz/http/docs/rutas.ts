@@ -19,6 +19,7 @@ const PAGINACION: Record<string, CampoDoc> = {
 /** Filtros comunes del historial de detecciones, su exportación y la eliminación masiva. */
 const FILTROS_DETECCIONES: Record<string, CampoDoc> = {
   placa: { tipo: 'string', descripcion: 'Placa o parte de ella', ejemplo: 'PBA1234' },
+  exacta: { tipo: 'string', descripcion: 'La placa completa, no una parte (informe de un vehículo)', valores: ['si', 'no'] },
   estado: {
     tipo: 'string',
     descripcion: 'Estados separados por coma: autorizado, alerta, no_reconocido, pendiente_revision',
@@ -29,12 +30,14 @@ const FILTROS_DETECCIONES: Record<string, CampoDoc> = {
   desde: { tipo: 'string', formato: 'date-time', descripcion: 'Fecha y hora inicial', ejemplo: '2026-10-01T00:00:00' },
   hasta: { tipo: 'string', formato: 'date-time', descripcion: 'Fecha y hora final', ejemplo: '2026-10-01T23:59:59' },
   aproximada: { tipo: 'string', descripcion: 'La placa tolera confusiones del OCR (O/0, I/1, B/8, S/5…)', valores: ['si'] },
-  buscar: { tipo: 'string', descripcion: 'Placa, titular, cédula, marca, modelo o motivo de ingreso', ejemplo: 'María Pérez' },
+  buscar: { tipo: 'string', descripcion: 'Placa, nombres y apellidos, cédula, marca, modelo o motivo de ingreso. Cada palabra debe aparecer, en cualquier orden y sin distinguir tildes: «perez maria» encuentra a «María José Pérez López»', ejemplo: 'María Pérez' },
+  persona: { tipo: 'string', descripcion: 'Solo nombres y apellidos o cédula de quien ingresó o del titular del permiso; cada palabra, en cualquier orden', ejemplo: 'Pérez María' },
   movimiento: { tipo: 'string', descripcion: 'Tipo de movimiento', valores: ['ingreso', 'salida'] },
   origen: { tipo: 'string', descripcion: 'Cámara en vivo (RTSP) o registro manual', valores: ['camara', 'manual'] },
   hora_desde: { tipo: 'string', descripcion: 'Franja horaria local: desde (HH:MM)', ejemplo: '08:00' },
   hora_hasta: { tipo: 'string', descripcion: 'Franja horaria local: hasta, incluido su minuto (HH:MM); menor que la inicial cruza la medianoche', ejemplo: '10:00' },
   cerrados: { tipo: 'string', descripcion: 'Ingresos con (si) o sin (no) hora de salida', valores: ['si', 'no'] },
+  unir_salidas: { tipo: 'string', descripcion: 'Sin los pasos de salida que ya cerraron un ingreso (si): su hora queda en la fila del ingreso', valores: ['si', 'no'] },
   completos: { tipo: 'string', descripcion: 'Registros con todos los datos y salida (si) o incompletos (no)', valores: ['si', 'no'] },
   orden: { tipo: 'string', descripcion: 'Orden por fecha de ingreso', valores: ['reciente', 'antiguo'] },
 };
@@ -143,7 +146,7 @@ function rutasLista(prefijo: string, etiqueta: string, nombre: string, permiso: 
       respuestas: { 400: 'Identificador inválido', 404: 'Registro no encontrado' },
     },
     {
-      metodo: 'post', ruta: `${prefijo}/`, etiqueta, acceso: permiso,
+      metodo: 'post', ruta: `${prefijo}/`, etiqueta, acceso: permiso === 'alertas:gestionar' ? 'alertas:restringir' : 'padron:agregar',
       resumen: `Alta de un registro en la ${nombre}`,
       descripcion: 'Si la placa se había retirado, el registro se reactiva (respuesta 200). Queda en la auditoría.',
       cuerpo,
@@ -522,6 +525,23 @@ export const RUTAS: RutaDoc[] = [
     respuestas: { 400: 'Filtro inválido' },
   },
   {
+    metodo: 'get', ruta: '/api/detecciones/historial/analisis', etiqueta: 'Detecciones', acceso: 'operacion:monitorear',
+    resumen: 'Análisis de los ingresos para los informes',
+    descripcion: 'Con los mismos filtros y en hora de Ecuador, solo ingresos: por día (por estado), por día de la semana (lunes a domingo), '
+      + 'por hora, la matriz día × hora, la permanencia (media, mediana y percentil 90, en minutos) de los que registran salida y los '
+      + '10 vehículos y personas más frecuentes.',
+    consulta: FILTROS_DETECCIONES,
+    respuestas: { 400: 'Filtro inválido' },
+  },
+  {
+    metodo: 'get', ruta: '/api/detecciones/historial/reporte.pdf', etiqueta: 'Detecciones', acceso: 'operacion:monitorear',
+    resumen: 'PDF de todos los registros del listado filtrado',
+    descripcion: 'Aplica exactamente los mismos filtros del listado y CSV, incluyendo la unión de salidas. No limita a una página ni exige fichas completas o salidas registradas. Máximo 5000 registros: si se supera, se rechaza sin recortar y puede descargarse CSV. Queda en la auditoría.',
+    consulta: FILTROS_DETECCIONES,
+    archivo: 'application/pdf',
+    respuestas: { 400: 'Filtro inválido o más de 5000 registros para PDF' },
+  },
+  {
     metodo: 'get', ruta: '/api/detecciones/recientes', etiqueta: 'Detecciones', acceso: 'operacion:monitorear',
     resumen: 'Últimos pasos vehiculares (monitoreo)',
     consulta: {
@@ -559,7 +579,7 @@ export const RUTAS: RutaDoc[] = [
     resumen: 'Confirma o corrige la lectura de un ingreso',
     descripcion: 'Con `excepcion: true` concede el paso pese a la restricción temporal del permiso: exige además el permiso `accesos:excepcion` y un motivo.',
     cuerpo: {
-      placa_validada: { tipo: 'string', requerido: true, descripcion: 'Formato ANT: ABC-1234 (automóvil) o AB-123C (motocicleta)', ejemplo: 'PBA1234' },
+      placa_validada: { tipo: 'string', nullable: true, descripcion: 'Formato ANT: ABC-1234 o AB-123C; null o vacío si no hay matrícula legible. Conserva el OCR original y las fotos.', ejemplo: 'PBA1234' },
       tipo_vehiculo: { tipo: 'string', ejemplo: 'Automóvil' },
       observacion: { tipo: 'string', descripcion: 'Texto libre sin < >, hasta 300 caracteres (obligatoria con excepción, mínimo 5)' },
       excepcion: { tipo: 'boolean', descripcion: 'Autorizar por excepción' },
@@ -571,6 +591,7 @@ export const RUTAS: RutaDoc[] = [
   {
     metodo: 'post', ruta: '/api/detecciones/:id(\\d+)/salida', etiqueta: 'Detecciones', acceso: 'detecciones:validar',
     resumen: 'Registra la hora de salida en un ingreso existente',
+    descripcion: 'Exige los datos de persona, vehículo, marca y motivo, con ingreso válido; la placa puede ser null. Sin matrícula legible, permite cerrar este registro por ID aunque las salidas generales sean automáticas; nunca asocia otros pasos sin placa.',
     respuestas: { 400: 'El registro no es un ingreso o ya tiene salida', 404: 'Detección no encontrada' },
   },
   {
@@ -578,7 +599,7 @@ export const RUTAS: RutaDoc[] = [
     resumen: 'Registra a mano un paso vehicular',
     descripcion: 'Se cruza con las listas como una lectura automática; no modifica el padrón de autorizados.',
     cuerpo: {
-      placa: { tipo: 'string', requerido: true, descripcion: 'Formato ANT: ABC-1234 (automóvil) o AB-123C (motocicleta)', ejemplo: 'PBA1234' },
+      placa: { tipo: 'string', nullable: true, descripcion: 'Formato ANT: ABC-1234 o AB-123C; null o vacío para vehículo sin matrícula legible o con rótulo de concesionaria.', ejemplo: 'PBA1234' },
       motivo: { tipo: 'string', requerido: true, descripcion: 'Texto libre sin < >, 5 a 300 caracteres', ejemplo: 'Cámara fuera de servicio' },
       camara_id: { tipo: 'integer', ejemplo: 1 },
       tipo_vehiculo: { tipo: 'string', ejemplo: 'Camioneta' },
@@ -615,7 +636,27 @@ export const RUTAS: RutaDoc[] = [
     respuestas: { 400: 'Sin datos, nombre o motivo inválidos, o el paso es una salida', 404: 'Detección no encontrada' },
   },
   {
-    metodo: 'delete', ruta: '/api/detecciones/:id(\\d+)', etiqueta: 'Detecciones', acceso: 'detecciones:eliminar',
+    metodo: 'patch', ruta: '/api/detecciones/:id(\\d+)/registro', etiqueta: 'Detecciones', acceso: 'detecciones:gestionar',
+    resumen: 'Corrige los datos históricos de un ingreso o salida (administración)',
+    descripcion: 'Solo cambia los campos enviados, con motivo y valores anteriores/nuevos en auditoría. No autoriza accesos ni modifica listas. '
+      + 'La placa corregida conserva el OCR original y, en un ingreso, retira asociaciones anteriores y queda pendiente de revisión. '
+      + 'La matrícula de una salida se corrige por su validación, nunca desde el historial; tampoco se cambia la de un ingreso ya vinculado a una salida. '
+      + 'Los demás datos sí pueden corregirse. Un campo que procede del permiso no admite vaciado: debe escribirse su valor corregido. No admite fechas ni estados.',
+    cuerpo: {
+      motivo_correccion: { tipo: 'string', requerido: true, descripcion: 'Motivo de la corrección, 5 a 300 caracteres', ejemplo: 'Corrección de los datos anotados en garita' },
+      placa: { tipo: 'string', descripcion: 'Formato ANT, o vacío para dejar sin matrícula legible', ejemplo: 'PBA1234' },
+      cedula: { tipo: 'string', descripcion: '10 dígitos o vacío', ejemplo: '0123456789' },
+      persona_ingreso: { tipo: 'string', descripcion: 'Nombres y apellidos, hasta 150 caracteres', ejemplo: 'Ana Pérez' },
+      motivo_ingreso: { tipo: 'string', descripcion: 'Motivo del acceso, hasta 300 caracteres', ejemplo: 'Jornada laboral' },
+      tipo_vehiculo: { tipo: 'string', ejemplo: 'Automóvil' },
+      marca: { tipo: 'string', ejemplo: 'Toyota' },
+      modelo: { tipo: 'string', ejemplo: 'Yaris' },
+      color: { tipo: 'string', ejemplo: 'Blanco' },
+    },
+    respuestas: { 400: 'Datos o motivo inválidos, campo no admitido', 403: 'Solo administración', 404: 'Registro no encontrado', 409: 'La placa está vinculada a un cierre o el registro cambió' },
+  },
+  {
+    metodo: 'delete', ruta: '/api/detecciones/:id(\\d+)', etiqueta: 'Detecciones', acceso: 'detecciones:eliminar-individual',
     resumen: 'Elimina un ingreso y su evidencia fotográfica',
     cuerpo: { motivo: { tipo: 'string', requerido: true, descripcion: 'Texto libre sin < >, 3 a 300 caracteres', ejemplo: 'Registro de prueba' } },
     respuestas: { 400: 'Motivo o identificador inválido', 404: 'Detección no encontrada' },

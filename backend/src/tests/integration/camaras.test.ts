@@ -307,7 +307,7 @@ describe('API · cámaras, monitoreo y medios', () => {
 
   describe('monitoreo', () => {
     it('estado del motor y ticket de video (solo el alcance stream: la webcam se retiró)', async () => {
-      await request(app).get('/api/monitoreo/estado').set(como('Guardia')).expect(200, { en_linea: false, error: 'Servicio no disponible' });
+      await request(app).get('/api/monitoreo/estado').set(como('Guardia')).expect(200, { en_linea: false, error: 'Servicio no disponible', salida_manual: true });
       await request(app).get('/api/monitoreo/estado').set(como('GestorPermisos')).expect(403);
       const t = await request(app).post('/api/monitoreo/ticket').set(como('Guardia')).send({}).expect(200);
       expect(Object.keys(t.body).sort()).toEqual(['ticket', 'url', 'webrtc']);

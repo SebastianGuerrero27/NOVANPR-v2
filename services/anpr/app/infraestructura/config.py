@@ -35,6 +35,11 @@ PLATE_REGISTRATION_MIN_CONFIDENCE: float = 0.23
 SIN_PLACA_HABILITADO: bool = os.getenv("SIN_PLACA_HABILITADO", "true").lower() in ("true", "1", "yes")
 SIN_PLACA_FRACCION_VEHICULO: float = float(os.getenv("SIN_PLACA_FRACCION_VEHICULO", "0.15"))
 SIN_PLACA_ESPERA_S: float = float(os.getenv("SIN_PLACA_ESPERA_S", "5"))
+# Vehículos rápidos con la CPU ocupada: cuadros que el detector no analizó, con la placa donde la midió
+# el flujo óptico, como candidatos a la foto del paso (app/aplicacion/motor.py, _rescatar_cuadros).
+# Desactivado: el A/B del 2026-11-03 (scripts/ab_rescate_cuadros.py) no mostró mejora; se midió con el
+# motor en vivo a la vez y solo alcanzó ~1,2 análisis por segundo. Falta medirlo con la CPU libre.
+RESCATE_CUADROS: bool = os.getenv("RESCATE_CUADROS", "false").lower() in ("true", "1", "yes")
 
 # =============================================================================
 # Proporción de la placa (ANT Ecuador)

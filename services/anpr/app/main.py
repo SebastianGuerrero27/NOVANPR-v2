@@ -47,6 +47,7 @@ from app.infraestructura.config import (
     SIN_PLACA_ESPERA_S,
     SIN_PLACA_FRACCION_VEHICULO,
     SIN_PLACA_HABILITADO,
+    RESCATE_CUADROS,
 )
 from app.infraestructura.debug_stream import DebugFrameBuffer, cuadro_espera, try_imshow
 from app.infraestructura.detectors import PoolDetector
@@ -102,6 +103,7 @@ def crear_motor(camara_id: int, nombre: str, url: str) -> MotorAnpr:
             presupuesto_registro_s=REGISTRO_MAX_MS / 1000.0 if REGISTRO_MAX_MS > 0 else None,
             confianza_minima_registro=PLATE_REGISTRATION_MIN_CONFIDENCE,
             sin_placa_activo=SIN_PLACA_HABILITADO,
+            rescate_cuadros=RESCATE_CUADROS,
             sin_placa=ParametrosSinPlaca(fraccion_vehiculo=SIN_PLACA_FRACCION_VEHICULO),
             espera_sin_placa_s=SIN_PLACA_ESPERA_S,
         ),

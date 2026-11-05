@@ -300,7 +300,7 @@ export function leerDatosIngreso(entrada: Entrada, vehiculoObligatorio = false):
 export const hayDatosIngreso = (d: DatosIngreso) => Object.values(d).some(v => v !== undefined);
 
 export interface RegistroManual {
-  placa: string;
+  placa: string | null;
   motivo: string;
   camaraId: number | null;
   /** Hora (s desde 1970) del cuadro de los últimos 30 s de la cámara que el guardia eligió como foto */
@@ -309,9 +309,11 @@ export interface RegistroManual {
   marca: string | null;
 }
 
-/** Paso registrado a mano: placa con formato ANT, motivo y, opcionalmente, cámara y tipo de vehículo. */
+/** Paso registrado a mano: matrícula ANT si es legible; puede omitirse, nunca inventarse. */
 export function leerRegistroManual(entrada: Entrada): Validado<RegistroManual> {
-  const placa = validarPlaca(entrada.placa);
+  const placa = entrada.placa == null || (typeof entrada.placa === 'string' && !entrada.placa.trim())
+    ? { ok: true as const, valor: { placa: null } }
+    : validarPlaca(entrada.placa);
   if (!placa.ok) return placa;
   const motivo = validarTexto(entrada.motivo, { etiqueta: 'Motivo del registro manual', tipo: 'libre', min: 5, max: 300, requerido: true });
   if (!motivo.ok) return motivo;
@@ -369,12 +371,19 @@ export function origenDe(fuente: string | null | undefined): OrigenPaso {
 
 export interface FiltrosDetecciones {
   cerrados?: boolean;
+  /** Sin las salidas que ya cerraron un ingreso: se ven en la fila de ese ingreso */
+  unirSalidas?: boolean;
   completos?: boolean;
   /** Parte de la placa, solo letras y números */
   placa: string | null;
   /** La placa tolera las confusiones típicas del OCR (O/0, I/1, B/8, S/5…) */
   aproximada?: boolean;
+  /** La placa completa, no una parte (informe de un vehículo) */
+  exacta?: boolean;
+  /** Placa, nombres y apellidos, cédula, motivo, marca o modelo: cada palabra en cualquier campo y orden */
   buscar?: string;
+  /** Nombres y apellidos o cédula de quien ingresó o del titular del permiso: cada palabra, en cualquier orden */
+  persona?: string;
   estados: EstadoValidacion[];
   camara: number | null;
   /** Validado por el personal (null = indistinto) */
@@ -392,8 +401,14 @@ export interface FiltrosDetecciones {
 type Consulta = Record<string, unknown>;
 
 /** Claves de filtro del historial, la exportación y la eliminación masiva. */
-export const CLAVES_FILTRO = ['placa', 'buscar', 'estado', 'camara', 'validado', 'desde', 'hasta', 'cerrados', 'completos',
+export const CLAVES_FILTRO = ['placa', 'buscar', 'persona', 'estado', 'camara', 'validado', 'desde', 'hasta', 'cerrados', 'unir_salidas', 'completos',
   'movimiento', 'origen', 'hora_desde', 'hora_hasta'] as const;
+
+/** Palabras de una búsqueda (sin repetir, sin distinguir mayúsculas; hasta 6): cada una debe aparecer, en cualquier orden. */
+export function palabrasBusqueda(texto: string): string[] {
+  const vistas = new Set<string>();
+  return texto.trim().split(/\s+/).filter(p => p && !vistas.has(p.toLowerCase()) && vistas.add(p.toLowerCase())).slice(0, 6);
+}
 
 /** Hora del día "HH:MM" (00:00 a 23:59) en minutos desde la medianoche; null si no se indicó. */
 export function leerHoraDelDia(valor: unknown, etiqueta: string): Validado<number | null> {
@@ -413,6 +428,9 @@ export const tieneFiltros = (q: Consulta) => CLAVES_FILTRO.some(k => Boolean(q[k
 export function leerFiltros(q: Consulta): Validado<FiltrosDetecciones> {
   const buscar = validarTexto(q.buscar, { etiqueta: 'Búsqueda', tipo: 'libre', max: 100 });
   if (!buscar.ok) return buscar;
+  const persona = validarTexto(q.persona, { etiqueta: 'Persona', tipo: 'libre', max: 100 });
+  if (!persona.ok) return persona;
+  if (q.exacta !== undefined && q.exacta !== 'si' && q.exacta !== 'no') return { ok: false, error: 'Placa exacta: use si o no.' };
   const placa = normalizarPlaca(q.placa);
   if (placa.length > MAX_PLACA_BUSQUEDA) return { ok: false, error: `Placa: máximo ${MAX_PLACA_BUSQUEDA} caracteres.` };
   const estados = String(q.estado ?? '').split(',')
@@ -425,6 +443,7 @@ export function leerFiltros(q: Consulta): Validado<FiltrosDetecciones> {
   if (!hasta.ok) return hasta;
   const validado = q.validado === 'si' ? true : q.validado === 'no' ? false : null;
   if (q.cerrados !== undefined && q.cerrados !== 'si' && q.cerrados !== 'no') return { ok: false, error: 'Cerrados: use si o no.' };
+  if (q.unir_salidas !== undefined && q.unir_salidas !== 'si' && q.unir_salidas !== 'no') return { ok: false, error: 'Unir salidas: use si o no.' };
   if (q.completos !== undefined && q.completos !== 'si' && q.completos !== 'no') return { ok: false, error: 'Completos: use si o no.' };
   if (q.movimiento !== undefined && q.movimiento !== 'ingreso' && q.movimiento !== 'salida') return { ok: false, error: 'Movimiento: use ingreso o salida.' };
   if (q.origen !== undefined && !(ORIGENES as readonly unknown[]).includes(q.origen)) return { ok: false, error: 'Origen: use camara o manual.' };
@@ -435,8 +454,11 @@ export function leerFiltros(q: Consulta): Validado<FiltrosDetecciones> {
   if (!horaHasta.ok) return horaHasta;
   return { ok: true, valor: { placa: placa || null, estados, camara: camara.valor, validado, desde: desde.valor, hasta: hasta.valor,
     ...(buscar.valor ? { buscar: buscar.valor } : {}),
+    ...(persona.valor ? { persona: persona.valor } : {}),
     ...(placa && q.aproximada === 'si' ? { aproximada: true } : {}),
+    ...(placa && q.exacta === 'si' && q.aproximada !== 'si' ? { exacta: true } : {}),
     ...(q.cerrados === undefined ? {} : { cerrados: q.cerrados === 'si' }),
+    ...(q.unir_salidas === 'si' ? { unirSalidas: true } : {}),
     ...(q.completos === undefined ? {} : { completos: q.completos === 'si' }),
     ...(q.movimiento === undefined ? {} : { movimiento: q.movimiento as 'ingreso' | 'salida' }),
     ...(q.origen === undefined ? {} : { origen: q.origen as OrigenPaso }),

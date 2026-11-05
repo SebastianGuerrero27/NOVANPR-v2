@@ -74,6 +74,8 @@ export interface DependenciasConfiguracion {
 }
 
 const VERIFICACION_CORREO = 'registro_verificacion_email_habilitada';
+const SALIDA_AUTOMATICA = 'salida_automatica_habilitada';
+const SALIDA_MANUAL = 'salida_manual_habilitada';
 const SIN_CORREO = 'Configure el correo saliente (SMTP) antes de exigir la verificación de correo: sin él, las cuentas nuevas no recibirían el enlace para activarse.';
 
 const cuerpo = (entrada: unknown): Record<string, unknown> =>
@@ -121,6 +123,11 @@ export function casosConfiguracion(d: DependenciasConfiguracion) {
       const cambiados = v.valor.filter(([clave, valor]) => previos.get(clave) !== valor);
       if (cambiados.some(([clave, valor]) => clave === VERIFICACION_CORREO && valor === 'true') && !d.correo.servicio.origen()) {
         throw errorValidacion(SIN_CORREO);
+      }
+      // Con las dos apagadas, ninguna salida se podría registrar
+      const finales = new Map([...previos, ...v.valor]);
+      if (cambiados.length && finales.get(SALIDA_MANUAL) === 'false' && finales.get(SALIDA_AUTOMATICA) !== 'true') {
+        throw errorValidacion('Active la salida automática antes de impedir que el usuario registre la salida: sin ninguna de las dos, no se podría registrar ninguna salida.');
       }
       for (const [clave, valor] of cambiados) {
         await d.repositorio.guardar(clave, valor, actor.id);

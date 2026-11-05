@@ -35,6 +35,7 @@ from app.dominio.latencia import Cronometros, VentanaDescartes, VentanaLatencia
 from app.aplicacion.consolidacion import PasoReciente, Vista, lectura_legible, lee_mejor, mismo_paso, paso_mas_cercano
 from app.aplicacion.historial_cuadros import HistorialCuadros
 from app.aplicacion.movimiento import DetectorMovimiento
+from app.aplicacion.calidad_captura import CalidadCaptura, medir_placa
 from app.aplicacion.seguidor_flujo import SeguidorFlujo
 from app.aplicacion.paso_sin_placa import (
     MOTIVO_PLACA_NO_LEIDA,
@@ -102,6 +103,15 @@ _MAX_CARACTERES_INFERIDOS = 2
 # Capturas de un mismo track: si la foto elegida resulta ilegible, el selector elige otro cuadro
 # del mismo paso en lugar de perder el vehículo (hasta este número de intentos)
 MAX_INTENTOS_CAPTURA = 3
+#: Cuadros no analizados que se suman como candidatos entre dos análisis de una pista, y separación
+#: mínima entre ellos (cuadros vecinos son casi la misma foto)
+_CUADROS_RESCATE = 2
+_SEPARACION_RESCATE = 3
+#: Hueco mínimo entre dos análisis de la pista para rescatar: con la CPU libre el detector ya ve casi
+#: todos los cuadros
+_HUECO_MIN_RESCATE = 4
+#: Las fotos que quedan de una pista que salió se olvidan pasado este tiempo
+_VIGENCIA_FOTOS_S = 30.0
 
 
 def vehiculo_entero(caja, ancho: int, alto: int, margen: float = 0.01) -> bool:
@@ -220,6 +230,9 @@ class ConfigMotor:
     #: El detector de vehículos (COCO) confirma el paso: confianza y alto mínimo (fracción del cuadro)
     confianza_vehiculo_min: float = 0.40
     alto_vehiculo_min: float = 0.12
+    #: Cuadros no analizados como candidatos a la foto del paso, y otra foto del paso si el vehículo
+    #: ya salió y la primera no se leyó (ver _rescatar_cuadros). Desactivado mientras no se mida una mejora
+    rescate_cuadros: bool = False
 
 
 @dataclass
@@ -376,10 +389,18 @@ class MotorAnpr:
         self._cuadro_nuevo = threading.Event()
         #: Mueve las cajas del HUD en cada cuadro de la fuente entre dos análisis del detector
         self._seguidor = SeguidorFlujo()
+        #: Tamaño, nitidez y brillo de las últimas placas registradas: qué ajustar en la cámara
+        self._calidad = CalidadCaptura()
         #: Últimos 30 s de la cámara (2 cuadros por segundo) para la evidencia del registro manual
         self._historial = HistorialCuadros()
         #: Hora de captura de los últimos cuadros analizados (índice → hora), para el registro
         self._horas_cuadro: dict[int, float] = {}
+        #: Último cuadro de cada pista hasta el que se buscaron cuadros que rescatar
+        self._ultimo_rescate: dict[int, int] = {}
+        #: Fotos que quedan de una pista que salió de cuadro, por si la primera no se lee: (fotos, hora)
+        self._fotos_restantes: dict[int, tuple[list, float]] = {}
+        #: Para /status: cuadros no analizados sumados como candidatos y otras fotos leídas al salir
+        self._rescate = {"cuadros": 0, "otras_fotos": 0}
 
         # Latencia de tiempo real y duración de las etapas (app/dominio/latencia.py)
         self._tiempos = Cronometros()
@@ -429,6 +450,8 @@ class MotorAnpr:
             "latencia": self.latencia(),
             "etapas_ms": self.etapas(),
             "seguidor": self._seguidor.estadisticas(),
+            "calidad_captura": self._calidad.resumen(),
+            "rescate": dict(self._rescate),
         }
 
     def latencia(self) -> dict:
@@ -670,7 +693,9 @@ class MotorAnpr:
                 # 2. OCR asíncrono de cada track y análisis anticipado del vehículo
                 self._leer_placas(pipeline, rois, frame, hora)
 
-                # 3. Calidad del cuadro y disparo de la captura fotográfica
+                # 3. Calidad del cuadro y disparo de la captura fotográfica, con los cuadros que el
+                #    detector no alcanzó a analizar desde el análisis anterior
+                self._rescatar_cuadros(selector, rois, idx)
                 self._evaluar_capturas(selector, rois, frame, idx)
 
                 # 4. Vehículos sin placa visible: movimiento en la zona sin un paso registrado
@@ -749,8 +774,54 @@ class MotorAnpr:
                 return
             self._vehiculos[tid] = (self._ejecutor_etapas.submit(_medido, reconocedor.analyze, frame.copy(), caja), time.time())
 
+    def _rescatar_cuadros(self, selector: Any, rois: list, idx: int) -> None:
+        """
+        Cuadros que el detector no alcanzó a analizar, con la placa donde la midió el flujo óptico
+        (SeguidorFlujo: en el video de la garita se desvía 0,02–0,05 anchos de placa del detector).
+        Con la CPU ocupada (dos cámaras en el portátil: ~3,5 análisis por segundo) un vehículo rápido
+        deja uno o dos cuadros analizados y, si esa foto no se leía, el paso se perdía. Entre dos
+        análisis de la pista se suman como candidatos los cuadros de placa más grande y más nítida;
+        el selector elige la foto entre todos. Sin OCR extra: solo se lee la foto elegida.
+        """
+        anteriores, self._ultimo_rescate = self._ultimo_rescate, {roi.tracking_id: idx for roi in rois}
+        if not self._config.rescate_cuadros:
+            return
+        for roi in rois:
+            tid = roi.tracking_id
+            desde = anteriores.get(tid)
+            if desde is None or idx - desde < _HUECO_MIN_RESCATE or roi.confidence < self._config.confianza_minima_registro:
+                continue
+            with self._candado:
+                resuelta = tid in self._pistas_resueltas
+            if resuelta or selector.should_ignore_track(tid):
+                continue
+            medidos = []
+            for i, hora, imagen, caja in self._seguidor.cuadros_de(tid, desde, idx):
+                c = [int(round(v)) for v in caja]
+                medida = medir_placa(imagen[max(0, c[1]):c[3], max(0, c[0]):c[2]])
+                if medida is not None:
+                    medidos.append((i, hora, imagen, c, medida))
+            if not medidos:
+                continue
+            # La placa más grande gana (el OCR pierde caracteres en placas chicas); entre las de tamaño
+            # parecido, la más nítida
+            mayor = max(m[4].ancho_px for m in medidos)
+            elegidos: list = []
+            for m in sorted((m for m in medidos if m[4].ancho_px >= 0.85 * mayor), key=lambda m: m[4].nitidez, reverse=True):
+                if all(abs(m[0] - e[0]) >= _SEPARACION_RESCATE for e in elegidos):
+                    elegidos.append(m)
+                if len(elegidos) == _CUADROS_RESCATE:
+                    break
+            for i, hora, imagen, c, _ in sorted(elegidos, key=lambda m: m[0]):
+                self._horas_cuadro[i] = hora
+                selector.evaluate_and_select(tracking_id=tid, frame=imagen, plate_bbox=c, confidence=roi.confidence,
+                                             frame_idx=i, solo_acumular=True)
+            self._rescate["cuadros"] += len(elegidos)
+
     def _evaluar_capturas(self, selector: Any, rois: list, frame: np.ndarray, idx: int) -> None:
-        """Mejor cuadro de cada track y tracks que salieron de cuadro → compuerta de captura."""
+        """Mejor cuadro de cada track y tracks que salieron de cuadro → compuerta de captura. De una
+        pista que salió el selector entrega hasta 3 fotos: se lee la mejor y, si no se lee, la siguiente
+        (antes las otras dos chocaban con el anti-rebote de la pista y se perdían)."""
         for roi in rois:
             elegido = selector.evaluate_and_select(
                 tracking_id=roi.tracking_id, frame=frame, plate_bbox=roi.plate_bbox,
@@ -758,8 +829,19 @@ class MotorAnpr:
             )
             if elegido is not None:
                 self.disparar_captura(elegido)
+        salidas: dict[int, list] = {}
         for salido in selector.cleanup_stale_tracks({roi.tracking_id for roi in rois}):
-            self.disparar_captura(salido)
+            salidas.setdefault(salido.tracking_id, []).append(salido)
+        ahora = time.time()
+        with self._candado:
+            for tid in [t for t, (_, hora) in self._fotos_restantes.items() if ahora - hora > _VIGENCIA_FOTOS_S]:
+                del self._fotos_restantes[tid]
+            if self._config.rescate_cuadros:
+                for tid, fotos in salidas.items():
+                    if len(fotos) > 1:
+                        self._fotos_restantes[tid] = (fotos[1:], ahora)
+        for fotos in salidas.values():
+            self.disparar_captura(fotos[0])
 
     def _bucle_tiempo_real(self, fuente_inicial: Any, pipeline: Any, selector: Any) -> None:
         """Productor: captura a la tasa de la fuente, entrega cada cuadro al consumidor y mantiene
@@ -827,7 +909,9 @@ class MotorAnpr:
             # HUD y buffer de video solo si alguien lo mira (ahorra CPU sin espectadores)
             if self._config.hud_activo and (ventana or self.buffer_video.viewers > 0):
                 t_hud = time.perf_counter()
-                anotado = pipeline.draw_overlays(frame.copy(), capture_fps=self._fps_captura, inference_fps=pipeline.fps)
+                # La caja que el seguidor acaba de llevar a este mismo cuadro: queda sobre la placa
+                posiciones = {tid: (p.caja, p.puntos) for tid, p in self._seguidor.pistas().items() if p.indice == self._indice_cuadro}
+                anotado = pipeline.draw_overlays(frame.copy(), capture_fps=self._fps_captura, inference_fps=pipeline.fps, posiciones=posiciones)
                 self._tiempos.registrar("dibujo_hud", time.perf_counter() - t_hud)
                 self.buffer_video.update(anotado)
                 if ventana and not self._dep.mostrar_ventana("ANPR ECU 911 - Stream en Vivo (Scout)", anotado):
@@ -971,6 +1055,7 @@ class MotorAnpr:
         with self._candado:
             self._pistas_resueltas[tracking_id] = ahora
             self._crudos_rapidos.pop(tracking_id, None)
+            self._fotos_restantes.pop(tracking_id, None)
             if placa:
                 self._placa_de_pista[tracking_id] = placa
             if len(self._pistas_resueltas) > 500:
@@ -1518,6 +1603,28 @@ class MotorAnpr:
             self._selector.liberar(tracking_id)
         return True
 
+    def _otro_intento(self, tracking_id: int, camara: int) -> bool:
+        """
+        La foto no permitió leer la placa: ¿el paso tendrá otro intento? Mientras la pista siga a la
+        vista, el selector elegirá otro cuadro; si el vehículo ya salió, se lee la siguiente de las
+        fotos que el selector entregó de esa pista. Siempre dentro de `intentos_captura`. False: no hay
+        más intentos y el descarte se audita.
+        """
+        if not self._liberar_para_reintento(tracking_id):
+            return False
+        if not self._sin_reintento_posible(tracking_id):
+            return True
+        with self._candado:
+            fotos = self._fotos_restantes.get(tracking_id)
+            siguiente = fotos[0].pop(0) if fotos and fotos[0] else None
+            if siguiente is None:
+                return False
+            self._capturas_por_track[tracking_id] = time.time()
+            self._rescate["otras_fotos"] += 1
+        self._log.info("[OTRA FOTO] Track #%d: el vehículo ya salió; se lee otra foto del mismo paso", tracking_id)
+        self._ejecutor_disco.submit(self._verificar_y_registrar, siguiente, tracking_id, siguiente.frame.copy(), time.time(), camara)
+        return True
+
     def _verificar_y_registrar(self, candidato: Any, tracking_id: int, frame: np.ndarray, ahora: float,
                                camara: Optional[int] = None) -> None:
         etapas: dict[str, Any] = {}
@@ -1728,7 +1835,7 @@ class MotorAnpr:
             if not limpia or len(limpia) < 4:
                 # En la auditoría queda el texto que se leyó, no una interpretación
                 texto = ((crudo_profundo or profundo.placa) if profundo else placa_previa) or ""
-                if self._liberar_para_reintento(tracking_id) and not self._sin_reintento_posible(tracking_id):
+                if self._otro_intento(tracking_id, camara):
                     self._log.info("[SEGUNDA VERIFICACIÓN OCR] Track #%d: foto ilegible (texto: '%s'); se intentará con otro cuadro", tracking_id, texto)
                     return
                 # Sin más intentos (o el vehículo ya salió): se audita una sola vez por track como
@@ -1744,7 +1851,7 @@ class MotorAnpr:
             #      en ángulo midió 1,09:1). Si no, se trata como foto ilegible: otro cuadro del paso
             #      o, sin más intentos, se audita el descarte; no se registra un paso.
             if not formato_coherente_con_la_placa(placa, es_moto, None if placa_verificador else aspecto):
-                if self._liberar_para_reintento(tracking_id) and not self._sin_reintento_posible(tracking_id):
+                if self._otro_intento(tracking_id, camara):
                     self._log.info("[SOLO PLACAS] Track #%d: '%s' no corresponde a la forma de la placa (recuadro %.2f:1); se intentará con otro cuadro",
                                    tracking_id, placa, aspecto)
                     return
@@ -1757,7 +1864,7 @@ class MotorAnpr:
             #      y el espejo de otro, con el borde de su placa, JB-5555 (video de la garita, 20-10-2026).
             #      Lo confirma el detector de vehículos (solo para estas lecturas, que son pocas)
             if formato_placa(placa) == "moto" and self._en_motocicleta(frame, caja) is False:
-                if self._liberar_para_reintento(tracking_id) and not self._sin_reintento_posible(tracking_id):
+                if self._otro_intento(tracking_id, camara):
                     self._log.info("[SOLO PLACAS] Track #%d: '%s' tiene formato de moto y no está sobre una moto; se intentará con otro cuadro",
                                    tracking_id, placa)
                     return
@@ -1788,7 +1895,7 @@ class MotorAnpr:
             # OID-6000 el 21-10-2026; en ~1,5 h de video, las 3 lecturas así eran ese marco o basura)
             sin_respaldo = (len(validez.caracteres_inferidos) >= 1 and lecturas < 2 and verificador_sin_texto)
             if (len(validez.caracteres_inferidos) >= _MAX_CARACTERES_INFERIDOS or sin_respaldo) and not verificador_coincide:
-                if self._liberar_para_reintento(tracking_id) and not self._sin_reintento_posible(tracking_id):
+                if self._otro_intento(tracking_id, camara):
                     self._log.info("[VALIDEZ] Track #%d: '%s' necesitó %d caracteres inferidos; se intentará con otro cuadro",
                                    tracking_id, placa, len(validez.caracteres_inferidos))
                     return
@@ -1800,7 +1907,7 @@ class MotorAnpr:
             # Compuerta "no es placa": sin fila de caracteres y sin ninguna confirmación (rótulos,
             # rejillas, franja "ECUADOR"…). Se libera el track para que un cuadro posterior lo intente.
             if analisis.caracteres < 3 and lecturas < 2 and not verificador_coincide:
-                if self._liberar_para_reintento(tracking_id) and not self._sin_reintento_posible(tracking_id):
+                if self._otro_intento(tracking_id, camara):
                     self._log.info("[VALIDEZ] Track #%d: foto sin fila de caracteres ('%s'); se intentará con otro cuadro", tracking_id, placa)
                     return
                 self._log.info("[VALIDEZ] Track #%d descartado: región sin fila de caracteres ('%s')", tracking_id, placa)
@@ -1882,8 +1989,8 @@ class MotorAnpr:
             self._log.error("Error en compuerta de captura para track #%d: %s", tracking_id, e)
             self._m.record_detection_error("compuerta_captura")
             # Un fallo inesperado (OCR, verificador, disco) no deja la pista bloqueada: se reintenta
-            # con otro cuadro si sigue a la vista; si no, se audita
-            if not self._liberar_para_reintento(tracking_id) or self._sin_reintento_posible(tracking_id):
+            # con otro cuadro u otra foto; si no hay, se audita
+            if not self._otro_intento(tracking_id, camara):
                 self._descartar(tracking_id, "error_interno", None, 0.0, camara)
         finally:
             # Si el intento se descartó, el análisis del vehículo que lanzó ya no hace falta (el
@@ -1932,6 +2039,7 @@ class MotorAnpr:
         ruta_placa = f"/media/{foto_placa}"
         if recorte.size > 0:
             self._dep.guardar_imagen(os.path.join(self._dir_media, foto_placa), recorte)
+            self._calidad.registrar(recorte)
         else:
             ruta_placa = ruta_ingreso
 

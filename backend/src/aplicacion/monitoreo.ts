@@ -16,6 +16,8 @@ export interface DependenciasMonitoreo {
   motor: PuertoMotorAnpr;
   video: Pick<PuertoServidorVideo, 'urlWebrtc'>;
   tickets: Pick<PuertoTickets, 'emitir'>;
+  /** La pantalla oculta «Registrar salida» si está desactivado en Configuración */
+  salidaManual: () => boolean;
 }
 
 export function casosMonitoreo(d: DependenciasMonitoreo) {
@@ -23,7 +25,8 @@ export function casosMonitoreo(d: DependenciasMonitoreo) {
     /** Con las cámaras que no caben en los motores en línea: el navegador lo avisa. */
     async estado() {
       const estado = await d.motor.estado();
-      return estado.en_linea ? { ...estado, sin_capacidad: d.motor.sinCapacidad() } : estado;
+      const salida_manual = d.salidaManual();
+      return estado.en_linea ? { ...estado, sin_capacidad: d.motor.sinCapacidad(), salida_manual } : { ...estado, salida_manual };
     },
 
     /** Ticket de 60 s para ver el video de las cámaras registradas y las pistas del motor que atiende la cámara. */

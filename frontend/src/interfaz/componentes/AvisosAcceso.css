@@ -1,0 +1,4 @@
+.aviso-autorizado.aviso-navegable { cursor: pointer; }
+.aviso-autorizado .aviso-ir-monitoreo { display: block; margin: 0; padding: 0; border: 0; background: transparent; text-align: left; }
+.aviso-ir-monitoreo:hover strong { text-decoration: underline; }
+.aviso-ir-monitoreo:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; border-radius: 2px; }

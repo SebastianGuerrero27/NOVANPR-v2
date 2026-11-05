@@ -70,6 +70,24 @@ export interface ResumenHistorial {
   primero: string | null; ultimo: string | null;
 }
 
+/**
+ * Cuándo y quiénes ingresan, con los filtros del historial y en hora de Ecuador; solo ingresos
+ * (GET /detecciones/historial/analisis). Alimenta los informes analíticos de Reportes.
+ */
+export interface AnalisisHistorial {
+  por_dia: { dia: string; ingresos: number; autorizados: number; no_registrados: number; alertas: number; pendientes: number }[];
+  /** De lunes (0) a domingo (6) */
+  por_dia_semana: number[];
+  /** De 0 a 23 h */
+  por_hora: number[];
+  /** Filas lunes a domingo, columnas 0 a 23 h */
+  dia_hora: number[][];
+  /** Tiempo dentro de los ingresos con salida registrada, en minutos */
+  permanencia: { n: number; media_min: number; mediana_min: number; p90_min: number } | null;
+  frecuentes: { placa: string; ingresos: number; ultimo: string; persona: string | null }[];
+  personas: { nombre: string; ingresos: number; placas: number; ultimo: string }[];
+}
+
 export interface DeteccionDetalle extends Deteccion {
   lectura_automatica: {
     placa: string | null; confianza: number | null; decision: string | null; verificador: string | null;
@@ -215,10 +233,23 @@ export interface CamaraEnAnalisis {
   fps_procesamiento: number;
   latencia: LatenciaMotor | null;
   enlace: EnlaceVideo | null;
+  /** Tamaño, nitidez y brillo de las últimas placas registradas y qué ajustar en la cámara */
+  captura?: CalidadCaptura | null;
+}
+
+export interface CalidadCaptura {
+  placas: number;
+  ancho_px_p50: number | null;
+  nitidez_p50: number | null;
+  brillo_p50: number | null;
+  saturada_pct_p50: number | null;
+  recomendaciones: { codigo: string; texto: string }[];
 }
 
 export interface EstadoAnpr {
   en_linea: boolean;
+  /** false: «Registrar salida» está desactivado en Configuración */
+  salida_manual?: boolean;
   /** Promedio de las cámaras que reciben video */
   fps_captura?: number;
   fps_procesamiento?: number;

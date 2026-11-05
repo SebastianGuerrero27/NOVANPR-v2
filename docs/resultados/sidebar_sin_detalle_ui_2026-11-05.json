@@ -1,0 +1,11 @@
+{
+  "fecha": "2026-11-05",
+  "api": "API interceptada con datos artificiales; sin modificar cámaras ni registros",
+  "pruebas": [
+    "Módulos en mayúsculas y lista de cámaras plegable por flecha o nombre, con preferencia persistente",
+    "El control de cámaras responde al teclado y conserva el arrastre de las habilitadas",
+    "El enlace antiguo de detalle abre el monitoreo y su registro, sin pantalla ni botón de detalle",
+    "En móvil se puede abrir y cerrar la lista aun con el menú de escritorio contraído"
+  ],
+  "errores": []
+}

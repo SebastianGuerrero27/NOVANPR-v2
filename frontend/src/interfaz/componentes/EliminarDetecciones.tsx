@@ -11,7 +11,8 @@ import { CampoTexto } from './campos';
 import { useNotificar } from './Notificaciones';
 
 /**
- * Eliminación de registros de ingreso (solo Administrador). Se borra el registro y su
+ * Eliminación individual para el personal con permiso; la masiva se reserva al administrador.
+ * Se borra el registro y su
  * evidencia fotográfica; cada eliminación queda en la auditoría con su motivo.
  */
 
@@ -81,11 +82,11 @@ export const EliminarUno: React.FC<{ d: Deteccion; onCerrar: () => void; onElimi
  * Exige escribir ELIMINAR y un motivo.
  */
 export const EliminarVarios: React.FC<{
-  total: number; filtros?: Record<string, string | undefined>; descripcion: string;
+  total?: number; todos?: boolean; filtros?: Record<string, string | undefined>; descripcion: string;
   onCerrar: () => void; onHecho?: (eliminados: number) => void;
-}> = ({ total, filtros, descripcion, onCerrar, onHecho }) => {
+}> = ({ total = 0, todos = false, filtros, descripcion, onCerrar, onHecho }) => {
   const notificar = useNotificar();
-  const [motivo, setMotivo] = useState(MOTIVOS[2]);
+  const [motivo, setMotivo] = useState(todos ? '' : MOTIVOS[2]);
   const [confirmacion, setConfirmacion] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +95,7 @@ export const EliminarVarios: React.FC<{
     setEnviando(true);
     setError(null);
     try {
-      const r = await api.delete('/detecciones', { params: filtros, data: { motivo: motivo.trim(), confirmacion } });
+      const r = await api.delete('/detecciones', { params: todos ? undefined : filtros, data: { motivo: motivo.trim(), confirmacion } });
       notificar('exito', r.data.message, 'La operación quedó registrada en la auditoría.');
       onHecho?.(r.data.total);
       onCerrar();
@@ -104,18 +105,20 @@ export const EliminarVarios: React.FC<{
     }
   };
   return (
-    <Modal titulo="Eliminar registros" subtitulo={descripcion} onCerrar={onCerrar} bloquear={enviando}
+    <Modal titulo={todos ? 'Eliminar todo el historial' : 'Eliminar registros'} subtitulo={descripcion} onCerrar={onCerrar} bloquear={enviando}
       pie={<>
         <button className="btn btn-secondary" onClick={onCerrar} disabled={enviando}>Cancelar</button>
         <button className="btn btn-primary" onClick={eliminar} disabled={!valido || enviando}>
-          {enviando ? <Loader2 size={14} className="girar" /> : <Trash2 size={14} />} Eliminar {numero(total)} {total === 1 ? 'registro' : 'registros'}
+          {enviando ? <Loader2 size={14} className="girar" /> : <Trash2 size={14} />} {todos ? 'Eliminar todo el historial' : `Eliminar ${numero(total)} ${total === 1 ? 'registro' : 'registros'}`}
         </button>
       </>}>
       <div className="pila" style={{ gap: 14 }}>
         <Aviso tipo="error">
-          Se eliminarán <b>{numero(total)} {total === 1 ? 'registro' : 'registros'}</b> de ingreso con sus fotografías de evidencia. Esta acción
-          no se puede deshacer y afecta los reportes y el historial de registros.
+          {todos ? <>Se eliminarán <b>todos los registros del sistema</b>, de todas las fechas, cámaras y estados, con sus fotografías de evidencia. Los filtros de la pantalla no limitan esta eliminación.</>
+            : <>Se eliminarán <b>{numero(total)} {total === 1 ? 'registro' : 'registros'}</b> con sus fotografías de evidencia.</>}
+          {' '}Esta acción no se puede deshacer y afecta los reportes y el historial de registros.
         </Aviso>
+        {todos && <Aviso tipo="info">Si el monitoreo sigue activo, las cámaras pueden registrar nuevos movimientos después de la eliminación.</Aviso>}
         <SelectorMotivo valor={motivo} onCambiar={setMotivo} minimo={5} />
         <div className="campo">
           <label htmlFor="conf-eliminar">Para confirmar escriba <b>{PALABRA_CONFIRMACION}</b></label>

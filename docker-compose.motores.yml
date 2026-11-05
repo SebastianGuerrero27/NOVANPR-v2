@@ -29,11 +29,15 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - ./services/anpr/media:/app/media
-      - anpr_model_cache:/root/.cache
     depends_on:
       backend:
         condition: service_healthy
     restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/status', timeout=4)"]
       interval: 30s

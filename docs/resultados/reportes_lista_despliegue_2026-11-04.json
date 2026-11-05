@@ -1,0 +1,15 @@
+{
+  "fecha_local": "2026-11-04",
+  "url": "http://localhost:3000/reportes?vista=registros",
+  "backend_http": 200,
+  "frontend_http": 200,
+  "pdf_sin_sesion_http": 401,
+  "pruebas_backend": 145,
+  "pruebas_frontend": 24,
+  "pruebas_navegador": 7,
+  "datos_ui": "Artificiales con API interceptada; no se modificaron registros operativos",
+  "imagenes": [
+    "/anpr-backend sha256:48ffd630c5a7e9a9585fecd33fc6c90567f5df2c8c431e761baac1dfe6143598 healthy",
+    "/anpr-frontend sha256:987c0d6f9ce803f85a9c20d48c4bbe1a16a345246baa70f5e655655fb559f360 healthy"
+  ]
+}

@@ -221,6 +221,40 @@ Fíjate en la asimetría: la lista negra se cruza con tolerancia a errores del O
 - **Video:** WebRTC (`infraestructura/webrtc.ts`), con las cajas del HUD dibujadas encima desde un WebSocket del motor (`componentes/envivo.tsx`, `hud.ts`).
 - **Permisos en pantalla:** `dominio/permisos.ts` oculta opciones, pero quien realmente protege es el backend.
 
+### 6.1 Historial completo y reportes
+
+**Historial completo** (`paginas/HistorialCompleto.tsx`):
+- **Una visita por fila.** La salida que cerró un ingreso va en la fila de ese ingreso (`unir_salidas=si`). Las salidas que no cerraron ninguno se ven aparte.
+- **Búsqueda.** Por placa, nombres y apellidos o cédula. Cada palabra puede ir en cualquier orden y sin tildes: «perez maria» encuentra a «María José Pérez López».
+- **Filtros.** El estado está siempre a la vista. «Más filtros» agrega:
+  - salida registrada (con salida o siguen dentro);
+  - movimiento;
+  - origen;
+  - cámara;
+  - franja horaria.
+- **Totales.** Los totales de la consulta (`/detecciones/historial/resumen`) filtran con un toque.
+- **Panel de la fila.** Pulsar una fila abre un panel lateral con:
+  - la foto y los datos;
+  - el reporte del vehículo y el de la persona;
+  - «Ver todos sus pasos»;
+  - la ficha completa.
+
+**Reportes** (`paginas/Reportes.tsx`) tiene tres informes analíticos: accesos por fecha, reporte de un vehículo y reporte de una persona. Todos usan `GET /detecciones/historial/analisis`, que cuenta solo ingresos, en hora de Ecuador y sobre todos los registros, no solo las 2000 filas del detalle. Cada informe trae:
+- **Hallazgos escritos** (`dominio/analisisAccesos.ts`):
+  - el día y la franja horaria habituales;
+  - la semana o el día con más ingresos;
+  - la frecuencia semanal;
+  - la permanencia (media, mediana y percentil 90);
+  - los ingresos no autorizados, en lista negra, sin salida o nocturnos;
+  - quién usa el vehículo, o qué vehículos usa la persona.
+- **Gráficos** (`componentes/InformeAnalitico.tsx`):
+  - ingresos por día, semana o mes, según el largo del período;
+  - ingresos por día de la semana;
+  - ingresos por hora;
+  - un mapa día × hora.
+
+La pestaña y lo consultado van en la URL (`/reportes?vista=vehiculo&placa=PBA1234`); así el historial abre el reporte de una fila. Los gráficos son SVG que se ajustan a la hoja al imprimir.
+
 ---
 
 ## 7. Pruebas realizadas
@@ -363,21 +397,30 @@ La CSP se comprobó en Chrome: 13 páginas sin violaciones ni errores de consola
 
 ---
 
+## Requisitos no funcionales
+
+Última evaluación con medición: 2026-11-02. Se resuelven por configuración o por código:
+
+- **Registro manual (RNF05):** el ingreso y la salida manuales funcionan con la cámara y el motor caídos.
+- **Fotos (RNF06):** Configuración › Almacenamiento fija cuántos días se conservan (90 por omisión) y cuántos GB ocupan como máximo (15). Se borra la foto y queda el registro. Las fotos de alertas de la lista negra no se borran solas: si solo quedan esas y falta espacio, el sistema avisa. Los registros de Docker tienen tope de 30 MB por contenedor.
+- **Privacidad (RNF07):** las consultas externas de placa y cédula se retiraron; ningún dato sale a terceros. La consulta oficial del propietario (`/api/propietario`) sigue inactiva: no tiene convenio ni proveedor.
+- **Sin Internet (RNF08):** los modelos van dentro de la imagen y la fuente Inter dentro del frontend. Solo se necesita Internet para construir las imágenes.
+
+Dependen del hardware o de una decisión de la institución:
+
+- **Menos de 1 s con la CPU del servidor (RNF01 y RNF02):** con 1 cámara hacen falta unos 6 núcleos actuales. Mídelo en el servidor real antes de instalar; el Gen7 probablemente no alcanza.
+
+---
+
 ## 8. Cómo mejorarlo para el ECU 911
 
 Ordenado por lo que más riesgo quita.
 
 ### Antes de operar
 
-**1. Decidir los permisos del guardia (decisión tuya).**
+**1. Permisos del guardia (decidido el 2026-11-02).**
 
-Desde el 28-10 el rol Guardia tiene `padron:gestionar` y `alertas:gestionar`: puede crear, editar y retirar permisos, y **quitar placas de la lista negra**. La interfaz lo describe así, pero `docs/ROLES_Y_PERMISOS.md` y 4 pruebas dicen lo contrario.
-
-En un servicio de emergencias, quien controla la puerta no debería poder autorizarse a sí mismo ni borrar una alerta, aunque quede auditado. No lo cambié porque es una decisión de producto.
-
-- **Recomendación:** dejar al guardia solo `alertas:restringir` (agregar a la lista negra) y `solicitudes:crear`.
-- **Cómo:** editar `MATRIZ` en `backend/src/dominio/permisos.ts` y `frontend/src/dominio/permisos.ts`.
-- **Si decides mantenerlo:** actualiza la documentación y las pruebas.
+El guardia agrega placas a las dos listas desde la garita, pero no las edita ni las quita: eso queda para el administrador y, en la lista blanca, para el gestor de permisos. Así una sola persona no puede sacar una placa de la lista negra. Los permisos están en `MATRIZ` (`backend/src/dominio/permisos.ts`).
 
 **2. HTTPS en todo el acceso del personal.**
 

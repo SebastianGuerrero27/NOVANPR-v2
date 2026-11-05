@@ -17,6 +17,7 @@ import { itemDeRuta, menuPara, pestanasPara } from './navegacion';
 import logo from '../../assets/ecu911.png';
 
 const CLAVE_COLAPSO = 'anpr_menu_colapsado';
+const CLAVE_CAMARAS_ABIERTAS = 'anpr_sidebar_camaras_abiertas';
 const CLAVE_TEMA = 'anpr_tema';
 
 const BotonTema: React.FC = () => {
@@ -67,6 +68,13 @@ const Sidebar: React.FC<{ colapsado: boolean; onColapsar: () => void; abiertoMov
     const navigate = useNavigate();
     const { pathname } = useLocation();
     const [camaras, setCamaras] = useState<Camara[]>([]);
+    const [camarasAbiertas, setCamarasAbiertas] = useState(() => {
+      try { return localStorage.getItem(CLAVE_CAMARAS_ABIERTAS) === '1'; } catch { return false; }
+    });
+    const alternarCamaras = () => setCamarasAbiertas(actual => {
+      try { localStorage.setItem(CLAVE_CAMARAS_ABIERTAS, actual ? '0' : '1'); } catch { /* sin almacenamiento */ }
+      return !actual;
+    });
     useEffect(() => {
       if (!user || !puede('operacion:monitorear')) return;
       let vigente = true;
@@ -90,20 +98,33 @@ const Sidebar: React.FC<{ colapsado: boolean; onColapsar: () => void; abiertoMov
         <nav className="sidebar-nav">
           {menuPara(puede).map(g => (
             <div className="sidebar-grupo" key={g.titulo}>
-              <div className="sidebar-grupo-titulo">{g.titulo}</div>
+              <div className="sidebar-grupo-titulo">{g.titulo.toLocaleUpperCase('es')}</div>
               {g.items.map(i => (
                 <React.Fragment key={i.ruta}>
-                  <NavLink to={i.ruta} end={i.ruta === '/'} onClick={onCerrarMovil}
-                    className={({ isActive }) => `sidebar-link${isActive ? ' activo' : ''}`} title={colapsado ? i.titulo : undefined}>
+                  <div className={i.ruta === '/camaras' && puede('operacion:monitorear') ? 'sidebar-item-con-submenu' : undefined}>
+                  <NavLink to={i.ruta} end={i.ruta === '/'} onClick={() => {
+                    if (i.ruta === '/camaras' && puede('operacion:monitorear')) alternarCamaras();
+                    onCerrarMovil();
+                  }}
+                    className={({ isActive }) => `sidebar-link sidebar-modulo${isActive ? ' activo' : ''}`} title={i.titulo.toLocaleUpperCase('es')}>
                     {i.icono}
-                    <span className="etiqueta">{i.titulo}</span>
+                    <span className="etiqueta">{i.titulo.toLocaleUpperCase('es')}</span>
                     {i.contador && contadores[i.contador] > 0 && (
                       <span className="contador" aria-label={`${contadores[i.contador]} pendientes`}>{contadores[i.contador] > 99 ? '99+' : contadores[i.contador]}</span>
                     )}
                   </NavLink>
                   {i.ruta === '/camaras' && puede('operacion:monitorear') && (
-                    <div className="sidebar-submenu-camaras">
-                      <div className="sidebar-submenu-titulo">Cámaras registradas</div>
+                    <button type="button" className="sidebar-desplegar-camaras" onClick={alternarCamaras}
+                      aria-label={camarasAbiertas ? 'Ocultar cámaras registradas' : 'Mostrar cámaras registradas'}
+                      title={camarasAbiertas ? 'Ocultar cámaras registradas' : 'Mostrar cámaras registradas'}
+                      aria-expanded={camarasAbiertas} aria-controls="sidebar-camaras-registradas">
+                      <ChevronDown size={15} aria-hidden />
+                    </button>
+                  )}
+                  </div>
+                  {i.ruta === '/camaras' && puede('operacion:monitorear') && camarasAbiertas && (
+                    <div id="sidebar-camaras-registradas" className="sidebar-submenu-camaras" role="region" aria-label="Cámaras registradas">
+                      <div className="sidebar-submenu-titulo">CÁMARAS REGISTRADAS</div>
                       {camaras.map(c => (
                         <button key={c.id} type="button" className={`sidebar-link sidebar-camara${c.activa ? '' : ' deshabilitada'}`}
                           draggable={c.activa}

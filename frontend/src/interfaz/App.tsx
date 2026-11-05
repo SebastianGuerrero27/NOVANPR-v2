@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider, Permiso, useAuth } from '../aplicacion/AuthContext';
 import { TiempoRealProvider } from '../aplicacion/tiempoReal';
 import { NotificacionesProvider } from './componentes/Notificaciones';
@@ -18,7 +18,6 @@ const Inicio = lazy(() => import('./paginas/Inicio'));
 const Monitoreo = lazy(() => import('./paginas/Monitoreo'));
 const Detecciones = lazy(() => import('./paginas/Detecciones'));
 const HistorialCompleto = lazy(() => import('./paginas/HistorialCompleto'));
-const DetalleDeteccion = lazy(() => import('./paginas/DetalleDeteccion'));
 const Listas = lazy(() => import('./paginas/Listas'));
 const Reportes = lazy(() => import('./paginas/Reportes'));
 const Usuarios = lazy(() => import('./paginas/Usuarios'));
@@ -47,6 +46,12 @@ const Privada: React.FC<{ permiso?: Permiso; children: React.ReactNode }> = ({ p
   return <AppLayout>{children}</AppLayout>;
 };
 
+/** Los enlaces antiguos abren el registro en el monitoreo sin cargar otra pantalla. */
+export const RedirigirDetalleAnterior: React.FC = () => {
+  const { id } = useParams();
+  return <Navigate to={`/monitoreo?registro=${encodeURIComponent(id ?? '')}`} replace />;
+};
+
 const App: React.FC = () => (
   <Router>
     <AuthProvider>
@@ -69,9 +74,9 @@ const App: React.FC = () => (
               {/* Registro de Salidas: solo los registros completos con salida; el historial completo tiene todos */}
               <Route path="/detecciones" element={<Privada permiso="operacion:monitorear"><Detecciones /></Privada>} />
               <Route path="/historial" element={<Privada permiso="operacion:monitorear"><HistorialCompleto /></Privada>} />
-              <Route path="/detecciones/:id" element={<Privada permiso="operacion:monitorear"><DetalleDeteccion /></Privada>} />
+              <Route path="/detecciones/:id" element={<Privada permiso="operacion:monitorear"><RedirigirDetalleAnterior /></Privada>} />
               <Route path="/listas/:tipo" element={<Privada permiso="listas:ver"><Listas /></Privada>} />
-              <Route path="/solicitudes" element={<Privada permiso="solicitudes:crear"><SolicitudesAcceso /></Privada>} />
+              <Route path="/solicitudes" element={<Privada permiso="solicitudes:resolver"><SolicitudesAcceso /></Privada>} />
               <Route path="/notificaciones" element={<Privada><Notificaciones /></Privada>} />
               <Route path="/perfil" element={<Privada><Perfil /></Privada>} />
 

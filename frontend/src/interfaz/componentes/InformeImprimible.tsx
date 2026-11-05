@@ -3,6 +3,7 @@ import logoEcu911 from '../../assets/ecu911.png';
 import type { Deteccion, EstadoValidacion } from '../../dominio/tipos';
 import { ESTADOS, fecha, fechaHora, hora } from '../../dominio/formato';
 import { formatearPlaca } from '../../dominio/validacion';
+import { horasDelMovimiento } from '../../dominio/movimiento';
 
 /**
  * Informe con formato de documento (hoja blanca con el logo del ECU 911, datos del informe,
@@ -50,8 +51,8 @@ const vehiculo = (d: Deteccion) => [d.vehiculo?.tipo ?? d.tipo_vehiculo, [d.vehi
   .filter(Boolean).join(' · ');
 
 /** Tabla de accesos del informe: una fila por ingreso, en orden cronológico. */
-export const TablaAccesosInforme: React.FC<{ filas: Deteccion[]; sinPlaca?: boolean; onAbrir?: (d: Deteccion) => void }> = ({ filas, sinPlaca, onAbrir }) => (
-  <table className="informe-tabla">
+export const TablaAccesosInforme: React.FC<{ filas: Deteccion[]; sinPlaca?: boolean; etiqueta?: string; onAbrir?: (d: Deteccion) => void }> = ({ filas, sinPlaca, etiqueta, onAbrir }) => (
+  <table className="informe-tabla" aria-label={etiqueta}>
     <thead>
       <tr>
         <th className="num">N.º</th><th>Fecha</th><th>Ingreso</th><th>Salida</th>{!sinPlaca && <th>Placa</th>}
@@ -63,8 +64,8 @@ export const TablaAccesosInforme: React.FC<{ filas: Deteccion[]; sinPlaca?: bool
         <tr key={d.id} className={onAbrir ? 'clic' : undefined} onClick={onAbrir ? () => onAbrir(d) : undefined}>
           <td className="num">{i + 1}</td>
           <td className="nowrap">{fecha(d.fecha_hora_ingreso)}</td>
-          <td className="nowrap">{hora(d.fecha_hora_ingreso)}</td>
-          <td className="nowrap">{d.fecha_hora_salida ? hora(d.fecha_hora_salida) : '—'}</td>
+          <td className="nowrap">{horasDelMovimiento(d).entrada ? hora(d.fecha_hora_ingreso) : '—'}</td>
+          <td className="nowrap">{horasDelMovimiento(d).salida ? hora(horasDelMovimiento(d).salida!) : '—'}</td>
           {!sinPlaca && <td className="nowrap informe-placa">{d.placa ? formatearPlaca(d.placa) : 'Sin lectura'}</td>}
           <td>{d.persona_ingreso || d.autorizado?.propietario || '—'}</td>
           <td>{vehiculo(d) || '—'}</td>

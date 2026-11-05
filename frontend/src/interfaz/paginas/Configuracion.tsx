@@ -72,6 +72,9 @@ const Configuracion: React.FC = () => {
     if (p.clave === VERIFICACION_CORREO && valor === 'true' && p.valor !== 'true' && sinCorreo) {
       return 'Configure primero el correo saliente (SMTP): sin él, las cuentas nuevas no recibirían el enlace.';
     }
+    if (p.clave === 'salida_manual_habilitada' && valor === 'false' && (valores.salida_automatica_habilitada ?? '') !== 'true') {
+      return 'Active primero la salida automática: sin ninguna de las dos no se podría registrar ninguna salida.';
+    }
     return errorParametro(p, valor);
   };
   // Solo bloquea el guardado un valor cambiado: uno inválido que viene del servidor no impide guardar otros

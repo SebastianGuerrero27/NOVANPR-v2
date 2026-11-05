@@ -1,0 +1,10 @@
+{
+  "fecha": "2026-11-04",
+  "api": "API interceptada con datos artificiales; sin cambios en registros operativos",
+  "pruebas": [
+    "Descartar propuesta OCR guarda null, mantiene fotos y rótulo y actualiza monitoreo sin recargar",
+    "Con salida automática el cierre sin placa afecta solo el ingreso elegido",
+    "Registro de Salidas muestra el ingreso sin matrícula y sus evidencias"
+  ],
+  "errores": []
+}

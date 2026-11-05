@@ -20,7 +20,7 @@ it('la placa ilegible permite abrir el formulario y confirmarla mirando la foto'
   render(<MemoryRouter><RestringirVehiculoModal d={{ ...paso, placa: null, estado_procesamiento: 'no_legible' }} onCerrar={vi.fn()} /></MemoryRouter>);
   expect(screen.getByAltText('Vehículo del permiso')).toHaveStyle({ objectFit: 'contain' });
   expect(screen.getByLabelText('Marca')).toHaveValue('Mazda');
-  expect(screen.getByLabelText('Placa*')).toHaveValue('');
+  expect(screen.getByLabelText('Placa (opcional)')).toHaveValue('');
   expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Ampliar foto del vehículo' }));
   expect(screen.getByRole('dialog', { name: 'Evidencia de ingreso sin lectura' })).toBeInTheDocument();

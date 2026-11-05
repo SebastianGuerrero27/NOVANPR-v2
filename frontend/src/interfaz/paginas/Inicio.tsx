@@ -1,25 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Activity, AlertTriangle, ArrowRight, Camera, CarFront, CheckCircle2, ClipboardPlus, Clock, History, LogOut, MonitorPlay, ShieldAlert, ShieldCheck,
+  Activity, AlertTriangle, ArrowRight, CarFront, ClipboardPlus, Clock, History, LogOut, MonitorPlay, ShieldAlert, ShieldCheck,
   TrendingDown, TrendingUp,
 } from 'lucide-react';
 import api from '../../infraestructura/api';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
 import { useConsulta, useDiferido, usePaginaVisible } from '../../aplicacion/hooks';
-import type { Deteccion, ResumenPanel } from '../../dominio/tipos';
+import type { Deteccion, EstadoAnpr, ResumenPanel } from '../../dominio/tipos';
 import { diaCorto, fecha, hora, numero, relativo, SERIES_ESTADO } from '../../dominio/formato';
 import { ESTADOS_ACCESO, estadoAcceso } from '../../dominio/estadoAcceso';
 import { Aviso, Cargando, FilasEsqueleto, InsigniaEstado, Kpi, Tarjeta, Vacio } from '../componentes/ui';
-import { BarrasApiladas, BarrasHorizontales, Dona, Leyenda } from '../componentes/Graficos';
-import { PlacaFoto, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
+import { BarrasHorizontales, Dona, Leyenda } from '../componentes/Graficos';
+import { PlacaFoto, RegistroManualModal } from '../componentes/deteccion';
 import { CeldaIngreso, actualizarCampoIngreso, type CampoIngreso } from '../componentes/CeldaIngreso';
 import { ConfianzaRegistro } from '../componentes/ConfianzaRegistro';
 import { VisorZoom } from '../componentes/ZoomDual';
 import GestionPermisos from './GestionPermisos';
-import { useCentroNotificaciones } from '../../aplicacion/notificaciones';
-import { ItemNotificacion } from '../componentes/CentroNotificaciones';
+import { horasDelMovimiento } from '../../dominio/movimiento';
 
 function saludo(): string {
   const h = Number(new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guayaquil', hour: 'numeric', hour12: false }).format(new Date()));
@@ -83,51 +82,6 @@ const KpisDelDia: React.FC<{ r: ResumenPanel | null; cargando: boolean }> = ({ r
   );
 };
 
-const GraficoPorHora: React.FC<{ r: ResumenPanel; detecciones?: boolean }> = ({ r, detecciones = false }) => {
-  const horaActual = Number(new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guayaquil', hour: 'numeric', hour12: false }).format(new Date()));
-  return (
-    <Tarjeta titulo={detecciones ? 'Detecciones por hora' : 'Ingresos por hora'} subtitulo={detecciones ? 'Lecturas de cámara de hoy, incluidas las pendientes y denegadas' : 'Hoy, por estado de la decisión'} acciones={<Leyenda series={SERIES_ESTADO} />}>
-      {r.hoy.total === 0
-        ? <Vacio titulo={detecciones ? 'Sin detecciones hoy' : 'Sin ingresos hoy'} texto="El gráfico se completa a medida que el sistema registra pasos vehiculares." icono={<Activity size={22} />} />
-        : <BarrasApiladas datos={r.por_hora} series={SERIES_ESTADO} etiquetaX={d => String(d.hora).padStart(2, '0')}
-            tituloTip={d => `${String(d.hora).padStart(2, '0')}:00 – ${String(d.hora).padStart(2, '0')}:59`} cadaEtiqueta={2} resaltar={horaActual} />}
-    </Tarjeta>
-  );
-};
-
-const EstadoCamaras: React.FC<{ r: ResumenPanel }> = ({ r }) => (
-  <Tarjeta titulo="Cámaras" subtitulo="Conectividad del puerto RTSP" sinPadding>
-    {r.camaras.length === 0 ? <Vacio titulo="No hay cámaras registradas" texto="El administrador registra los canales en Operación › Registro de cámaras." icono={<Camera size={22} />} /> : (
-      <div className="tabla-contenedor"><table className="tabla"><tbody>
-        {r.camaras.map(c => {
-          const e = !c.activa ? { p: 'gris', t: 'Deshabilitada' } : c.estado === 'EN_LINEA' ? { p: 'verde', t: 'En línea' } : c.estado === 'SIN_CONEXION' ? { p: 'rojo', t: 'Sin conexión' } : { p: 'gris', t: 'Sin verificar' };
-          return (
-            <tr key={c.id}>
-              <td><strong style={{ color: 'var(--text)' }}>{c.nombre}</strong><span className="secundario">{c.ubicacion}</span></td>
-              <td><span className="fila" style={{ gap: 6 }}><span className={`punto ${e.p}`} />{e.t}</span>
-                <span className="secundario">{c.ultimo_ping ? `Verificada ${relativo(c.ultimo_ping)}` : 'Nunca verificada'}</span></td>
-              <td className="num"><strong style={{ color: 'var(--text)' }}>{numero(c.detecciones_hoy)}</strong><span className="secundario">hoy</span></td>
-            </tr>
-          );
-        })}
-      </tbody></table></div>
-    )}
-  </Tarjeta>
-);
-
-const UltimasAlertas: React.FC<{ r: ResumenPanel | null }> = ({ r }) => {
-  const { items, cargando } = useCentroNotificaciones();
-  const avisos = [...items].sort((a, b) => new Date(b.fecha_ultima).getTime() - new Date(a.fecha_ultima).getTime()).slice(0, 5);
-  return <Tarjeta titulo="Últimas alertas" subtitulo="Avisos y notificaciones de su cuenta, en tiempo real"
-    acciones={<Link to="/notificaciones" className="btn btn-ghost btn-sm">Ver todas <ArrowRight size={14} /></Link>} sinPadding>
-    {cargando && !avisos.length ? <Cargando /> : avisos.length > 0
-      ? <div className="guardia-avisos">{avisos.map(n => <ItemNotificacion key={n.id} n={n} />)}</div>
-      : r && r.ultimas_alertas.length > 0
-        ? <div className="pila" style={{ gap: 8, padding: 12 }}>{r.ultimas_alertas.map(d => <TarjetaDeteccion key={d.id} d={d} />)}</div>
-        : <Vacio titulo="Sin alertas registradas" texto="Los avisos recibidos aparecerán aquí automáticamente." icono={<ShieldCheck size={22} />} />}
-  </Tarjeta>;
-};
-
 const RelojGuardia: React.FC = () => {
   const [ahora, setAhora] = useState(() => new Date());
   useEffect(() => { const id = window.setInterval(() => setAhora(new Date()), 1000); return () => window.clearInterval(id); }, []);
@@ -160,17 +114,13 @@ const BalanceGuardia: React.FC<{ ingresos: number; entradas: number; salidas: nu
   })}<div className="guardia-balance-total">Ingresos de hoy <strong>{numero(total)}</strong> = {numero(entradas)} entradas + {numero(salidas)} salidas · al registrar una salida, la entrada pasa a salidas.</div></div>;
 };
 
-/** Panel del guardia: su turno, la cola de validación y accesos directos. */
+/** Panel del guardia: control del turno, balance y accesos directos. */
 const PanelOperador: React.FC = () => {
   const { user } = useAuth();
   const { datos: r, cargando, error } = useResumen();
-  const cola = useConsulta<{ items: Deteccion[]; total: number }>(
-    () => api.get('/detecciones', { params: { estado: 'pendiente_revision', validado: 'no', tamano: 6 } }).then(x => x.data), []);
-  const recargarCola = useDiferido(() => cola.recargar(true), 1500);
-  useEvento('deteccion:actualizada', recargarCola);
-  useEvento('deteccion:nueva', recargarCola);
-  const [validando, setValidando] = useState<Deteccion | null>(null);
   const [manual, setManual] = useState(false);
+  const estadoSalida = useConsulta<EstadoAnpr>(() => api.get('/monitoreo/estado').then(x => x.data), []);
+  const salidaManual = estadoSalida.datos?.salida_manual !== false;
 
   return (
     <div className="pagina dashboard-guardia">
@@ -189,30 +139,19 @@ const PanelOperador: React.FC = () => {
           <RelojGuardia />
           <div className="guardia-acciones">
             <button className="btn guardia-entrada" onClick={() => setManual(true)}><ClipboardPlus size={17} /> Registrar entrada</button>
-            <Link className="btn guardia-salida" to="/monitoreo"><ArrowRight size={17} /> Registrar salida</Link>
+            {salidaManual && <Link className="btn guardia-salida" to="/monitoreo"><ArrowRight size={17} /> Registrar salida</Link>}
           </div>
-          <p className="guardia-indicacion">Para registrar una salida, seleccione el vehículo en Movimientos recientes.</p>
+          <p className="guardia-indicacion">{salidaManual ? 'Para registrar una salida, seleccione el vehículo en Movimientos recientes.' : 'La cámara registra la salida por placa. Si no hay placa legible, cierre el ingreso desde Gestión de Accesos con su evidencia.'}</p>
           <div className="guardia-dentro"><span>Ingresos de hoy</span><strong>{cargando && !r ? '…' : numero(r?.movimientos?.ingresos)}</strong>
             <small>Todos los ingresos de hoy (autorizados, pendientes y denegados) · total histórico de «Todos los accesos»: {cargando && !r ? '…' : numero(r?.movimientos?.registros_acceso)}.</small></div>
           <div className="fila" style={{ gap: 8 }}>
             <Link to="/detecciones" className="btn btn-secondary btn-sm"><LogOut size={14} /> Registro de Salidas: {cargando && !r ? '…' : numero(r?.movimientos?.registros_completos)}</Link>
             <Link to="/historial" className="btn btn-secondary btn-sm"><History size={14} /> Historial completo</Link>
           </div>
-          <small className="texto-secundario">Registro de Salidas: registros completos con nombre, placa, tipo, marca, motivo y salida. Historial completo: todos los pasos.</small>
+          <small className="texto-secundario">Registro de Salidas: registros con nombre, tipo, marca, motivo y salida; la placa es opcional. Historial completo: todos los pasos.</small>
         </section>
         {r?.movimientos && <BalanceGuardia ingresos={r.movimientos.ingresos ?? 0} entradas={r.movimientos.entradas} salidas={r.movimientos.salidas} />}
-        <div className="grid-principal">
-          <Tarjeta titulo="Pendientes de autorización" subtitulo="Pasos sin lectura confiable: confirme la placa con la evidencia"
-            acciones={<Link to="/monitoreo" className="btn btn-ghost btn-sm">Ver todos ({numero(cola.datos?.total)}) <ArrowRight size={14} /></Link>} sinPadding>
-            {cola.cargando ? <Cargando /> : !cola.datos?.items.length
-              ? <Vacio titulo="Nada pendiente" texto="Todas las lecturas están confirmadas." icono={<CheckCircle2 size={22} />} />
-              : <div className="grid-2" style={{ padding: 12, gap: 8 }}>{cola.datos.items.map(d => <TarjetaDeteccion key={d.id} d={d} onValidar={setValidando} />)}</div>}
-          </Tarjeta>
-          <UltimasAlertas r={r} />
-        </div>
-        {r && <div className="grid-principal"><GraficoPorHora r={r} detecciones /><EstadoCamaras r={r} /></div>}
       </div>
-      {validando && <ValidarModal d={validando} onCerrar={() => setValidando(null)} onValidada={() => cola.recargar(true)} />}
       {manual && <RegistroManualModal onCerrar={() => setManual(false)} />}
     </div>
   );
@@ -273,7 +212,7 @@ const IngresosRecientes: React.FC = () => {
           </tr></thead>
           <tbody>
             {cargando && !datos ? <FilasEsqueleto columnas={15} /> : (datos ?? []).map((d, i) => (
-              <tr key={d.id} className={`clic ${ESTADOS_ACCESO[estadoAcceso(d)].clase}`} onClick={() => navigate(`/detecciones/${d.id}`)}>
+              <tr key={d.id} className={`clic ${ESTADOS_ACCESO[estadoAcceso(d)].clase}`} onClick={() => navigate(`/monitoreo?registro=${d.id}`)}>
                 <td className="num texto-secundario">{i + 1}</td>
                 <CeldaIngreso d={d} campo="cedula" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
                 <CeldaIngreso d={d} campo="persona_ingreso" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
@@ -282,8 +221,8 @@ const IngresosRecientes: React.FC = () => {
                 </td>
                 <CeldaIngreso d={d} campo="motivo_ingreso" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
                 <td className="nowrap">{fecha(d.fecha_hora_ingreso)}</td>
-                <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 600 }}>{hora(d.fecha_hora_ingreso)}</strong></td>
-                <td className="nowrap">{d.fecha_hora_salida ? hora(d.fecha_hora_salida) : '—'}</td>
+                <td className="nowrap">{horasDelMovimiento(d).entrada ? <strong style={{ color: 'var(--text)', fontWeight: 600 }}>{hora(d.fecha_hora_ingreso)}</strong> : '—'}</td>
+                <td className="nowrap">{horasDelMovimiento(d).salida ? hora(horasDelMovimiento(d).salida!) : '—'}</td>
                 <CeldaIngreso d={d} campo="tipo_vehiculo" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
                 <CeldaIngreso d={d} campo="marca" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
                 <CeldaIngreso d={d} campo="modelo" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />

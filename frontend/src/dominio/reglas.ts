@@ -70,6 +70,8 @@ export const REGLA_PERSONA_INGRESO: ReglaTexto = { etiqueta: 'Nombres y apellido
 /** Motivo de ingreso: columna «Observaciones» de ese reporte. */
 export const REGLA_MOTIVO_INGRESO: ReglaTexto = { etiqueta: 'Motivo de ingreso', tipo: 'libre', max: 300 };
 /** Motivos frecuentes de la hoja de la garita, para elegirlos con un toque */
+export const MOTIVOS_MANUAL_FRECUENTES = ['Cámara fuera de servicio', 'Placa ilegible', 'La cámara no lo registró'];
+
 export const MOTIVOS_INGRESO_FRECUENTES = [
   'Jornada laboral', 'Reunión', 'Recorrido del ECU 911', 'Mantenimiento', 'Revisión de cámaras', 'Entrega de botellones de agua', 'Compras públicas', 'Visita',
 ];

@@ -76,8 +76,6 @@ spec:
           volumeMounts:
             - name: media
               mountPath: /app/media
-            - name: model-cache
-              mountPath: /root/.cache
           # La primera carga de los modelos (detector, OCR, verificador) puede tardar varios minutos
           startupProbe:
             httpGet:
@@ -107,6 +105,3 @@ spec:
         - name: media
           persistentVolumeClaim:
             claimName: anpr-media
-        - name: model-cache
-          emptyDir:
-            sizeLimit: 5Gi

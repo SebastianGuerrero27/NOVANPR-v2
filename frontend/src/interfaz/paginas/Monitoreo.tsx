@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Bell, BellOff, Camera, ClipboardPlus, Cpu, Edit3, ExternalLink, Film, Gauge, History, LogOut, Pause, Play, Plus, ShieldAlert, ShieldCheck, Trash2, X } from 'lucide-react';
+import { Bell, BellOff, Camera, ClipboardPlus, Cpu, Edit3, Film, Gauge, History, LogOut, Pause, Play, Plus, ShieldAlert, ShieldCheck, Trash2, X } from 'lucide-react';
 import api, { mensajeError } from '../../infraestructura/api';
 import { useAuth } from '../../aplicacion/AuthContext';
 import { useEvento, useReconexion } from '../../aplicacion/tiempoReal';
@@ -8,7 +8,7 @@ import { useConsulta, usePaginaVisible } from '../../aplicacion/hooks';
 import type { Camara, Deteccion, EstadoAnpr } from '../../dominio/tipos';
 import { codecVideo, ESTADOS, fecha, fechaHora, fechaIsoLocal, hora, limiteDia, numero, relativo } from '../../dominio/formato';
 import { formatearPlaca } from '../../dominio/validacion';
-import { ESTADOS_ACCESO, estadoAcceso, faltantesSalida, puedeRegistrarSalida } from '../../dominio/estadoAcceso';
+import { ESTADOS_ACCESO, esRegistroDeSalidas, estadoAcceso, faltantesSalida, puedeRegistrarSalida } from '../../dominio/estadoAcceso';
 import { Aviso, Cargando, InsigniaEstado, InsigniaTipificacion, Paginacion, Placa, Segmentado, Tarjeta, Vacio } from '../componentes/ui';
 import { ImagenEvidencia, PlacaFoto, RegistroManualModal, TarjetaDeteccion, ValidarModal } from '../componentes/deteccion';
 import { VisorZoom } from '../componentes/ZoomDual';
@@ -22,10 +22,12 @@ import { RestringirVehiculoModal } from '../componentes/RestringirVehiculoModal'
 import { VistaCuadricula } from '../componentes/VistaCuadricula';
 import { actualizarCampoIngreso, CeldaIngreso, type CampoIngreso } from '../componentes/CeldaIngreso';
 import { ConfianzaRegistro } from '../componentes/ConfianzaRegistro';
+import { horasDelMovimiento } from '../../dominio/movimiento';
 
 const MAX_FEED = 30;
 const CLAVE_PERFIL = 'anpr_perfil_video';
-const CLAVE_MODO = 'anpr_modo_video';
+// Clave nueva: con la anterior, una caída automática a compatibilidad quedaba guardada para siempre
+const CLAVE_MODO = 'anpr_modo_video_elegido';
 const CLAVE_VISTA = 'anpr_vista_monitoreo_v2';
 const CLAVE_CAMARA = 'anpr_camara_monitoreo';
 
@@ -36,6 +38,12 @@ const segundos = (ms: number) => (ms / 1000).toLocaleString('es-EC', { minimumFr
 
 const Monitoreo: React.FC = () => {
   const { puede } = useAuth();
+  const [paramsAviso] = useSearchParams();
+  const registroAviso = paramsAviso.get('registro');
+  const registroId = registroAviso && /^\d+$/.test(registroAviso) && Number(registroAviso) > 0 && Number(registroAviso) <= 2147483647 ? Number(registroAviso) : null;
+  const [cargandoAviso, setCargandoAviso] = useState(false);
+  const [errorAviso, setErrorAviso] = useState<string | null>(null);
+  const eliminados = useRef(new Set<number>());
   const navigate = useNavigate();
   const notificar = useNotificar();
   const visible = usePaginaVisible();
@@ -57,7 +65,8 @@ const Monitoreo: React.FC = () => {
   const [camaraElegida, setCamaraElegida] = useState<number | null>(() => Number(leer(CLAVE_CAMARA, '')) || null);
   const [eliminando, setEliminando] = useState<Deteccion | null>(null);
   const [eliminarTodos, setEliminarTodos] = useState(false);
-  const esAdmin = puede('camaras:gestionar');
+  const puedeEliminar = puede('detecciones:eliminar-individual');
+  const puedeEliminarTodos = puede('detecciones:eliminar');
 
   const { datos: camaras, recargar: recargarCamaras } = useConsulta<Camara[]>(() => api.get('/camaras').then(r => r.data), []);
   const estadoMotor = useConsulta<EstadoAnpr>(() => api.get('/monitoreo/estado').then(r => r.data), []);
@@ -72,28 +81,46 @@ const Monitoreo: React.FC = () => {
 
   const cargarFeed = useCallback(() => {
     api.get('/detecciones/recientes', { params: { limite: MAX_FEED } })
-      .then(r => setFeed(r.data)).catch(() => undefined).finally(() => setCargandoFeed(false));
+      .then(r => setFeed((r.data as Deteccion[]).filter(d => !esRegistroDeSalidas(d)))).catch(() => undefined).finally(() => setCargandoFeed(false));
   }, []);
   // Carga inicial y resincronización al volver a la pestaña (por eventos perdidos mientras estaba oculta)
   useEffect(() => { if (visible) cargarFeed(); }, [visible, cargarFeed]);
 
   const insertar = (d: Deteccion) => {
+    if (d.tipo_movimiento === 'salida' || esRegistroDeSalidas(d)) return;
     setFeed(f => [d, ...f.filter(x => x.id !== d.id)].slice(0, MAX_FEED));
     setResaltada(d.id);
     window.setTimeout(() => setResaltada(r => (r === d.id ? null : r)), 3000);
   };
 
-  useEvento<Deteccion>('deteccion:nueva', insertar);
-  useEvento<Deteccion>('deteccion:actualizada', d => {
+  const actualizarMovimiento = (d: Deteccion) => {
+    if (d.tipo_movimiento === 'salida' || esRegistroDeSalidas(d)) {
+      setFeed(f => f.filter(x => x.id !== d.id));
+      setSeleccion(s => s?.id === d.id ? null : s);
+      cargarFeed();
+      return;
+    }
     setFeed(f => (f.some(x => x.id === d.id) ? f.map(x => (x.id === d.id ? d : x)) : [d, ...f].slice(0, MAX_FEED)));
+    setSeleccion(s => s?.id === d.id ? d : s);
     setResaltada(d.id);
     window.setTimeout(() => setResaltada(r => (r === d.id ? null : r)), 3000);
-  });
+  };
+  useEvento<Deteccion>('deteccion:nueva', insertar);
+  useEvento<Deteccion>('deteccion:actualizada', actualizarMovimiento);
   useEvento<{ id: number }>('deteccion:eliminada', ({ id }) => {
+    eliminados.current.add(id);
     setFeed(f => f.filter(x => x.id !== id));
     setSeleccion(s => (s?.id === id ? null : s));
+    if (id === registroId) setErrorAviso('El registro de esta notificación fue eliminado. Puede continuar consultando todos los accesos.');
   });
-  useEvento('deteccion:eliminadas', () => cargarFeed());
+  useEvento('deteccion:eliminadas', () => {
+    setSeleccion(null);
+    if (registroId) {
+      eliminados.current.add(registroId);
+      setErrorAviso('El historial fue actualizado después de una eliminación. Puede continuar consultando todos los accesos.');
+    }
+    cargarFeed();
+  });
   useReconexion(() => { cargarFeed(); estadoMotor.recargar(true); recargarCamaras(true); });
   useEvento('monitoreo:camaras', () => estadoMotor.recargar(true));
   useEvento('camara:actualizada', () => recargarCamaras(true));
@@ -115,6 +142,29 @@ const Monitoreo: React.FC = () => {
   const [seleccion, setSeleccion] = useState<Deteccion | null>(null);
   const enVista = seleccion ? (feed.find(d => d.id === seleccion.id) ?? seleccion) : ultima;
   const panelAccesos = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let cancelado = false;
+    setErrorAviso(null);
+    if (!registroId) {
+      setCargandoAviso(false);
+      if (registroAviso) setErrorAviso('El enlace de la notificación no contiene un registro válido.');
+      return;
+    }
+    setCargandoAviso(true);
+    setSeleccion(null);
+    setPausado(false);
+    api.get<Deteccion>(`/detecciones/${registroId}`).then(({ data }) => {
+      if (cancelado || eliminados.current.has(registroId)) return;
+      setSeleccion(data);
+      setFeed(actual => actual.map(d => d.id === data.id ? data : d).filter(d => !esRegistroDeSalidas(d)));
+      setResaltada(data.id);
+      if (data.camara?.id) setCamaraElegida(data.camara.id);
+      window.setTimeout(() => { if (!cancelado) panelAccesos.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }, 0);
+    }).catch(e => {
+      if (!cancelado) setErrorAviso(mensajeError(e, 'No se pudo abrir el registro de la notificación.'));
+    }).finally(() => { if (!cancelado) setCargandoAviso(false); });
+    return () => { cancelado = true; };
+  }, [registroId, registroAviso]);
   const seleccionar = (d: Deteccion) => {
     setSeleccion(d);
     const caja = panelAccesos.current?.getBoundingClientRect();
@@ -135,8 +185,7 @@ const Monitoreo: React.FC = () => {
     setRegistrandoSalida(d.id);
     try {
       const actualizada = (await api.post<{ deteccion: Deteccion }>(`/detecciones/${d.id}/salida`)).data.deteccion;
-      setFeed(f => f.map(x => (x.id === actualizada.id ? actualizada : x)));
-      setSeleccion(s => (s?.id === actualizada.id ? actualizada : s));
+      actualizarMovimiento(actualizada);
       notificar('exito', 'Salida registrada', `${d.placa ? formatearPlaca(d.placa) : 'El vehículo'} salió a las ${hora(actualizada.fecha_hora_salida ?? new Date().toISOString())}.`);
       return actualizada;
     } catch (err) {
@@ -151,6 +200,13 @@ const Monitoreo: React.FC = () => {
   return (
     <div className="pagina ancha">
       <div className="pila">
+        {cargandoAviso && <Aviso tipo="info">Abriendo el registro de la notificación…</Aviso>}
+        {errorAviso && <Aviso tipo="error">{errorAviso}</Aviso>}
+        {!cargandoAviso && !errorAviso && registroId && seleccion?.id === registroId && <Aviso tipo="info">
+          Registro de la notificación N.º {registroId} seleccionado en Visualización de accesos. {esRegistroDeSalidas(seleccion)
+            ? 'Este registro ya está completo y puede consultarse en Registro de Salidas.'
+            : 'La tabla muestra los accesos sin salida o pendientes de completar; la fila se resalta si está en la página visible.'}
+        </Aviso>}
         <div className="grid-principal" style={{ gridTemplateColumns: 'minmax(0, 1.9fr) minmax(320px, 1fr)' }}>
           {/* ── Video y controles ── */}
           <div className="pila">
@@ -218,7 +274,7 @@ const Monitoreo: React.FC = () => {
                   : modo === 'compat' && analisis ? <VisorVideo camaraId={analisis.id} motor={analisis.motor} perfil={perfil} pausado={pausado} />
                     : !motor && estadoMotor.cargando ? <div style={{ aspectRatio: '16 / 9', background: '#050b16', borderRadius: 10 }} />
                       : <VisorEnVivo camaraId={camaraActiva?.id ?? null} analizada={Boolean(analisis)} vista={Boolean(camaraActiva?.rtsp_url_vista)} pausado={pausado} claveReinicio={analisis?.motor}
-                          onFallo={m => { cambiarModo('compat'); notificar('advertencia', 'Se activó el modo de compatibilidad', `WebRTC no disponible: ${m}`); }} />}
+                          onFallo={m => { setModo('compat'); notificar('advertencia', 'Se activó el modo de compatibilidad', `WebRTC no disponible: ${m}`); }} />}
               </div>
               <div className="fila" style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', gap: 16, fontSize: 12.5, color: 'var(--text-3)' }}>
                 <span className="fila" style={{ gap: 6 }}>
@@ -248,6 +304,14 @@ const Monitoreo: React.FC = () => {
                   <span className="ocultar-movil truncar" title={`${motor.detector} · ${motor.ocr}`}>Detector {motor.detector} · OCR {motor.ocr}</span>
                 </>}
               </div>
+              {vista === 'anpr' && analisis?.captura && analisis.captura.recomendaciones.length > 0 && (
+                <div style={{ padding: '0 14px 12px' }}>
+                  <Aviso tipo="info">
+                    <b>Ajustes sugeridos para la cámara</b> (últimas {analisis.captura.placas} placas: unos {analisis.captura.ancho_px_p50} px de ancho)
+                    <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{analisis.captura.recomendaciones.map(r => <li key={r.codigo}>{r.texto}</li>)}</ul>
+                  </Aviso>
+                </div>
+              )}
             </Tarjeta>
 
           </div>
@@ -261,11 +325,11 @@ const Monitoreo: React.FC = () => {
                 </Aviso>
               )}
               <Tarjeta titulo="Detecciones en tiempo real" subtitulo="Actualización instantánea, sin recargar" sinPadding className="tarjeta-feed"
-                acciones={esAdmin && feed.length > 0 ? <button className="btn btn-danger btn-sm" onClick={() => setEliminarTodos(true)}><Trash2 size={14} /> Eliminar todos</button> : undefined}>
+                acciones={puedeEliminarTodos && feed.length > 0 ? <button className="btn btn-danger btn-sm" onClick={() => setEliminarTodos(true)}><Trash2 size={14} /> Eliminar todos</button> : undefined}>
                 <div className="pila" style={{ gap: 8, padding: 12 }}>
                   {cargandoFeed ? <Cargando /> : feed.length === 0
                     ? <Vacio titulo="Sin detecciones" texto="Cuando el motor registre un vehículo aparecerá aquí de inmediato." />
-                    : feed.map(d => <TarjetaDeteccion key={d.id} d={d} onValidar={setValidando} onRestringir={puede('alertas:restringir') ? setRestringiendo : undefined} onEliminar={esAdmin ? setEliminando : undefined} resaltada={resaltada === d.id} />)}
+                    : feed.map(d => <TarjetaDeteccion key={d.id} d={d} onValidar={setValidando} onRestringir={puede('alertas:restringir') ? setRestringiendo : undefined} onEliminar={puedeEliminar ? setEliminando : undefined} resaltada={resaltada === d.id} />)}
                 </div>
               </Tarjeta>
             </div>
@@ -281,7 +345,6 @@ const Monitoreo: React.FC = () => {
           subtitulo={seleccion ? 'Movimiento elegido en la tabla' : 'Último movimiento registrado'} acciones={
           <div className="fila">
             {seleccion && <button className="btn btn-secondary btn-sm" onClick={() => setSeleccion(null)}><History size={14} /> Volver al último</button>}
-            {enVista && <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/detecciones/${enVista.id}`)}><ExternalLink size={14} /> Ver detalle</button>}
             <button className={`btn btn-sm ${sonido ? 'btn-secondary' : 'btn-ghost'}`} title={sonido ? 'Silenciar alertas' : 'Activar sonido de alertas'}
               onClick={() => fijarSonido(!sonido)}>
               {sonido ? <Bell size={14} /> : <BellOff size={14} />} {sonido ? 'Sonido activo' : 'Silenciado'}
@@ -323,20 +386,26 @@ const Monitoreo: React.FC = () => {
         </Tarjeta>
         </div>
 
-        <TablaIngresosRecientes items={feed}
+        <TablaIngresosRecientes key={registroId ?? 'todos'} items={feed}
           onRestringir={puede('alertas:restringir') ? setRestringiendo : undefined}
-          onValidar={setValidando} onEliminar={esAdmin ? setEliminando : undefined}
+          onValidar={setValidando} onEliminar={puedeEliminar ? setEliminando : undefined}
           onRegistrar={() => setManual(true)}
           puedeEditarCampos={puede('detecciones:validar')}
           seleccionada={enVista?.id ?? null} onSeleccionar={seleccionar}
-          registrandoSalida={registrandoSalida} onRegistrarSalida={registrarSalida} />
+          registrandoSalida={registrandoSalida} onRegistrarSalida={registrarSalida} salidaManual={motor?.salida_manual !== false} />
       </div>
 
-      {validando && <ValidarModal d={validando} onCerrar={() => setValidando(null)} />}
+      {validando && <ValidarModal d={validando} onCerrar={() => setValidando(null)} onValidada={actualizarMovimiento} />}
       {restringiendo && <RestringirVehiculoModal d={restringiendo} onCerrar={() => setRestringiendo(null)} />}
-      {manual && <RegistroManualModal onCerrar={() => setManual(false)} />}
-      {eliminando && <EliminarUno d={eliminando} onCerrar={() => setEliminando(null)} onEliminada={id => setFeed(f => f.filter(x => x.id !== id))} />}
-      {eliminarTodos && <TotalRegistros>{total => (
+      {manual && <RegistroManualModal onCerrar={() => setManual(false)} onRegistrada={insertar} />}
+      {puedeEliminar && eliminando && <EliminarUno d={eliminando} onCerrar={() => setEliminando(null)} onEliminada={id => {
+        eliminados.current.add(id);
+        setFeed(f => f.filter(x => x.id !== id));
+        setSeleccion(s => s?.id === id ? null : s);
+        if (id === registroId) setErrorAviso('El registro de esta notificación fue eliminado. Puede continuar consultando todos los accesos.');
+        cargarFeed();
+      }} />}
+      {puedeEliminarTodos && eliminarTodos && <TotalRegistros>{total => (
         <EliminarVarios total={total} descripcion="Todos los registros de ingreso del sistema" onCerrar={() => setEliminarTodos(false)} onHecho={() => cargarFeed()} />
       )}</TotalRegistros>}
     </div>
@@ -344,11 +413,12 @@ const Monitoreo: React.FC = () => {
 };
 
 /** «Registrar salida»: acción textual; un toque registra la hora de salida del ingreso. */
-const BotonSalida: React.FC<{ ocupado: boolean; deshabilitado: boolean; onRegistrar: () => void }> = ({ ocupado, deshabilitado, onRegistrar }) => (<div className="pila" style={{ gap: 4, maxWidth: 210, whiteSpace: 'normal' }}>
-  <button type="button" className="btn-salida" disabled={deshabilitado} title="Registrar salida" onClick={onRegistrar} aria-label="Registrar salida">
+const BotonSalida: React.FC<{ ocupado: boolean; deshabilitado: boolean; sinPlaca: boolean; onRegistrar: () => void }> = ({ ocupado, deshabilitado, sinPlaca, onRegistrar }) => (<div className="pila" style={{ gap: 4, maxWidth: 210, whiteSpace: 'normal' }}>
+  <button type="button" className="btn-salida" disabled={deshabilitado} title={sinPlaca ? 'Registrar salida de este ingreso sin placa legible; compruebe la evidencia' : 'Registrar salida'} onClick={onRegistrar} aria-label="Registrar salida">
     <LogOut size={13} aria-hidden />
     <span>{ocupado ? 'Registrando…' : 'Registrar salida'}</span>
   </button>
+  {sinPlaca && <small className="texto-secundario">Sin placa legible</small>}
   </div>
 );
 
@@ -377,8 +447,8 @@ export const TablaIngresosRecientes: React.FC<{
   onRegistrar?: () => void;
   puedeEditarCampos: boolean;
   seleccionada: number | null; onSeleccionar: (d: Deteccion) => void;
-  registrandoSalida: number | null; onRegistrarSalida: (d: Deteccion) => Promise<Deteccion | null>;
-}> = ({ items, onValidar, onEliminar, refConsulta, onRegistrar = () => undefined, puedeEditarCampos, seleccionada, onSeleccionar, registrandoSalida, onRegistrarSalida }) => {
+  registrandoSalida: number | null; onRegistrarSalida: (d: Deteccion) => Promise<Deteccion | null>; salidaManual?: boolean;
+}> = ({ salidaManual = true, items, onValidar, onEliminar, refConsulta, onRegistrar = () => undefined, puedeEditarCampos, seleccionada, onSeleccionar, registrandoSalida, onRegistrarSalida }) => {
   const [params, setParams] = useSearchParams();
   const [zoom, setZoom] = useState<Deteccion | null>(null);
   const [texto, setTexto] = useState('');
@@ -388,11 +458,14 @@ export const TablaIngresosRecientes: React.FC<{
   const [busquedaAplicada, setBusquedaAplicada] = useState('');
   const [consultando, setConsultando] = useState(false);
   const consultaBusqueda = useRef(0);
+  // Término que ya filtra la tabla: la página vuelve a 1 solo si cambia (al abrir no deshace un «Siguiente»)
+  const terminoAplicado = useRef('');
   const estadoFiltro = params.get('estado') ?? '';
   const soloDentro = estadoFiltro === 'dentro';
   const soloHoy = params.get('hoy') === '1';
   const listado = useConsulta<{ items: Deteccion[]; total: number; pagina: number; tamano: number }>(
-    () => api.get('/detecciones', { params: { pagina, tamano: 30, buscar: busquedaAplicada || undefined,
+    // La salida que cerró un ingreso aparece en la fila de ese ingreso (hora de salida), no como otra fila
+    () => api.get('/detecciones', { params: { pagina, tamano: 30, unir_salidas: 'si', completos: 'no', buscar: busquedaAplicada || undefined,
       ...(estadoFiltro && !soloDentro ? { estado: estadoFiltro } : {}),
       ...(soloDentro ? { estado: 'autorizado', cerrados: 'no' } : {}),
       ...(params.get('validado') ? { validado: params.get('validado') } : {}),
@@ -400,12 +473,26 @@ export const TablaIngresosRecientes: React.FC<{
     [pagina, busquedaAplicada, estadoFiltro, soloDentro, soloHoy, params]);
   useEffect(() => { void listado.recargar(true); }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (listado.datos && pagina > 1 && !listado.datos.items.length) setPagina(pagina - 1); }, [listado.datos, pagina]);
+  // Una fila trasladada a Salidas deja de necesitar sus ediciones locales. Si se reabre más tarde,
+  // debe mostrarse con los datos actuales del servidor, sin conservar el cierre anterior.
+  useEffect(() => {
+    if (!listado.datos) return;
+    const visibles = new Set(listado.datos.items.map(d => d.id));
+    setEdiciones(actuales => {
+      const entradas = Object.entries(actuales);
+      const vigentes = entradas.filter(([id]) => visibles.has(Number(id)));
+      return vigentes.length === entradas.length ? actuales : Object.fromEntries(vigentes);
+    });
+  }, [listado.datos]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const termino = texto.trim();
     const id = ++consultaBusqueda.current;
     const temporizador = window.setTimeout(async () => {
-      setPagina(1);
+      if (terminoAplicado.current !== termino) {
+        terminoAplicado.current = termino;
+        setPagina(1);
+      }
       setBusquedaAplicada(termino);
       setError(null);
       if (termino.length < 2) {
@@ -466,10 +553,10 @@ export const TablaIngresosRecientes: React.FC<{
   };
   // El resultado vale mientras el texto sea el consultado
   const vigente = resultado && resultado.placa.replace(/-/g, '') === texto.trim().toUpperCase().replace(/-/g, '') ? resultado : null;
-  const filas = (listado.datos?.items ?? []).map(d => ediciones[d.id] ?? d);
+  const filas = (listado.datos?.items ?? []).map(d => ediciones[d.id] ?? d).filter(d => !esRegistroDeSalidas(d));
   return (
     <Tarjeta titulo="Todos los accesos"
-      subtitulo={`${listado.datos?.total ?? 0} accesos${soloDentro ? ' autorizados sin salida · mismo criterio del dashboard' : soloHoy ? ' alertas de hoy' : ' en el historial · incluye autorizados, pendientes, denegados y salidas'}`}
+      subtitulo={`${listado.datos?.total ?? 0} accesos${soloDentro ? ' autorizados sin salida · mismo criterio del dashboard' : soloHoy ? ' alertas de hoy' : ' sin salida o con datos pendientes · los completos con salida están en Registro de Salidas'}`}
       sinPadding acciones={
       <form className="fila" role="search" onSubmit={e => e.preventDefault()} style={{ gap: 6 }}>
         <select className="input" aria-label="Filtrar accesos" style={{ width: 230 }} value={soloDentro ? 'dentro' : estadoFiltro || 'todos'} onChange={e => cambiarFiltro(e.target.value)}>
@@ -508,6 +595,7 @@ export const TablaIngresosRecientes: React.FC<{
                 const aut = d.estado_validacion === 'autorizado';
                 const ale = d.estado_validacion === 'alerta';
                 const elegida = d.id === seleccionada;
+                const horas = horasDelMovimiento(d);
                 return (
                   <tr key={d.id} className={`clic ${ESTADOS_ACCESO[estadoAcceso(d)].clase}${elegida ? ' fila-elegida' : ''}`}
                     onClick={() => onSeleccionar(d)} tabIndex={0} aria-selected={elegida}
@@ -522,8 +610,9 @@ export const TablaIngresosRecientes: React.FC<{
                     </td>
                     <CeldaIngreso d={d} campo="motivo_ingreso" editable={puedeEditarCampos && d.tipo_movimiento !== 'salida'} onActualizada={alEditar} />
                     <td className="nowrap">{fecha(d.fecha_hora_ingreso)}</td>
-                    <td className="nowrap"><strong style={{ color: 'var(--text)', fontWeight: 700 }}>{hora(d.fecha_hora_ingreso)}</strong></td>
-                    <td className={`nowrap${d.fecha_hora_salida ? ' hora-salida-registrada' : ' texto-secundario'}`}>{d.fecha_hora_salida ? hora(d.fecha_hora_salida) : '—'}</td>
+                    {/* La toma de la cámara de salida es una hora de salida, no de entrada */}
+                    <td className={`nowrap${horas.entrada ? '' : ' texto-secundario'}`}>{horas.entrada ? <strong style={{ color: 'var(--text)', fontWeight: 700 }}>{hora(horas.entrada)}</strong> : '—'}</td>
+                    <td className={`nowrap${horas.salida ? ' hora-salida-registrada' : ' texto-secundario'}`}>{horas.salida ? hora(horas.salida) : '—'}</td>
                     <CeldaIngreso d={d} campo="tipo_vehiculo" editable={puedeEditarCampos} onActualizada={alEditar} />
                     <CeldaIngreso d={d} campo="marca" editable={puedeEditarCampos} onActualizada={alEditar} />
                     <CeldaIngreso d={d} campo="modelo" editable={puedeEditarCampos} onActualizada={alEditar} />
@@ -534,8 +623,12 @@ export const TablaIngresosRecientes: React.FC<{
                     <td className="nowrap"><InsigniaEstado estado={d.estado_validacion} corta /></td>
                     <td className="nowrap"><ConfianzaRegistro valor={d.confianza_ocr} /></td>
                     <td className="nowrap" onClick={e => e.stopPropagation()}>
-                      {d.tipo_movimiento !== 'salida' && !d.fecha_hora_salida
-                        ? <BotonSalida ocupado={registrandoSalida === d.id} deshabilitado={registrandoSalida !== null} onRegistrar={() => void registrarSalida(d)} />
+                      {d.tipo_movimiento !== 'salida' && !d.fecha_hora_salida && !salidaManual && Boolean(d.placa)
+                        ? <span className="texto-secundario" title="La registra la cámara de salida al leer la placa">Por cámara</span>
+                        : d.tipo_movimiento !== 'salida' && !d.fecha_hora_salida
+                        ? <BotonSalida ocupado={registrandoSalida === d.id} deshabilitado={registrandoSalida !== null} sinPlaca={!d.placa} onRegistrar={() => void registrarSalida(d)} />
+                        : d.tipo_movimiento === 'salida'
+                        ? <span className="texto-secundario" title="La cámara de salida no la unió a un ingreso: la placa no se leyó, no se confirmó o no tenía un ingreso abierto. Corrija la placa para cerrar su ingreso.">Sin ingreso</span>
                         : <span className="texto-secundario" title={d.salida_automatica ? 'La registró la cámara de salida al leer la placa' : undefined}>{d.fecha_hora_salida ? (d.salida_automatica ? 'Automática' : 'Registrada') : '—'}</span>}
                     </td>
                     <td className="acciones-celda" onClick={e => e.stopPropagation()}>

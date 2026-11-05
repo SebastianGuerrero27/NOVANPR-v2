@@ -1,0 +1,17 @@
+{
+  "fecha_local": "2026-11-04",
+  "url": "http://localhost:3000",
+  "backend_http": 200,
+  "frontend_http": 200,
+  "ruta_admin_sin_sesion_http": 401,
+  "bundle": "/assets/index-CQw30owF.js",
+  "contenedores": [
+    "/anpr-backend healthy sha256:3edd8f2cd8c986d8c340f269f57defbed5adf506f9de5a671cab4a77bc40ae57",
+    "/anpr-frontend healthy sha256:56b0177adbb916fb37e3e97d3fb58ec7efe8d5e0c5a5e8ebc73ca52967279bfe"
+  ],
+  "pruebas_backend": 175,
+  "pruebas_frontend": 27,
+  "pruebas_navegador": 9,
+  "pruebas_postgresql_real": 6,
+  "datos_prueba": "Navegador con API interceptada; PostgreSQL en esquema aislado y transacción revertida"
+}

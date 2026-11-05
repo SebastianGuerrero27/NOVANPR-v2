@@ -311,6 +311,8 @@ def test_estado_del_servicio_sin_iniciar_y_sin_credenciales(servicio):
                 "anclas": 0, "analisis_fuera_de_lo_guardado": 0, "retraso_analisis_cuadros": {"p50": None, "p95": None},
                 "cuadros_con_flujo_pct": None, "correccion_al_anclar_anchos": {"p50": None, "p95": None},
             },
+            "calidad_captura": {"placas": 0, "ancho_px_p50": None, "nitidez_p50": None, "brillo_p50": None,
+                                "saturada_pct_p50": None, "recomendaciones": []},
         }],
         "cpu": r["cpu"],
         "architecture": "Multicámara: un motor por cámara con modelos compartidos",
@@ -1144,6 +1146,145 @@ def test_si_el_vehiculo_ya_salio_la_foto_ilegible_se_audita_al_instante(servicio
     servicio.motor._pistas_activas = set()
     servicio.disparar_captura(candidato())
     assert servicio.http.rutas() == ["detecciones/descarte"]
+
+
+class AgenteSegunFoto(Agente):
+    """Lee la placa solo en una foto clara (las pruebas marcan así la foto legible)."""
+
+    def process_image(self, frame, initial_bbox=None, fast_mode=True):
+        legible = frame.mean() > 150
+        return types.SimpleNamespace(placa="PBA1234" if legible else "", estado="procesado" if legible else "no_legible",
+                                     confianza=0.93 if legible else 0.1)
+
+
+class SelectorDeSalida(SelectorDePrueba):
+    """Entrega las fotos de las pistas que salieron de cuadro, como cleanup_stale_tracks."""
+
+    def __init__(self, fotos):
+        super().__init__()
+        self.fotos = fotos
+
+    def evaluate_and_select(self, **kw):
+        return None
+
+    def cleanup_stale_tracks(self, activos):
+        fotos, self.fotos = self.fotos, []
+        return fotos
+
+
+def _foto_legible(tid=5):
+    c = candidato(tid=tid)
+    c.frame = np.full_like(c.frame, 200)
+    return c
+
+
+def test_si_el_vehiculo_ya_salio_se_lee_otra_foto_del_paso_antes_de_descartar(servicio, monkeypatch):
+    """De una pista que salió de cuadro el selector entrega hasta 3 fotos. Antes se leía solo la
+    primera (las otras chocaban con el anti-rebote de la pista) y, si no se leía, el paso se perdía."""
+    _configurar(servicio, monkeypatch, rescate_cuadros=True)
+    servicio.fijar(pipeline=Pipeline(conteo={"PBA1234": 2}), trabajador_ocr=types.SimpleNamespace(_agent=AgenteSegunFoto()))
+    selector = SelectorDeSalida([candidato(), _foto_legible()])
+    servicio.fijar(selector=selector)
+    servicio.motor._evaluar_capturas(selector, [], np.zeros((480, 640, 3), np.uint8), 10)
+    assert servicio.http.rutas() == ["detecciones/ingreso", "detecciones/completar-ocr"]
+    assert servicio.motor.estado()["rescate"]["otras_fotos"] == 1
+    assert 5 not in servicio.motor._fotos_restantes
+
+
+def test_sin_rescate_de_cuadros_solo_se_lee_la_primera_foto(servicio):
+    """Por omisión el rescate está desactivado (RESCATE_CUADROS): se lee solo la primera foto, como antes."""
+    servicio.fijar(pipeline=Pipeline(conteo={"PBA1234": 2}), trabajador_ocr=types.SimpleNamespace(_agent=AgenteSegunFoto()))
+    selector = SelectorDeSalida([candidato(), _foto_legible()])
+    servicio.fijar(selector=selector)
+    servicio.motor._evaluar_capturas(selector, [], np.zeros((480, 640, 3), np.uint8), 10)
+    assert servicio.http.rutas() == ["detecciones/descarte"]
+
+
+def test_las_otras_fotos_cuentan_dentro_de_los_intentos_del_paso(servicio, monkeypatch):
+    from app.aplicacion.motor import MAX_INTENTOS_CAPTURA
+
+    _configurar(servicio, monkeypatch, rescate_cuadros=True)
+    servicio.fijar(pipeline=Pipeline(), trabajador_ocr=types.SimpleNamespace(_agent=AgenteSegunFoto()))
+    selector = SelectorDeSalida([candidato() for _ in range(MAX_INTENTOS_CAPTURA + 2)])
+    servicio.fijar(selector=selector)
+    servicio.motor._evaluar_capturas(selector, [], np.zeros((480, 640, 3), np.uint8), 10)
+    assert servicio.http.rutas() == ["detecciones/descarte"]
+    assert servicio.motor.estado()["rescate"]["otras_fotos"] == MAX_INTENTOS_CAPTURA - 1
+
+
+class SelectorQueAcumula:
+    def __init__(self, ignorar=()):
+        self.acumulados: list[dict] = []
+        self.ignorar = set(ignorar)
+
+    def should_ignore_track(self, tid):
+        return tid in self.ignorar
+
+    def evaluate_and_select(self, **kw):
+        self.acumulados.append(kw)
+        return None
+
+
+def _cuadros_de_paso(tid, desde, hasta, nitidos=(3, 7), grande=None):
+    """Cuadros de un paso con la placa de 80 px (120 px en `grande`), movida salvo en `nitidos`."""
+    import cv2
+
+    rng = np.random.default_rng(3)
+    salida = []
+    for i in range(desde + 1, hasta):
+        imagen = np.full((360, 640, 3), 90, np.uint8)
+        ancho = 120 if i == grande else 80
+        x, y = 100 + 10 * i, 200
+        textura = (np.kron(rng.random((5, ancho // 5)) > 0.5, np.ones((5, 5))) * 200 + 30).astype(np.uint8)
+        if i not in nitidos:
+            textura = cv2.blur(textura, (9, 1))
+        imagen[y:y + 25, x:x + ancho] = textura[:25, :ancho, None]
+        salida.append((i, 100.0 + i / 30, imagen, (float(x), float(y), float(x + ancho), float(y + 25))))
+    return salida
+
+
+def _roi(tid=5):
+    return types.SimpleNamespace(tracking_id=tid, confidence=0.8, plate_bbox=[0, 0, 10, 10])
+
+
+def test_entre_dos_analisis_se_suman_los_cuadros_mas_nitidos_como_candidatos(servicio, monkeypatch):
+    """Con la CPU ocupada un vehículo rápido deja uno o dos cuadros analizados: los que el detector no
+    analizó, con la caja que midió el flujo óptico, también compiten por la foto del paso."""
+    motor = servicio.motor
+    _configurar(servicio, monkeypatch, rescate_cuadros=True)
+    monkeypatch.setattr(motor._seguidor, "cuadros_de", lambda tid, desde, hasta: _cuadros_de_paso(tid, desde, hasta))
+    selector = SelectorQueAcumula()
+    motor._rescatar_cuadros(selector, [_roi()], 0)      # primer análisis de la pista: nada que rescatar
+    assert selector.acumulados == [] and motor._ultimo_rescate == {5: 0}
+    motor._rescatar_cuadros(selector, [_roi()], 10)
+    assert [a["frame_idx"] for a in selector.acumulados] == [3, 7]
+    assert all(a["solo_acumular"] and a["tracking_id"] == 5 for a in selector.acumulados)
+    assert selector.acumulados[0]["plate_bbox"] == [130, 200, 210, 225]
+    assert motor._horas_cuadro[3] == pytest.approx(100.1) and motor._ultimo_rescate == {5: 10}
+    assert motor.estado()["rescate"]["cuadros"] == 2
+
+
+def test_la_placa_mas_grande_gana_aunque_otra_salga_mas_nitida(servicio, monkeypatch):
+    motor = servicio.motor
+    _configurar(servicio, monkeypatch, rescate_cuadros=True)
+    monkeypatch.setattr(motor._seguidor, "cuadros_de", lambda tid, desde, hasta: _cuadros_de_paso(tid, desde, hasta, grande=5))
+    selector = SelectorQueAcumula()
+    motor._ultimo_rescate = {5: 0}
+    motor._rescatar_cuadros(selector, [_roi()], 10)
+    assert [a["frame_idx"] for a in selector.acumulados] == [5]
+
+
+@pytest.mark.parametrize("caso", ["desactivado", "resuelta", "capturada", "hueco_corto"])
+def test_sin_rescate_cuando_no_hace_falta(servicio, monkeypatch, caso):
+    motor = servicio.motor
+    monkeypatch.setattr(motor._seguidor, "cuadros_de", lambda tid, desde, hasta: _cuadros_de_paso(tid, desde, hasta))
+    _configurar(servicio, monkeypatch, rescate_cuadros=caso != "desactivado")
+    if caso == "resuelta":
+        motor._pistas_resueltas[5] = time.time()
+    selector = SelectorQueAcumula(ignorar={5} if caso == "capturada" else ())
+    motor._ultimo_rescate = {5: 8 if caso == "hueco_corto" else 0}
+    motor._rescatar_cuadros(selector, [_roi()], 10)
+    assert selector.acumulados == [] and motor._ultimo_rescate == {5: 10}
 
 
 def test_un_fallo_transitorio_del_backend_se_reintenta(servicio):

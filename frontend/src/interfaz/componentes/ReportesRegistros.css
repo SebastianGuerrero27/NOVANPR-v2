@@ -1,0 +1,28 @@
+.reporte-lista-filtros, .reporte-lista-paginacion { border: 0; margin: 0; padding: 0; min-width: 0; }
+.reporte-lista-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.reporte-lista-filtros .campo { min-width: 150px; }
+.reporte-lista-filtros .reporte-lista-buscar { flex: 1 1 290px; max-width: 460px; }
+.reporte-lista-filtros-extra { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; width: 100%; padding-top: 12px; border-top: 1px dashed var(--border); }
+.reporte-lista-generar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding-top: 16px; margin-top: 16px; border-top: 1px solid var(--border); }
+.reporte-lista-generar > div:first-child { flex: 1 1 300px; }
+.reporte-lista-generar strong { color: var(--text); font-size: 15px; }
+.reporte-lista-generar p, .reporte-lista-cabecera p { color: var(--text-3); font-size: 12px; margin-top: 4px; }
+.reporte-lista-aviso { margin-top: 12px; font-size: 12px; }
+.reporte-lista-resultados { overflow: hidden; }
+.reporte-lista-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.reporte-lista-cabecera h3 { font-size: 15px; }
+.reporte-lista-tabla { min-width: 1040px; }
+.reporte-lista-dato { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.reporte-lista-dato:hover { color: var(--accent-blue); text-decoration: underline; }
+.reporte-lista-dato:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 3px; }
+.reporte-lista-dato.placa { font-family: var(--font-mono, monospace); font-weight: 650; letter-spacing: .02em; }
+.reporte-lista-dato:disabled { opacity: .65; cursor: wait; }
+.reporte-lista-secundario { display: block; color: var(--text-3); font-size: 11px; margin-top: 3px; }
+.reporte-lista-error { padding: 14px 18px; display: grid; justify-items: start; gap: 8px; }
+.reporte-lista-ficha { margin: 0 16px 12px; }
+@media (max-width: 600px) {
+  .reporte-lista-generar { align-items: stretch; }
+  .reporte-lista-generar .campo, .reporte-lista-generar > button { flex: 1 1 100%; }
+  .reporte-lista-filtros .campo { flex: 1 1 140px; min-width: 0; }
+  .reporte-lista-filtros-extra .campo { flex: 1 1 100%; }
+}

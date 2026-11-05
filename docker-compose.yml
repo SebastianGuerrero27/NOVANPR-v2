@@ -1,5 +1,14 @@
+# Registros de cada contenedor con tope: sin él crecen hasta llenar el disco
+x-registros: &registros
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   db:
+    <<: *registros
     image: postgres:17-alpine
     container_name: anpr-db
     environment:
@@ -25,6 +34,7 @@ services:
           memory: 768m
 
   mediamtx:
+    <<: *registros
     image: bluenviron/mediamtx:1.21.3
     container_name: anpr-mediamtx
     environment:
@@ -50,6 +60,7 @@ services:
           memory: 512m
 
   backend:
+    <<: *registros
     build: ./backend
     container_name: anpr-backend
     ports:
@@ -73,9 +84,6 @@ services:
       # Proxy inverso delante del backend: número de saltos (p. ej. 1). Vacío = conexión directa
       - TRUST_PROXY=${TRUST_PROXY:-}
       - LIMITE_API_POR_MINUTO=${LIMITE_API_POR_MINUTO:-600}
-      - ECUADORAPI_KEY=${ECUADORAPI_KEY:-}
-      - CONSULTA_PERSONA_PROVEEDOR=${CONSULTA_PERSONA_PROVEEDOR:-ecuadorapi}
-      - SOCKET_STUDIO_TOKEN=${SOCKET_STUDIO_TOKEN:-}
       - LIMITE_ACCESO_POR_15_MIN=${LIMITE_ACCESO_POR_15_MIN:-20}
       - ANPR_SERVICE_TOKEN=${ANPR_SERVICE_TOKEN:?Defina ANPR_SERVICE_TOKEN en .env}
       - SMTP_HOST=${SMTP_HOST:-}
@@ -121,6 +129,7 @@ services:
           memory: 768m
 
   frontend:
+    <<: *registros
     build: ./frontend
     container_name: anpr-frontend
     ports:
@@ -147,6 +156,7 @@ services:
           memory: 768m
 
   anpr:
+    <<: *registros
     build: ./services/anpr
     container_name: anpr-service
     ports:
@@ -170,8 +180,6 @@ services:
     volumes:
       - ./services/anpr:/app
       - ./services/anpr/media:/app/media
-      # Caché de pesos descargados (CLIP, PP-OCRv6, fast-plate-ocr): evita volver a bajarlos al recrear
-      - anpr_model_cache:/root/.cache
     depends_on:
       mediamtx:
         condition: service_started
@@ -194,5 +202,4 @@ services:
           memory: 6g
 
 volumes:
-  anpr_model_cache:
   db_data:

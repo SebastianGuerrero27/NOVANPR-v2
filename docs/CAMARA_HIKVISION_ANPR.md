@@ -128,8 +128,14 @@ integraciones es usar **H.265 o H.264 estándar** con un intervalo de cuadros cl
 
  Cada cámara tiene una dirección (`ingreso` o `salida`), copiada en el evento al registrarse. Una salida
  se almacena como movimiento propio y no consulta las listas de autorización. Si se activa
- **Configuración › Operación › Registrar la salida automáticamente**, una salida con lectura confirmada
- cierra además el ingreso abierto más reciente de esa placa exacta (ver docs/GUIA_SISTEMA_Y_MEJORAS_ECU911.md).
+ **Configuración › Operación › Registrar la salida automáticamente**, una salida cierra además el ingreso
+ abierto más reciente de esa placa exacta. Hace falta que al menos una de las dos lecturas esté confirmada:
+ - Si la de la salida lo está (por el motor o por una persona), cierra el ingreso abierto de esa placa.
+ - Si no lo está, cierra solo un ingreso cuya lectura sí se confirmó.
+
+ Si ninguna de las dos está confirmada, el ingreso queda abierto y se corrige a mano. La salida que cerró
+ un ingreso se muestra en la fila de ese ingreso en Monitoreo, no como otra fila (filtro
+ `unir_salidas=si`). Ver docs/GUIA_SISTEMA_Y_MEJORAS_ECU911.md.
 
  **Varias cámaras:** el motor crea un `MotorAnpr` por cámara (`GestorCamaras`) con los modelos compartidos.
  Toda cámara habilitada y con **Analizar esta cámara con el motor ANPR** marcado se analiza a la vez, hasta

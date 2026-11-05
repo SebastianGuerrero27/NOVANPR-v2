@@ -3,7 +3,7 @@ import { getDB } from '../db';
 import { DATOS_INGRESO_COMPLETOS_SQL, REGISTRO_COMPLETO_SQL } from './registroCompletoSql';
 import type { Cruce, RepositorioDetecciones } from '../../aplicacion/detecciones';
 import type { Decision } from '../../dominio/decisionAcceso';
-import { type FiltrosDetecciones, VENTANA_MISMO_PASO_S } from '../../dominio/detecciones';
+import { type FiltrosDetecciones, palabrasBusqueda, VENTANA_MISMO_PASO_S } from '../../dominio/detecciones';
 import { guardarAtributosVehiculo, guardarMetadatosCaptura, type LecturaAutomatica, registrarLecturaAutomatica } from '../servicios/metadatosDeteccion';
 import { desfaseMinutos } from '../servicios/tiempo';
 
@@ -42,12 +42,41 @@ const sinTildes = (expr: string) => `TRANSLATE(LOWER(COALESCE(${expr}, '')), 'á
 /** Segundos desde la medianoche local del ingreso (franja horaria del historial). */
 const SEGUNDO_DEL_DIA = "EXTRACT(EPOCH FROM (d.fecha_hora_ingreso + (@desfase * INTERVAL '1 minute'))::time)";
 
+/** Hora local (Ecuador) del paso: los días, días de la semana y horas del análisis del historial. */
+const HORA_LOCAL = "(d.fecha_hora_ingreso + (@desfase * INTERVAL '1 minute'))";
+
+/** Solo ingresos: el análisis cuenta entradas (la salida de un ingreso va en su misma fila). */
+const ES_INGRESO = "COALESCE(d.tipo_movimiento, 'ingreso') = 'ingreso'";
+
+/**
+ * Clase del ingreso en los gráficos por estado: una sola por fila, para que las series sumen el total
+ * (una lista negra cuenta como alerta aunque se haya autorizado después).
+ */
+const CLASE_ESTADO = `CASE WHEN d.estado_validacion = 'alerta' THEN 'alertas'
+  WHEN d.estado_validacion = 'autorizado' THEN 'autorizados'
+  WHEN d.estado_validacion = 'no_reconocido' THEN 'no_registrados' ELSE 'pendientes' END`;
+
+/** Nombre de la persona del paso: quien ingresó o, si no se anotó, el titular de su permiso. */
+const PERSONA_D = `COALESCE(NULLIF(TRIM(d.persona_ingreso), ''),
+  (SELECT NULLIF(TRIM(p.propietario), '') FROM ListaBlanca p WHERE p.id = d.vehiculo_autorizado_id))`;
+
 const orden = (f: FiltrosDetecciones) => (f.orden === 'antiguo' ? 'd.fecha_hora_ingreso ASC, d.id ASC' : 'd.fecha_hora_ingreso DESC, d.id DESC');
 
 const db = () => getDB();
 
 // Lote corto: entre lotes el hilo atiende a las demás peticiones
 const LOTE_EXPORTACION = 500;
+
+/** Una palabra de la búsqueda en alguno de los datos del paso (sin tildes ni mayúsculas). */
+function coincidePalabra(parametro: string): string {
+  const texto = (e: string) => `${sinTildes(e)} LIKE ${sinTildes(parametro)}`;
+  return `(${texto('d.persona_ingreso')} OR ${texto('d.motivo_ingreso')}
+      OR ${texto('d.vehiculo_marca')} OR ${texto('d.vehiculo_modelo')}
+      OR d.cedula_ingreso LIKE ${parametro}
+      OR EXISTS (SELECT 1 FROM ListaBlanca permiso_busqueda
+        WHERE permiso_busqueda.id = d.vehiculo_autorizado_id
+          AND (${texto('permiso_busqueda.propietario')} OR permiso_busqueda.cedula LIKE ${parametro})))`;
+}
 
 /** Filtros del historial, la exportación y la eliminación masiva (ya validados en el dominio). */
 function aplicarFiltros(f: FiltrosDetecciones, request: PostgresRequest): string[] {
@@ -58,22 +87,33 @@ function aplicarFiltros(f: FiltrosDetecciones, request: PostgresRequest): string
     w.push(`d.fecha_hora_salida IS ${f.cerrados ? 'NOT ' : ''}NULL`);
   }
   if (f.placa) {
-    request.input('placa', sql.VarChar(22), `%${f.placa}%`);
-    w.push(f.aproximada ? `${canonica(PLACA_D)} LIKE ${canonica('@placa')}` : `${PLACA_D} LIKE @placa`);
+    request.input('placa', sql.VarChar(22), f.exacta ? f.placa : `%${f.placa}%`);
+    w.push(f.aproximada ? `${canonica(PLACA_D)} LIKE ${canonica('@placa')}` : f.exacta ? `${PLACA_D} = @placa` : `${PLACA_D} LIKE @placa`);
   }
   if (f.buscar) {
     request.input('buscar', sql.NVarChar(102), `%${f.buscar}%`);
-    // Sin distinguir tildes ni mayúsculas: «maria perez» encuentra a «María Pérez»
-    const texto = (e: string) => `${sinTildes(e)} LIKE ${sinTildes('@buscar')}`;
-    w.push(`(${PLACA_D} ILIKE REPLACE(@buscar, '-', '')
-      OR ${texto('d.persona_ingreso')} OR ${texto('d.motivo_ingreso')}
-      OR ${texto('d.vehiculo_marca')} OR ${texto('d.vehiculo_modelo')}
-      OR d.cedula_ingreso LIKE @buscar
-      OR EXISTS (SELECT 1 FROM ListaBlanca permiso_busqueda
-        WHERE permiso_busqueda.id = d.vehiculo_autorizado_id
-          AND (${texto('permiso_busqueda.propietario')} OR permiso_busqueda.cedula LIKE @buscar)))`);
+    // Sin distinguir tildes ni mayúsculas, y cada palabra en cualquier campo y orden: «maria perez» y
+    // «perez maria» encuentran a «María José Pérez López». La placa se compara con el texto completo.
+    const palabras = palabrasBusqueda(f.buscar);
+    const bloques = palabras.length > 1
+      ? palabras.map((p, i) => (request.input(`buscar${i}`, sql.NVarChar(102), `%${p}%`), coincidePalabra(`@buscar${i}`)))
+      : [coincidePalabra('@buscar')];
+    w.push(`(${PLACA_D} ILIKE REPLACE(@buscar, '-', '') OR (${bloques.join(' AND ')}))`);
+  }
+  if (f.persona) {
+    // Solo los datos de la persona: nombres y apellidos o cédula de quien ingresó o del titular del permiso
+    const bloques = palabrasBusqueda(f.persona).map((p, i) => {
+      request.input(`persona${i}`, sql.NVarChar(102), `%${p}%`);
+      const v = `@persona${i}`;
+      return `(${sinTildes('d.persona_ingreso')} LIKE ${sinTildes(v)} OR d.cedula_ingreso LIKE ${v}
+        OR EXISTS (SELECT 1 FROM ListaBlanca permiso_persona WHERE permiso_persona.id = d.vehiculo_autorizado_id
+          AND (${sinTildes('permiso_persona.propietario')} LIKE ${sinTildes(v)} OR permiso_persona.cedula LIKE ${v})))`;
+    });
+    w.push(`(${bloques.join(' AND ')})`);
   }
   if (f.movimiento) w.push(`COALESCE(d.tipo_movimiento, 'ingreso') = '${f.movimiento === 'salida' ? 'salida' : 'ingreso'}'`);
+  // Una salida que ya cerró un ingreso se muestra en la fila de ese ingreso, no como otra fila
+  if (f.unirSalidas) w.push("NOT (d.tipo_movimiento = 'salida' AND EXISTS (SELECT 1 FROM DeteccionVehiculo i WHERE i.salida_deteccion_id = d.id))");
   if (f.origen === 'manual') w.push("d.fuente = 'manual'");
   else if (f.origen === 'camara') w.push("COALESCE(d.fuente, 'rtsp') <> 'manual'");
   if (f.horaDesde !== undefined || f.horaHasta !== undefined) {
@@ -192,7 +232,9 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
       .input('placa', sql.VarChar(20), lectura.placa)
       .input('usuario', sql.Int, lectura.usuarioId)
       .query(`UPDATE DeteccionVehiculo SET
-          placa_validada = @placa, validado_manualmente = 1, usuario_validador_id = @usuario,
+          placa_ocr_original = COALESCE(placa_ocr_original, placa_reconocida),
+          placa_reconocida = CASE WHEN CAST(@placa AS varchar(20)) IS NULL THEN NULL ELSE placa_reconocida END,
+          placa_validada = CAST(@placa AS varchar(20)), validado_manualmente = 1, usuario_validador_id = @usuario,
           fecha_validacion = GETDATE(), estado_procesamiento = 'procesado',
           estado_validacion = 'salida_registrada', decision_automatica = COALESCE(decision_automatica, 'salida_registrada'),
           alerta_id = NULL, vehiculo_autorizado_id = NULL, restriccion_acceso = NULL
@@ -245,6 +287,51 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
     if (x.modelo !== undefined) { request.input('modelo', sql.VarChar(50), x.modelo); campos.push('vehiculo_modelo = @modelo'); }
     if (x.color !== undefined) { request.input('color', sql.VarChar(30), x.color); campos.push('vehiculo_color = @color'); }
     if (campos.length) await request.query(`UPDATE DeteccionVehiculo SET ${campos.join(', ')} WHERE id = @id`);
+  },
+
+  async guardarEdicionRegistro(id, x) {
+    const request = db().request().input('id', sql.Int, id);
+    const campos: string[] = [];
+    const poner = (columna: string, parametro: string, maximo: number, valor: string | null) => {
+      request.input(parametro, sql.VarChar(maximo), valor);
+      campos.push(`${columna} = @${parametro}`);
+    };
+    if (x.datos.cedula !== undefined) poner('cedula_ingreso', 'cedula', 10, x.datos.cedula ?? '');
+    if (x.datos.persona !== undefined) poner('persona_ingreso', 'persona', 150, x.datos.persona);
+    if (x.datos.motivo !== undefined) poner('motivo_ingreso', 'motivo', 300, x.datos.motivo);
+    if (x.datos.tipo !== undefined) {
+      poner('vehiculo_tipo', 'tipo', 50, x.datos.tipo);
+      campos.push('tipo_vehiculo = @tipo');
+    }
+    if (x.datos.marca !== undefined) poner('vehiculo_marca', 'marca', 50, x.datos.marca);
+    if (x.datos.modelo !== undefined) poner('vehiculo_modelo', 'modelo', 50, x.datos.modelo);
+    if (x.datos.color !== undefined) poner('vehiculo_color', 'color', 30, x.datos.color);
+    if (x.placa !== undefined) {
+      request.input('placa', sql.VarChar(20), x.placa)
+        .input('anterior', sql.VarChar(20), x.placaAnterior ?? '')
+        .input('usuario', sql.Int, x.usuarioId);
+      // PostgresRequest conserva valores, no el OID de input(): el parámetro del CASE IS NULL
+      // necesita un tipo explícito, también cuando el formulario deja la matrícula vacía.
+      campos.push(
+        'placa_ocr_original = COALESCE(placa_ocr_original, placa_reconocida)',
+        'decision_automatica = COALESCE(decision_automatica, estado_validacion)',
+        'placa_validada = CAST(@placa AS varchar(20))',
+        'placa_reconocida = CASE WHEN CAST(@placa AS varchar(20)) IS NULL THEN NULL ELSE placa_reconocida END',
+        'validado_manualmente = TRUE', 'usuario_validador_id = @usuario', 'fecha_validacion = CURRENT_TIMESTAMP',
+        'estado_procesamiento = \'procesado\'',
+        'estado_validacion = CASE WHEN tipo_movimiento = \'salida\' THEN \'salida_registrada\' ELSE \'pendiente_revision\' END',
+        'alerta_id = NULL', 'vehiculo_autorizado_id = NULL', 'restriccion_acceso = NULL',
+        'verificacion_vehiculo = NULL', 'verificacion_detalle = NULL',
+      );
+    }
+    if (!campos.length) return true;
+    const guardas = x.placa === undefined ? '' : `
+      AND UPPER(REGEXP_REPLACE(COALESCE(registro.placa_validada, registro.placa_reconocida, ''), '[^A-Za-z0-9]', '', 'g')) = @anterior
+      AND COALESCE(registro.tipo_movimiento, 'ingreso') = 'ingreso'
+      AND registro.salida_deteccion_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM DeteccionVehiculo vinculado WHERE vinculado.salida_deteccion_id = registro.id)`;
+    const r = await request.query(`UPDATE DeteccionVehiculo AS registro SET ${campos.join(', ')} WHERE registro.id = @id${guardas}`);
+    return r.rowsAffected[0] === 1;
   },
 
   async autorizarIngresoSinPlaca(id, usuarioId) {
@@ -407,6 +494,59 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
     return r.recordset;
   },
 
+  /**
+   * Cuándo y quiénes ingresan, con los mismos filtros del historial y en hora de Ecuador: ingresos por
+   * día (por estado), por día de la semana y por hora, la matriz día × hora, la permanencia de los que
+   * registran salida y los vehículos y personas más frecuentes. Cuenta solo ingresos.
+   */
+  async analisisHistorial(f) {
+    const consulta = async (cuerpo: (w: string) => string) => {
+      const request = db().request();
+      const w = [...aplicarFiltros(f, request), ES_INGRESO].join(' AND ');
+      request.input('desfase', sql.Int, desfaseMinutos());
+      return (await request.query(cuerpo(w))).recordset;
+    };
+    const n = (v: unknown) => Number(v ?? 0);
+    const [dias, celdas, estancia, placas, personas] = await Promise.all([
+      consulta(w => `SELECT to_char(${HORA_LOCAL}, 'YYYY-MM-DD') AS dia, ${CLASE_ESTADO} AS clase, COUNT(*) AS n
+        FROM DeteccionVehiculo d WHERE ${w} GROUP BY 1, 2 ORDER BY 1`),
+      consulta(w => `SELECT EXTRACT(ISODOW FROM ${HORA_LOCAL})::int AS dia_semana, EXTRACT(HOUR FROM ${HORA_LOCAL})::int AS hora, COUNT(*) AS n
+        FROM DeteccionVehiculo d WHERE ${w} GROUP BY 1, 2`),
+      consulta(w => `SELECT COUNT(*) AS n, AVG(s) / 60 AS media, percentile_cont(0.5) WITHIN GROUP (ORDER BY s) / 60 AS mediana,
+          percentile_cont(0.9) WITHIN GROUP (ORDER BY s) / 60 AS p90
+        FROM (SELECT EXTRACT(EPOCH FROM (d.fecha_hora_salida - d.fecha_hora_ingreso)) AS s FROM DeteccionVehiculo d
+          WHERE ${w} AND d.fecha_hora_salida IS NOT NULL AND d.fecha_hora_salida >= d.fecha_hora_ingreso) x`),
+      consulta(w => `SELECT ${PLACA_D} AS placa, COUNT(*) AS ingresos, MAX(d.fecha_hora_ingreso) AS ultimo,
+          (ARRAY_AGG(${PERSONA_D} ORDER BY d.fecha_hora_ingreso DESC) FILTER (WHERE ${PERSONA_D} IS NOT NULL))[1] AS persona
+        FROM DeteccionVehiculo d WHERE ${w} AND ${PLACA_D} <> '' GROUP BY 1 ORDER BY 2 DESC, 3 DESC LIMIT 10`),
+      consulta(w => `SELECT MIN(nombre) AS nombre, COUNT(*) AS ingresos, COUNT(DISTINCT NULLIF(placa, '')) AS placas, MAX(fecha) AS ultimo
+        FROM (SELECT ${PERSONA_D} AS nombre, ${PLACA_D} AS placa, d.fecha_hora_ingreso AS fecha FROM DeteccionVehiculo d WHERE ${w}) x
+        WHERE nombre IS NOT NULL GROUP BY ${sinTildes('nombre')} ORDER BY 2 DESC, 4 DESC LIMIT 10`),
+    ]);
+    const porDia = new Map<string, { dia: string; ingresos: number; autorizados: number; no_registrados: number; alertas: number; pendientes: number }>();
+    for (const x of dias) {
+      const fila = porDia.get(x.dia) ?? { dia: x.dia, ingresos: 0, autorizados: 0, no_registrados: 0, alertas: 0, pendientes: 0 };
+      fila[x.clase as 'autorizados' | 'no_registrados' | 'alertas' | 'pendientes'] += n(x.n);
+      fila.ingresos += n(x.n);
+      porDia.set(x.dia, fila);
+    }
+    // Días de la semana de lunes (0) a domingo (6); horas de 0 a 23
+    const diaHora = Array.from({ length: 7 }, () => Array<number>(24).fill(0));
+    for (const x of celdas) diaHora[n(x.dia_semana) - 1][n(x.hora)] += n(x.n);
+    const e = estancia[0];
+    return {
+      por_dia: [...porDia.values()],
+      por_dia_semana: diaHora.map(horas => horas.reduce((s, v) => s + v, 0)),
+      por_hora: Array.from({ length: 24 }, (_, h) => diaHora.reduce((s, horas) => s + horas[h], 0)),
+      dia_hora: diaHora,
+      permanencia: e && n(e.n) > 0
+        ? { n: n(e.n), media_min: Math.round(n(e.media)), mediana_min: Math.round(n(e.mediana)), p90_min: Math.round(n(e.p90)) }
+        : null,
+      frecuentes: placas.map(x => ({ placa: x.placa, ingresos: n(x.ingresos), ultimo: x.ultimo, persona: x.persona ?? null })),
+      personas: personas.map(x => ({ nombre: x.nombre, ingresos: n(x.ingresos), placas: n(x.placas), ultimo: x.ultimo })),
+    };
+  },
+
   /** Totales del historial con los mismos filtros: estados, movimientos, origen, placas distintas y período. */
   async resumenHistorial(f) {
     const request = db().request();
@@ -465,7 +605,9 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
     return r.recordset.length > 0;
   },
 
-  async cerrarIngresoConSalida(salidaId, placa, minimoSegundos) {
+  async cerrarIngresoConSalida(salidaId, placa, minimoSegundos, soloIngresoConfirmado = false) {
+    // Una matrícula ausente no identifica un vehículo: nunca emparejar ingresos por null o vacío.
+    if (typeof placa !== 'string' || !placa.trim()) return null;
     const r = await db().request()
       .input('salida', sql.Int, salidaId).input('placa', sql.VarChar(20), placa).input('minimo', sql.Int, minimoSegundos)
       .query(`
@@ -477,6 +619,7 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
           WHERE REPLACE(COALESCE(i.placa_validada, i.placa_reconocida, ''), '-', '') = @placa
             AND i.tipo_movimiento = 'ingreso' AND i.fecha_hora_salida IS NULL
             AND i.fecha_hora_ingreso <= s.fecha_hora_ingreso - make_interval(secs => @minimo)
+            ${soloIngresoConfirmado ? 'AND (i.lectura_valida IS TRUE OR i.validado_manualmente IS TRUE)' : ''}
           ORDER BY i.fecha_hora_ingreso DESC LIMIT 1 FOR UPDATE SKIP LOCKED)
         RETURNING d.id`);
     return r.recordset[0]?.id ?? null;
@@ -484,7 +627,8 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
 
   async ingresoCerradoPor(salidaId) {
     const r = await db().request().input('salida', sql.Int, salidaId).query(
-      `SELECT d.id, ${PLACA_D} AS placa FROM DeteccionVehiculo d WHERE d.salida_deteccion_id = @salida`);
+      `SELECT d.id, ${PLACA_D} AS placa, (d.lectura_valida IS TRUE OR d.validado_manualmente IS TRUE) AS confirmado
+       FROM DeteccionVehiculo d WHERE d.salida_deteccion_id = @salida`);
     return r.recordset[0] ?? null;
   },
 
@@ -547,7 +691,8 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
           -- Conserva la lectura y decisión automáticas (métricas de evaluación)
           placa_ocr_original = COALESCE(placa_ocr_original, placa_reconocida),
           decision_automatica = COALESCE(decision_automatica, estado_validacion),
-          validado_manualmente = 1, placa_validada = @placa, usuario_validador_id = @usuario, fecha_validacion = GETDATE(),
+          placa_reconocida = CASE WHEN CAST(@placa AS varchar(20)) IS NULL THEN NULL ELSE placa_reconocida END,
+          validado_manualmente = 1, placa_validada = CAST(@placa AS varchar(20)), usuario_validador_id = @usuario, fecha_validacion = GETDATE(),
           estado_procesamiento = 'procesado', estado_validacion = @estado,
           alerta_id = @alerta, vehiculo_autorizado_id = @autorizado, restriccion_acceso = @restriccion,
           tipo_vehiculo = COALESCE(@tipo, tipo_vehiculo)
@@ -568,7 +713,7 @@ export const repositorioDeteccionesSql: RepositorioDetecciones = {
                                        usuario_validador_id, fecha_validacion, fecha_hora_ingreso, fecha_hora_procesamiento, decision_automatica,
                                        ruta_imagen_ingreso, vehiculo_tipo, vehiculo_marca)
         OUTPUT INSERTED.id
-        VALUES (NULL, @placa, 'manual', @camara, 'procesado', @estado, @alerta, @autorizado, @restriccion, @tipo, 1, @usuario,
+        VALUES (NULL, @placa, 'manual', @camara, 'procesado', @estado, @alerta, @autorizado, @restriccion, @tipo, TRUE, @usuario,
                 GETDATE(), GETDATE(), GETDATE(), 'manual', @ruta, @tipo, @marca)`);
     return r.recordset[0].id;
   },

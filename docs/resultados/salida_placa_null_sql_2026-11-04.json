@@ -1,0 +1,13 @@
+{
+  "fecha_local": "2026-11-04",
+  "base": "PostgreSQL real, esquema aislado dentro de una transacción",
+  "pruebas": [
+    "Alta manual persiste placa NULL con identidad y evidencia",
+    "Cerrar por ID afecta un solo ingreso NULL y no admite doble cierre ni emparejar vacíos",
+    "SQL de monitoreo y Salidas incluye el cierre NULL sin perder la partición ni contar al abierto",
+    "Descartar OCR falsa deja matrícula NULL, conserva original y rótulo/fotos y permite salida",
+    "Corrección de salida a NULL conserva OCR/fotos sin asociarla a otro ingreso sin matrícula",
+    "SQL sigue rechazando la salida si faltan otros datos obligatorios"
+  ],
+  "rollback": true
+}

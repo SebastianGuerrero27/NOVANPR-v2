@@ -96,7 +96,7 @@ const ListaSolicitudesAcceso: React.FC<{ incrustada?: boolean; onVerPadron?: () 
                   </span>
                   <span className="texto-secundario">
                     Solicitada por {propia ? 'usted' : s.solicitante.nombre} {relativo(s.fecha_solicitud)}
-                    {s.deteccion_id && <> · {verIngresos ? <Link to={`/detecciones/${s.deteccion_id}`}>ingreso #{s.deteccion_id}</Link> : `ingreso #${s.deteccion_id}`}</>}
+                    {s.deteccion_id && <> · {verIngresos ? <Link to={`/monitoreo?registro=${s.deteccion_id}`}>ingreso #{s.deteccion_id}</Link> : `ingreso #${s.deteccion_id}`}</>}
                   </span>
                   {s.resolutor && (
                     <span className="texto-secundario">{ESTADO[s.estado].etiqueta} por {s.resolutor.nombre} · {fechaHora(s.fecha_resolucion)}{s.comentario_resolucion ? ` · “${s.comentario_resolucion}”` : ''}</span>

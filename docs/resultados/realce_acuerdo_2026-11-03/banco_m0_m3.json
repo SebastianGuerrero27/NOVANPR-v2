@@ -1,0 +1,82 @@
+{
+ "original/M0_produccion": {
+  "exacta_pct": 82.7,
+  "confirmada_correcta_pct": 78.8,
+  "confirmada_erronea": 0,
+  "sin_lectura": 2,
+  "n": 104,
+  "pasos_correctos": "8/8",
+  "ms_p50": 753,
+  "ms_p95": 1413
+ },
+ "original/M3_acuerdo_seguro": {
+  "exacta_pct": 86.5,
+  "confirmada_correcta_pct": 78.8,
+  "confirmada_erronea": 0,
+  "sin_lectura": 0,
+  "n": 104,
+  "pasos_correctos": "8/8",
+  "ms_p50": 1479,
+  "ms_p95": 2250
+ },
+ "noche/M0_produccion": {
+  "exacta_pct": 57.7,
+  "confirmada_correcta_pct": 52.9,
+  "confirmada_erronea": 4,
+  "sin_lectura": 3,
+  "n": 104,
+  "pasos_correctos": "7/8",
+  "ms_p50": 533,
+  "ms_p95": 868
+ },
+ "noche/M3_acuerdo_seguro": {
+  "exacta_pct": 63.5,
+  "confirmada_correcta_pct": 52.9,
+  "confirmada_erronea": 4,
+  "sin_lectura": 1,
+  "n": 104,
+  "pasos_correctos": "7/8",
+  "ms_p50": 1560,
+  "ms_p95": 2778
+ },
+ "pequena/M0_produccion": {
+  "exacta_pct": 76.9,
+  "confirmada_correcta_pct": 73.1,
+  "confirmada_erronea": 0,
+  "sin_lectura": 4,
+  "n": 104,
+  "pasos_correctos": "7/8",
+  "ms_p50": 568,
+  "ms_p95": 865
+ },
+ "pequena/M3_acuerdo_seguro": {
+  "exacta_pct": 86.5,
+  "confirmada_correcta_pct": 73.1,
+  "confirmada_erronea": 0,
+  "sin_lectura": 3,
+  "n": 104,
+  "pasos_correctos": "8/8",
+  "ms_p50": 1041,
+  "ms_p95": 1703
+ },
+ "movida/M0_produccion": {
+  "exacta_pct": 20.2,
+  "confirmada_correcta_pct": 12.5,
+  "confirmada_erronea": 1,
+  "sin_lectura": 44,
+  "n": 104,
+  "pasos_correctos": "1/8",
+  "ms_p50": 415,
+  "ms_p95": 833
+ },
+ "movida/M3_acuerdo_seguro": {
+  "exacta_pct": 22.1,
+  "confirmada_correcta_pct": 12.5,
+  "confirmada_erronea": 1,
+  "sin_lectura": 34,
+  "n": 104,
+  "pasos_correctos": "2/8",
+  "ms_p50": 1096,
+  "ms_p95": 2061
+ }
+}

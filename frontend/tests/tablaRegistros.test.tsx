@@ -23,11 +23,11 @@ const paso = (id: number, cambios: Partial<Deteccion> = {}): Deteccion => ({
 
 const permiso = { id: 1, propietario: 'Ana Torres', departamento: null };
 
-function mostrar(items: Deteccion[], editable = false) {
+function mostrar(items: Deteccion[], editable = false, salidaManual = true) {
   get.mockResolvedValue({ data: { items, total: items.length, pagina: 1, tamano: 30 } });
   const acciones = { onValidar: vi.fn(), onRestringir: vi.fn(), onEliminar: vi.fn(), onSeleccionar: vi.fn(), onRegistrarSalida: vi.fn() };
   render(<MemoryRouter><TablaIngresosRecientes items={items} {...acciones}
-    puedeEditarCampos={editable} seleccionada={null} registrandoSalida={null} /></MemoryRouter>);
+    puedeEditarCampos={editable} seleccionada={null} registrandoSalida={null} salidaManual={salidaManual} /></MemoryRouter>);
   return acciones;
 }
 
@@ -114,18 +114,62 @@ describe('Tabla de registros de ingreso', () => {
     expect(horaSalida.style.backgroundColor).toBe('');
   });
 
-  it('el ingreso autorizado sigue en blanco después de registrar su salida', async () => {
+  it('con la salida manual desactivada no ofrece el botón y avisa que la registra la cámara', async () => {
+    mostrar([paso(1)], false, false);
+    expect(await screen.findByText('Por cámara')).toHaveAttribute('title', 'La registra la cámara de salida al leer la placa');
+    expect(screen.queryByRole('button', { name: /Registrar salida/ })).toBeNull();
+  });
+
+  it('ofrece el cierre por registro para un vehículo sin placa aunque se use salida automática', async () => {
+    const ingreso = paso(1, { placa: null, placa_reconocida: null, placa_validada: null, estado_procesamiento: 'no_legible',
+      registro_completo: false, datos_faltantes_registro: ['Salida'] });
+    const acciones = mostrar([ingreso], true, false);
+    acciones.onRegistrarSalida.mockResolvedValue({ ...ingreso, fecha_hora_salida: '2026-10-26T16:00:00Z', registro_completo: true });
+    const boton = await screen.findByRole('button', { name: 'Registrar salida' });
+    expect(boton).toHaveAttribute('title', expect.stringContaining('sin placa legible'));
+    expect(screen.queryByText('Por cámara')).not.toBeInTheDocument();
+    fireEvent.click(boton);
+    await waitFor(() => expect(screen.queryByLabelText('Titular del registro 1')).not.toBeInTheDocument());
+    expect(acciones.onRegistrarSalida).toHaveBeenCalledWith(ingreso);
+  });
+
+  it('retira de la cuadrícula el ingreso completo al confirmar su salida manual', async () => {
     const ingreso = paso(1, { estado_validacion: 'autorizado', autorizado: permiso });
-    const actualizada = { ...ingreso, fecha_hora_salida: '2026-10-26T16:00:00Z' };
+    const actualizada = { ...ingreso, fecha_hora_salida: '2026-10-26T16:00:00Z', registro_completo: true };
     const acciones = mostrar([ingreso]);
     acciones.onRegistrarSalida.mockResolvedValue(actualizada);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Registrar salida' }));
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Titular del registro 1').closest('tr')).toHaveTextContent('Registrada');
+      expect(screen.queryByLabelText('Titular del registro 1')).not.toBeInTheDocument();
     });
-    expect(screen.getByLabelText('Titular del registro 1').closest('tr')!.className).not.toMatch(/fila-(alerta|sin-lectura)/);
+    expect(get).toHaveBeenCalledWith('/detecciones', expect.objectContaining({ params: expect.objectContaining({ completos: 'no', unir_salidas: 'si' }) }));
+  });
+
+  it('al completar el último dato de un ingreso con salida lo retira sin esperar otra consulta', async () => {
+    const ingreso = paso(1, { fecha_hora_salida: '2026-10-26T16:00:00Z', motivo_ingreso: '', registro_completo: false });
+    mostrar([ingreso], true);
+    const motivo = await screen.findByLabelText('Motivo del registro 1');
+    // La respuesta del guardado ya confirma la ficha completa; la consulta anterior aún conserva la fila.
+    patch.mockResolvedValue({ data: { deteccion: { ...ingreso, motivo_ingreso: 'Jornada laboral', registro_completo: true, datos_faltantes_registro: [] } } });
+    fireEvent.change(motivo, { target: { value: 'Jornada laboral' } });
+    fireEvent.blur(motivo);
+    await waitFor(() => expect(screen.queryByLabelText('Motivo del registro 1')).not.toBeInTheDocument());
+  });
+
+  it('un ingreso que vuelve a estar abierto no conserva la edición local del cierre anterior', async () => {
+    const ingreso = paso(1, { estado_validacion: 'autorizado', registro_completo: false });
+    const acciones = mostrar([ingreso]);
+    await screen.findByLabelText('Titular del registro 1');
+    get.mockResolvedValue({ data: { items: [], total: 0, pagina: 1, tamano: 30 } });
+    acciones.onRegistrarSalida.mockResolvedValue({ ...ingreso, fecha_hora_salida: '2026-10-26T16:00:00Z', registro_completo: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar salida' }));
+    await screen.findByText(/^0 accesos/);
+    get.mockResolvedValue({ data: { items: [ingreso], total: 1, pagina: 1, tamano: 30 } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar accesos' }), { target: { value: 'autorizado' } });
+    expect(await screen.findByLabelText('Titular del registro 1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar salida' })).toBeEnabled();
   });
 
   it('conserva la autorización devuelta al guardar datos de un vehículo sin placa', async () => {

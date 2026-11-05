@@ -72,6 +72,33 @@ describe('Reporte de control vehicular · filas', () => {
     ]);
   });
 
+  it('una salida guardada en un ingreso sin placa se muestra sin emparejar otros vehículos sin matrícula', () => {
+    const filas = filasControlVehicular([
+      mov({ id: 10, fecha: '2026-10-19 09:00', placa: null, persona_ingreso: 'Ana Pérez', fecha_hora_salida: local('2026-10-19 10:15') }),
+      mov({ id: 11, fecha: '2026-10-19 09:30', placa: null, persona_ingreso: 'Luis Torres' }),
+      mov({ id: 12, fecha: '2026-10-19 10:00', placa: null, tipo_movimiento: 'salida' }),
+    ], { turno: 'completo', ...DIA });
+    expect(filas.map(f => [f.nombres, f.placa, f.ingreso, f.salida])).toEqual([
+      ['Ana Pérez', 'S/P', '09:00', '10:15'], ['Luis Torres', 'S/P', '09:30', ''],
+    ]);
+  });
+
+  it('el cierre guardado prevalece sobre un evento de salida posterior de la misma placa', () => {
+    const [fila] = filasControlVehicular([
+      mov({ fecha: '2026-10-19 09:00', fecha_hora_salida: local('2026-10-19 10:15') }),
+      mov({ fecha: '2026-10-19 11:00', tipo_movimiento: 'salida' }),
+    ], { turno: 'completo', ...DIA });
+    expect(fila.salida).toBe('10:15');
+  });
+
+  it('no muestra una fecha de salida inválida ni anterior al ingreso sin placa', () => {
+    const filas = filasControlVehicular([
+      mov({ fecha: '2026-10-19 09:00', placa: null, fecha_hora_salida: 'invalida' }),
+      mov({ fecha: '2026-10-19 10:00', placa: null, fecha_hora_salida: local('2026-10-19 09:59') }),
+    ], { turno: 'completo', ...DIA });
+    expect(filas.map(f => f.salida)).toEqual(['', '']);
+  });
+
   it('el turno filtra los ingresos: el nocturno del 19 incluye la madrugada del 20 y no la del 19', () => {
     const movimientos = [
       mov({ fecha: '2026-10-19 02:00', placa: 'GAA1111' }),

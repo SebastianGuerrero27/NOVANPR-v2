@@ -30,6 +30,9 @@ describe('RBAC · matriz rol → permiso', () => {
     // Una sola vista y sin avisos de monitoreo
     ['GestorPermisos', 'operacion:monitorear', false],
     ['GestorPermisos', 'detecciones:validar', false],
+    ['GestorPermisos', 'detecciones:gestionar', false],
+    ['GestorPermisos', 'detecciones:eliminar-individual', false],
+    ['GestorPermisos', 'detecciones:eliminar', false],
     ['GestorPermisos', 'avisos:acceso', false],
     ['GestorPermisos', 'avisos:garita', false],
     ['GestorPermisos', 'avisos:padron', false],
@@ -37,14 +40,21 @@ describe('RBAC · matriz rol → permiso', () => {
     ['GestorPermisos', 'usuarios:gestionar', false],
     ['Guardia', 'operacion:monitorear', true],
     ['Guardia', 'detecciones:validar', true],
+    ['Guardia', 'detecciones:gestionar', false],
+    ['Guardia', 'detecciones:eliminar-individual', true],
+    ['Guardia', 'detecciones:eliminar', false],
+    ['Admin', 'detecciones:eliminar-individual', true],
+    ['Admin', 'detecciones:eliminar', true],
+    ['Admin', 'detecciones:gestionar', true],
     ['Guardia', 'listas:ver', true],
     ['Guardia', 'alertas:restringir', true],
-    ['Guardia', 'alertas:gestionar', true],
+    ['Guardia', 'alertas:gestionar', false],
     ['GestorPermisos', 'alertas:restringir', false],
     ['Guardia', 'solicitudes:crear', true],
     ['Guardia', 'avisos:garita', true],
     ['Guardia', 'avisos:padron', true],
-    ['Guardia', 'padron:gestionar', true],
+    ['Guardia', 'padron:agregar', true],
+    ['Guardia', 'padron:gestionar', false],
     ['Guardia', 'solicitudes:resolver', false],
     ['Guardia', 'accesos:excepcion', false],
     ['Guardia', 'usuarios:gestionar', false],
@@ -54,11 +64,11 @@ describe('RBAC · matriz rol → permiso', () => {
   });
 
   it('el gestor de permisos solo gestiona la lista blanca y resuelve solicitudes', () => {
-    expect(permisosDe('GestorPermisos').sort()).toEqual(['listas:ver', 'padron:gestionar', 'solicitudes:resolver']);
+    expect(permisosDe('GestorPermisos').sort()).toEqual(['listas:ver', 'padron:agregar', 'padron:gestionar', 'solicitudes:resolver']);
   });
 
   it('enruta notificaciones por permiso', () => {
-    expect(rolesCon('padron:gestionar').sort()).toEqual(['Admin', 'GestorPermisos', 'Guardia']);
+    expect(rolesCon('padron:gestionar').sort()).toEqual(['Admin', 'GestorPermisos']);
     expect(rolesCon('avisos:padron').sort()).toEqual(['Admin', 'Guardia']);
     expect(rolesCon('avisos:acceso').sort()).toEqual(['Admin', 'Guardia']);
     expect(rolesCon('alarmas:escalamiento')).toEqual(['Admin']);

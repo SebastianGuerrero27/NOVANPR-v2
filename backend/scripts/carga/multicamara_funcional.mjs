@@ -20,11 +20,19 @@ function firmar(id) {
 const SESION = { Authorization: `Bearer ${firmar(Number(process.env.CARGA_USUARIO_ID))}` };
 const SERVICIO = { 'X-Servicio-Token': process.env.CARGA_SERVICE_TOKEN };
 
-async function api(metodo, ruta, cuerpo, encabezados = SESION) {
-  const r = await fetch(BASE + ruta, {
-    method: metodo, headers: { 'Content-Type': 'application/json', ...encabezados }, body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
-    signal: AbortSignal.timeout(30_000),
-  });
+async function api(metodo, ruta, cuerpo, encabezados = SESION, reintento = true) {
+  let r;
+  try {
+    r = await fetch(BASE + ruta, {
+      method: metodo, headers: { 'Content-Type': 'application/json', ...encabezados }, body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (e) {
+    // Tras un `docker stop` (varios segundos sin pedidos) el servidor cierra la conexión que el cliente
+    // reutiliza: el pedido no llegó a la API y se repite una vez
+    if (reintento && e?.cause?.code === 'UND_ERR_SOCKET') return api(metodo, ruta, cuerpo, encabezados, false);
+    throw e;
+  }
   return { status: r.status, data: await r.json().catch(() => null) };
 }
 
@@ -165,16 +173,23 @@ ok(Boolean(d3?.fecha_hora_salida) && d3?.salida_automatica === true, 'la cámara
 ok(new Date(d3.fecha_hora_salida).getTime() === new Date((await detalle(s3)).fecha_hora_ingreso).getTime(), 'la hora de salida es la del paso por la cámara');
 ok(d3?.auditoria?.some(a => a.accion === 'SALIDA_AUTOMATICA'), 'queda en la auditoría');
 
-// Otras placas no se tocan; una placa parecida tampoco; lectura sin confirmar tampoco
-const i4 = await paso('ZZA-1004', entrada);
+// Otras placas no se tocan; una placa parecida tampoco; sin ninguna lectura confirmada tampoco
+const i4 = await paso('ZZA-1004', entrada, false);
 await espera(1100);
 await paso('ZZA-1005', salidaCam);
 await paso('ZZA-1O04', salidaCam);
 ok(!(await detalle(i4))?.fecha_hora_salida, 'una placa distinta o parecida (0 por O) no cierra el ingreso');
 await paso('ZZA-1004', salidaCam, false);
-ok(!(await detalle(i4))?.fecha_hora_salida, 'una lectura sin confirmar no cierra el ingreso');
+ok(!(await detalle(i4))?.fecha_hora_salida, 'con el ingreso y la salida sin confirmar no se cierra');
 await api('POST', '/detecciones/reevaluar', { ingreso_id: (await paso('ZZA-1004', salidaCam, false)), lectura_valida: true, placa_reconocida: 'ZZA-1004' }, SERVICIO);
 ok(Boolean((await detalle(i4))?.fecha_hora_salida), 'la confirmación tardía del segundo OCR sí lo cierra');
+const i11 = await paso('ZZA-1011', entrada);
+await espera(1100);
+const s11 = await paso('ZZA-1011', salidaCam, false);
+ok(Boolean((await detalle(i11))?.fecha_hora_salida), 'una salida sin confirmar cierra el ingreso confirmado de esa misma placa');
+const tabla = (await api('GET', '/detecciones?unir_salidas=si&tamano=200')).data?.items ?? [];
+ok(!tabla.some(x => x.id === s11) && tabla.some(x => x.id === i11), 'en la tabla, la salida queda en la fila de su ingreso');
+ok((await api('GET', '/detecciones?tamano=200')).data?.items?.some(x => x.id === s11), 'sin unir, el paso de salida sigue consultable');
 
 // Corrección de la lectura: reabre el equivocado y cierra el correcto
 const i5 = await paso('ZZA-1006', entrada);
@@ -213,6 +228,50 @@ const i9 = await paso('ZZA-1009', entrada);
 await espera(1100);
 await paso('ZZA-1009', salidaCam);
 ok(!(await detalle(i9))?.fecha_hora_salida, 'desactivada de nuevo: no cierra');
+
+// ─── Salida manual, según Configuración ─────────────────────────────────────────────────────
+const bloqueo = await parametros({ salida_manual_habilitada: 'false', salida_automatica_habilitada: 'false' });
+ok(bloqueo.status === 400, 'no se pueden apagar a la vez la salida manual y la automática');
+ok((await parametros({ salida_automatica_habilitada: 'true', salida_automatica_minimo_segundos: '1', salida_manual_habilitada: 'false' })).status === 200, 'se desactiva la salida manual');
+ok((await api('GET', '/monitoreo/estado')).data?.salida_manual === false, 'la pantalla sabe que está desactivada');
+const i10 = await paso('ZZA-1010', entrada);
+ok((await api('POST', `/detecciones/${i10}/salida`)).status === 403, 'desactivada: la salida manual de un ingreso se rechaza');
+ok((await api('POST', '/detecciones/registro-manual', { placa: 'ZZA-1010', motivo: 'Cámara fuera de servicio', camara_id: salidaCam.id })).status === 403, 'desactivada: tampoco por el registro manual');
+await espera(1100);
+await paso('ZZA-1010', salidaCam);
+ok(Boolean((await detalle(i10))?.fecha_hora_salida), 'la cámara de salida sí registra la salida');
+ok((await parametros({ salida_manual_habilitada: 'true', salida_automatica_habilitada: 'false' })).status === 200, 'se vuelve a activar la salida manual');
+
+// ─── Registro manual ante fallos (RNF05) y conservación de fotos (RNF06) ─────────────────────
+const ingresoManual = n => api('POST', '/detecciones/registro-manual', { placa: `ZZC-000${n}`, motivo: 'Cámara fuera de servicio', tipo_vehiculo: 'Automóvil', persona_ingreso: 'Persona De Prueba', motivo_ingreso: 'Visita', camara_id: ids[0] });
+docker('stop', 'camaras');
+let m = await ingresoManual(1);
+ok(m.status === 201, `ingreso manual con la cámara caída (HTTP ${m.status})`);
+ok(m.data?.deteccion?.validado_manualmente === true, 'queda como validado por una persona');
+docker('stop', 'anpr', 'anpr2');
+m = await ingresoManual(2);
+ok(m.status === 201, `ingreso manual con los motores caídos (HTTP ${m.status})`);
+const d4 = await detalle(m.data?.deteccion?.id);
+ok(d4?.auditoria?.some(a => a.accion === 'REGISTRO_MANUAL'), 'el ingreso manual queda en la auditoría');
+docker('start', 'camaras', 'anpr', 'anpr2');
+
+const sql = q => docker('exec', '-T', 'db', 'psql', '-U', 'anpr', '-d', 'ANPR_ECU911', '-qAt', '-c', q).toString().trim();
+docker('exec', '-T', 'backend', 'sh', '-c', 'cd /app/media && echo x > zz_vencida.jpg && echo x > zz_reciente.jpg && echo x > zz_alerta.jpg && echo x > zz_huerfana.jpg && touch -d "2020-01-01" zz_huerfana.jpg');
+const paso_foto = (ruta, dias, estado) => `INSERT INTO deteccionvehiculo (placa_validada, tipo_movimiento, fuente, fecha_hora_ingreso, estado_procesamiento, estado_validacion, ruta_imagen_ingreso)
+  VALUES ('ZZD0001', 'ingreso', 'manual', CURRENT_TIMESTAMP - INTERVAL '${dias} days', 'procesado', '${estado}', '${ruta}') RETURNING id`;
+const vencida = sql(paso_foto('/media/zz_vencida.jpg', 120, 'autorizado'));
+const reciente = sql(paso_foto('/media/zz_reciente.jpg', 5, 'autorizado'));
+const alerta = sql(paso_foto('/media/zz_alerta.jpg', 400, 'alerta'));
+docker('restart', 'backend');
+await hasta(() => api('GET', '/monitoreo/estado').then(r => r.status === 200, () => false), 90);
+const fotoExiste = f => docker('exec', '-T', 'backend', 'sh', '-c', `test -f /app/media/${f} && echo si || echo no`).toString().trim() === 'si';
+await hasta(() => !fotoExiste('zz_vencida.jpg'), 60);
+ok(!fotoExiste('zz_vencida.jpg'), 'la foto de un paso de 120 días se borra sola');
+ok(sql(`SELECT ruta_imagen_ingreso IS NULL FROM deteccionvehiculo WHERE id = ${vencida}`) === 't', 'el registro del paso se conserva, sin la foto');
+ok(fotoExiste('zz_reciente.jpg') && sql(`SELECT ruta_imagen_ingreso FROM deteccionvehiculo WHERE id = ${reciente}`) !== '', 'la foto de un paso reciente sigue');
+ok(fotoExiste('zz_alerta.jpg') && sql(`SELECT ruta_imagen_ingreso FROM deteccionvehiculo WHERE id = ${alerta}`) !== '', 'la foto de una alerta no se borra sola');
+ok(!fotoExiste('zz_huerfana.jpg'), 'la foto vieja sin registro se borra');
+ok(Number(sql("SELECT count(*) FROM auditoriaoperaciones WHERE accion = 'EVIDENCIA_DEPURADA'")) >= 1, 'la depuración queda en la auditoría');
 
 console.log(JSON.stringify({ verificaciones: resumen.length, fallas }));
 process.exit(fallas ? 1 : 0);

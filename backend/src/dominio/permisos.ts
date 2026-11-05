@@ -36,13 +36,16 @@ export const PERMISOS = {
   // Operación
   'operacion:monitorear': 'Ver el monitoreo en vivo, el panel de inicio y el registro de ingresos',
   'detecciones:validar': 'Confirmar o corregir lecturas y registrar ingresos manuales',
-  'detecciones:eliminar': 'Eliminar ingresos y su evidencia',
+  'detecciones:gestionar': 'Corregir los datos históricos de ingresos y salidas',
+  'detecciones:eliminar-individual': 'Eliminar un registro y su evidencia con motivo auditado',
+  'detecciones:eliminar': 'Eliminar múltiples registros y su evidencia',
   // Listas de control
   'listas:ver': 'Consultar el padrón de autorizados y la lista de alertas',
-  'padron:gestionar': 'Alta, edición y retiro de permisos de placa (vigencias, horarios, categoría)',
+  'padron:agregar': 'Agregar vehículos a la lista blanca, también al confirmar una lectura',
+  'padron:gestionar': 'Edición, retiro e importación de permisos de placa (vigencias, horarios, categoría)',
   'padron:supervisar': 'Consultar y gestionar los permisos otorgados por todos los usuarios, incluidos los retirados',
   'alertas:restringir': 'Agregar o reactivar placas en la lista negra',
-  'alertas:gestionar': 'Alta, edición y retiro de placas en la lista de alertas',
+  'alertas:gestionar': 'Edición y retiro de placas en la lista de alertas',
   'accesos:excepcion': 'Autorizar excepcionalmente un ingreso fuera del horario o la vigencia del permiso',
   // Solicitudes de acceso
   'solicitudes:crear': 'Solicitar la autorización de una placa',
@@ -69,17 +72,19 @@ export type Permiso = keyof typeof PERMISOS;
 
 /** Matriz rol → permisos. */
 export const MATRIZ: Record<Rol, readonly Permiso[]> = {
-  // Punto de control: monitorea, valida lecturas, consulta la lista blanca y solicita accesos.
+  // Punto de control: monitorea, valida lecturas, consulta las listas y solicita accesos. Agrega placas a
+  // las listas desde la garita, pero no las edita ni las quita: una sola persona no puede sacar una placa
+  // de la lista negra ni cambiar un permiso.
   // Recibe los avisos de garita y la notificación de cada permiso otorgado.
   Guardia: [
-    'operacion:monitorear', 'detecciones:validar', 'listas:ver', 'padron:gestionar', 'alertas:gestionar', 'solicitudes:crear', 'alertas:restringir',
+    'operacion:monitorear', 'detecciones:validar', 'detecciones:eliminar-individual', 'listas:ver', 'padron:agregar', 'solicitudes:crear', 'alertas:restringir',
     'avisos:garita', 'avisos:acceso', 'avisos:seguridad', 'avisos:padron',
   ],
   // Una sola vista (gestión de permisos), sin monitoreo: concede permisos de placa y resuelve
   // solicitudes. Solo se le notifica la llegada de los vehículos a los que dio permiso
   // (destinatario explícito, ver infraestructura/servicios/avisosAcceso.ts), no los avisos de monitoreo.
   GestorPermisos: [
-    'listas:ver', 'padron:gestionar', 'solicitudes:resolver',
+    'listas:ver', 'padron:agregar', 'padron:gestionar', 'solicitudes:resolver',
   ],
   Admin: Object.keys(PERMISOS) as Permiso[],
 };

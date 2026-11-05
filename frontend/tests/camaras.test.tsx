@@ -3,12 +3,12 @@
  * y listado sin credenciales a la vista.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-const { get } = vi.hoisted(() => ({ get: vi.fn() }));
+const { get, post, eliminar } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), eliminar: vi.fn() }));
 vi.mock('../src/infraestructura/api', () => ({
-  default: { get, post: vi.fn(), put: vi.fn(), delete: vi.fn() },
+  default: { get, post, put: vi.fn(), delete: eliminar },
   mensajeError: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
@@ -40,6 +40,57 @@ describe('Página de cámaras', () => {
     responder(Promise.reject(new Error('Error al listar las cámaras.')));
     pagina();
     expect(await screen.findByText('Error al listar las cámaras.')).toBeInTheDocument();
+  });
+
+  const camara = (detecciones: unknown) => ({
+    id: 3, nombre: 'Garita norte', ubicacion: 'Acceso', ip: '192.0.2.10', rtsp_url: 'rtsp://192.0.2.10/101', rtsp_url_vista: null,
+    tiene_credenciales: false, activa: true, estado: 'EN_LINEA', ultimo_ping: null, tiempo_respuesta_ms: 12, mensaje_ping: null,
+    created_at: '2026-10-09T10:00:00Z', detecciones, roi: null,
+  });
+
+  // '0' llegó así de la API (bigint de PostgreSQL) y dejaba el botón deshabilitado para siempre
+  it.each([[0], ['0'], [undefined]])('sin detecciones (%s) se puede eliminar la cámara', async detecciones => {
+    responder(Promise.resolve({ data: [camara(detecciones)] }));
+    eliminar.mockResolvedValue({ data: {} });
+    pagina();
+    const boton = await screen.findByRole('button', { name: 'Eliminar' });
+    expect(boton).toBeEnabled();
+    fireEvent.click(boton);
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Eliminar' }));
+    await waitFor(() => expect(eliminar).toHaveBeenCalledWith('/camaras/3'));
+    await waitFor(() => expect(screen.queryByText('Garita norte')).toBeNull());
+    eliminar.mockReset();
+  });
+
+  it.each([[true, 'ok', 'SIN_CONEXION'], [false, 'error', 'EN_LINEA']])('Ping: la antena se anima y queda según el resultado (en línea: %s)', async (enLinea, clase, inicial) => {
+    responder(Promise.resolve({ data: [{ ...camara(0), estado: inicial }] }));
+    let responderPing: (valor: unknown) => void = () => undefined;
+    post.mockImplementation(() => new Promise(resolver => { responderPing = resolver; }));
+    pagina();
+    const boton = await screen.findByRole('button', { name: 'Ping' });
+    fireEvent.click(boton);
+    expect(boton).toHaveClass('probando');
+    expect(boton).toBeDisabled();
+    responderPing({ data: { ping: { host: '192.0.2.10', responde: enLinea, tiempo_ms: 4, mensaje: '' }, rtsp: { en_linea: enLinea, puerto: 554, mensaje: 'x', tiempo_ms: 8, servidor: null, diagnostico: 'ok' } } });
+    await waitFor(() => expect(boton).toHaveClass(clase));
+    expect(boton).toBeEnabled();
+    expect(post).toHaveBeenCalledWith('/camaras/3/ping');
+    post.mockReset();
+  });
+
+  it('una cámara deshabilitada no se ve verde ni roja', async () => {
+    responder(Promise.resolve({ data: [{ ...camara(0), activa: false, estado: 'SIN_CONEXION' }] }));
+    pagina();
+    expect(await screen.findByRole('button', { name: 'Ping' })).toHaveClass('reposo');
+  });
+
+  it.each([[2], ['2']])('con detecciones (%s) no se elimina y explica por qué', async detecciones => {
+    responder(Promise.resolve({ data: [camara(detecciones)] }));
+    pagina();
+    const boton = await screen.findByRole('button', { name: 'Eliminar' });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAttribute('title', 'Tiene 2 detecciones en el historial: deshabilítela en su lugar');
   });
 
   it('el listado muestra la URL con la contraseña enmascarada tal como la entrega la API', async () => {

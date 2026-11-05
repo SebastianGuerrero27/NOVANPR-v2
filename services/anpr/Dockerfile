@@ -27,6 +27,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 ENV YOLO_OFFLINE=true \
     YOLO_CONFIG_DIR=/tmp/Ultralytics
 
+# Modelos que las bibliotecas descargan (OCR, verificador, atributos) dentro de la imagen, fuera de /app
+# y de /root: el motor funciona sin Internet y sin depender de un volumen. Va antes de copiar el código
+# para no repetir la descarga con cada cambio
+ENV HOME=/opt/anpr
+COPY scripts/preparar_modelos.py app/infraestructura/config.py /tmp/modelos/
+RUN mkdir -p "$HOME" && python /tmp/modelos/preparar_modelos.py && rm -rf /tmp/modelos
+ENV HF_HUB_OFFLINE=1
+
 COPY . .
 
 EXPOSE 8000

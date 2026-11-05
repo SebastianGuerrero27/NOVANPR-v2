@@ -47,6 +47,38 @@ describe('Vista cuadrícula de Monitoreo', () => {
     expect(screen.getByLabelText('Vista cuadrícula de 4 cámaras')).toBeInTheDocument();
   });
 
+  describe('sin distribución guardada', () => {
+    const ingreso = { ...camaras[0], id: 4, nombre: 'Ingreso' };
+    const salida = { ...camaras[0], id: 5, nombre: 'Salida', direccion: 'salida' as const };
+    beforeEach(() => localStorage.clear());
+
+    it('se llena sola con el ingreso y la salida, en dos celdas', () => {
+      const { container } = render(<VistaCuadricula camaras={[salida, ingreso]} analizadas={[4, 5]} />);
+      expect(container.querySelectorAll('.nvr-celda')).toHaveLength(2);
+      expect(container.querySelector('[aria-label="Cámara 1: Ingreso"]')).not.toBeNull();
+      expect(within(container.querySelector('[aria-label="Cámara 2: Salida"]') as HTMLElement).getByText('SALIDA')).toBeInTheDocument();
+      expect(screen.getByTestId('video-4')).toBeInTheDocument();
+      expect(screen.getByTestId('video-5')).toBeInTheDocument();
+      expect(localStorage.getItem('anpr_nvr_slots_v1')).toBeNull();
+    });
+
+    it('también si lo guardado solo tiene cámaras ya eliminadas', () => {
+      localStorage.setItem('anpr_nvr_slots_v1', JSON.stringify([3, null, null, null]));
+      render(<VistaCuadricula camaras={[ingreso, salida]} analizadas={[4, 5]} />);
+      expect(screen.getByTestId('video-4')).toBeInTheDocument();
+      expect(screen.getByTestId('video-5')).toBeInTheDocument();
+    });
+
+    it('si la persona quita una cámara, se respeta y no vuelve sola', () => {
+      render(<VistaCuadricula camaras={[ingreso, salida]} analizadas={[4, 5]} />);
+      fireEvent.click(screen.getAllByRole('button', { name: 'Quitar cámara' })[1]);
+      expect(screen.queryByTestId('video-5')).toBeNull();
+      expect(screen.getByTestId('video-4')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Quitar cámara' }));
+      expect(screen.queryByTestId('video-4')).toBeNull();
+    });
+  });
+
   it('muestra el video y la dirección de cada cámara asignada', () => {
     const { container } = render(<VistaCuadricula camaras={camaras} analizadas={[1]} />);
     expect(screen.getByTestId('video-1')).toBeInTheDocument();

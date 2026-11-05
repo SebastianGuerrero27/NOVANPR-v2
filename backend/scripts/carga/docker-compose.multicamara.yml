@@ -113,7 +113,6 @@ services:
       - ANPR_HILOS_OPENCV=${ANPR_HILOS_OPENCV:-2}
     volumes:
       - media:/app/media
-      - modelos:/root/.cache
     depends_on:
       backend:
         condition: service_healthy
@@ -162,6 +161,3 @@ services:
 volumes:
   media:
   # Los pesos ya descargados por el sistema local: no se vuelven a bajar
-  modelos:
-    external: true
-    name: ${VOLUMEN_MODELOS:-anpr_anpr_model_cache}

@@ -32,7 +32,8 @@ export type TipoNotificacion =
   | 'solicitud.resuelta'
   | 'padron.por_vencer'
   | 'alarma.escalada'
-  | 'sistema.camara';
+  | 'sistema.camara'
+  | 'sistema.almacenamiento';
 
 export interface DefinicionTipo {
   etiqueta: string;
@@ -103,6 +104,10 @@ export const CATALOGO: Record<TipoNotificacion, DefinicionTipo> = {
   'sistema.camara': {
     etiqueta: 'Cámara sin conexión', severidad: 'alta', permiso: 'avisos:sistema',
     requiereAck: false, ventanaS: 900, alDuplicar: 'incrementar', push: true, ttlPushS: 900,
+  },
+  'sistema.almacenamiento': {
+    etiqueta: 'Poco espacio para las fotos', severidad: 'alta', permiso: 'avisos:sistema',
+    requiereAck: false, ventanaS: 86_400, alDuplicar: 'omitir', push: true, ttlPushS: 86_400,
   },
 };
 
